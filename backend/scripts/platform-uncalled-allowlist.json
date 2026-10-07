@@ -1,0 +1,27 @@
+{
+    "_comment": "#904 AC4 — platform classes known to have no non-test caller. Checked by scripts/check_platform_callers.php. Remove an entry as soon as the class gains a caller (the check warns); never add one without an owner/issue. Register: docs/architecture-decisions/2026-10-07-platform-services-adoption-register.md",
+    "classes": {
+        "App\\Platform\\Approvals\\ApprovalDelegation": "#648 — fourth parallel approval engine; consolidation decided under #648/#644",
+        "App\\Platform\\Approvals\\ApprovalEscalation": "#648 — fourth parallel approval engine; consolidation decided under #648/#644",
+        "App\\Platform\\Approvals\\ApprovalPolicy": "#648 — fourth parallel approval engine; consolidation decided under #648/#644",
+        "App\\Platform\\Approvals\\ApprovalService": "#648 — fourth parallel approval engine; consolidation decided under #648/#644",
+        "App\\Platform\\Approvals\\Contracts\\ApprovalServiceContract": "#648 — fourth parallel approval engine; consolidation decided under #648/#644",
+        "App\\Platform\\Archive\\ArchiveRecord": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\Archive\\ArchiveService": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\Archive\\Contracts\\ArchiveServiceContract": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\DataQuality\\DataQualityRulesService": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\DataSecurity\\Contracts\\DataSecurityServiceContract": "#904 decision 2026-10-02 — masking part adopted (#567/#444); this service delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\DataSecurity\\DataClassification": "#904 decision 2026-10-02 — masking part adopted (#567/#444); this class delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\DataSecurity\\DataSecurityService": "#904 decision 2026-10-02 — masking part adopted (#567/#444); this service delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\Evidence\\Contracts\\EvidencePackServiceContract": "#904 decision 2026-10-02 — ADOPT via #912; #912 closed but shipped the audit hash chain only, evidence-pack export still has no caller",
+        "App\\Platform\\Evidence\\EvidenceItem": "#904 decision 2026-10-02 — ADOPT via #912; #912 closed but shipped the audit hash chain only, evidence-pack export still has no caller",
+        "App\\Platform\\Evidence\\EvidencePack": "#904 decision 2026-10-02 — ADOPT via #912; #912 closed but shipped the audit hash chain only, evidence-pack export still has no caller",
+        "App\\Platform\\Evidence\\EvidencePackService": "#904 decision 2026-10-02 — ADOPT via #912; #912 closed but shipped the audit hash chain only, evidence-pack export still has no caller",
+        "App\\Platform\\Policies\\Contracts\\PolicyEngineContract": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\Policies\\PolicyEngine": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\Policies\\PolicyResult": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named (App\\Services\\DocumentCorrectionPolicyService declares its own PolicyResult)",
+        "App\\Platform\\Policies\\PolicyRule": "#904 decision 2026-10-02 — delete by 2027-01-02 unless owner + first consumer named",
+        "App\\Platform\\Settings\\SettingsUsageScanner": "#921 (open) — readers-registry scanner, currently exercised only by tests/Feature/Issue921SettingsRegistryReadersTest.php",
+        "App\\Platform\\Workflow\\StatusTransition": "#900 — WorkflowEngine is live but schemas pass transitions as arrays; this concrete StatusTransitionContract value object is unused"
+    }
+}

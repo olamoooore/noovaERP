@@ -5,6 +5,8 @@ validate: lint test security-check
 
 lint:
 	@echo "Running linter checks..."
+	@# #904 AC4: fail on new app/Platform classes with no non-test caller (static, no DB)
+	php backend/scripts/check_platform_callers.php
 	@echo "✅ Lint checks passed"
 
 test:

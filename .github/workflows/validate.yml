@@ -15,5 +15,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # #904 AC4: `make lint` runs backend/scripts/check_platform_callers.php
+      # (pure PHP static scan — no composer install, no database).
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
       - name: Run validate
         run: make validate
