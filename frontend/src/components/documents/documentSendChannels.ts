@@ -11,6 +11,8 @@ import type { DocumentTemplateType } from './DocumentTemplateDialog'
  *                         (email | whatsapp, #607 Sales statement surface)
  *   quotation          -> POST /quotations/{id}/send (email, #334 — PDF +
  *                         public acceptance link)
+ *   receipt            -> POST /payments/{id}/send-receipt (email | whatsapp,
+ *                         #500 — posted customer payments only)
  *
  * Sales orders and their order confirmation / pro-forma invoice (#405) have
  * no send path yet; it is to come from the shared send-and-accept service
@@ -25,5 +27,5 @@ export const PRINT_SEND_CHANNELS: Record<DocumentTemplateType, { email: boolean;
   sales_order_confirmation: { email: false, whatsapp: false },
   sales_proforma_invoice: { email: false, whatsapp: false },
   credit_note: { email: false, whatsapp: false },
-  receipt: { email: false, whatsapp: false },
+  receipt: { email: true, whatsapp: true },
 }

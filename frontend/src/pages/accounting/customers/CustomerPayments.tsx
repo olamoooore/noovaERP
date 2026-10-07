@@ -82,6 +82,16 @@ interface Payment {
   source?: 'manual' | 'import' | string | null;
 }
 
+/** #500: one receipt send attempt (GET /payments/{id}/receipt-deliveries). */
+interface ReceiptDelivery {
+  id: number;
+  channel: 'email' | 'whatsapp' | string;
+  recipient: string | null;
+  status: 'sent' | 'failed' | string;
+  error?: string | null;
+  sent_at?: string | null;
+}
+
 interface PaginatedPayments {
   data: Payment[];
   current_page: number;
@@ -1005,6 +1015,38 @@ const ViewPaymentDialog: React.FC<{
   // #825 (EINV-UX8): a refund record shows its LHDN refund-note status.
   const refundNote = useEInvoiceDocument('refund_note', detail.correction_type === 'refund' ? detail.id : undefined);
 
+  // #500: only a posted customer payment has an official receipt to send.
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const receiptSendable = detail.journal_entry_id != null
+    && ['applied', 'unapplied'].includes(detail.payment_status)
+    && Boolean(detail.customer_id ?? detail.customer?.id);
+
+  const { data: receiptDeliveries } = useQuery({
+    queryKey: ['payment-receipt-deliveries', detail.id],
+    queryFn: async () => {
+      const response = await api.get(`/payments/${detail.id}/receipt-deliveries`);
+      return (response.data?.data ?? []) as ReceiptDelivery[];
+    },
+    enabled: receiptSendable,
+  });
+
+  const sendReceipt = useMutation({
+    mutationFn: async (channel: 'email' | 'whatsapp') => {
+      const response = await api.post(`/payments/${detail.id}/send-receipt`, { channel });
+      return response.data?.data as ReceiptDelivery;
+    },
+    onSuccess: (delivery) => {
+      toast({ title: 'Receipt sent', description: `Sent by ${delivery.channel} to ${delivery.recipient}.` });
+      queryClient.invalidateQueries({ queryKey: ['payment-receipt-deliveries', detail.id] });
+    },
+    onError: (error: unknown) => {
+      const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast({ variant: 'destructive', title: 'Receipt not sent', description: message || 'The receipt could not be sent.' });
+      queryClient.invalidateQueries({ queryKey: ['payment-receipt-deliveries', detail.id] });
+    },
+  });
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-2xl">
@@ -1014,14 +1056,16 @@ const ViewPaymentDialog: React.FC<{
               <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-primary" />
               Payment {detail.payment_number || `PAY-${detail.id}`}
             </DialogTitle>
-            {/* #618: the receipt print/send menu. Payments have no customer
-                send endpoint, so Email/WhatsApp are hidden. */}
+            {/* #618: the receipt print/send menu. #500: Email/WhatsApp send
+                the official receipt once the payment is posted. */}
             <PrintSendMenu
               documentType="receipt"
               pdfPath={`/payments/${detail.id}/pdf`}
               filename={`receipt-${detail.payment_number || detail.id}.pdf`}
               title="Payment Receipt"
               resolutionPath={`/documents/receipt/resolution?document_id=${detail.id}`}
+              onEmail={receiptSendable ? () => sendReceipt.mutate('email') : undefined}
+              onWhatsApp={receiptSendable ? () => sendReceipt.mutate('whatsapp') : undefined}
             />
           </div>
         </DialogHeader>
@@ -1165,6 +1209,24 @@ const ViewPaymentDialog: React.FC<{
             currency={detail.currency}
             onNavigate={onClose}
           />
+
+          {/* #500: the receipt's delivery history. */}
+          {receiptSendable && (receiptDeliveries?.length ?? 0) > 0 && (
+            <div className="border-t pt-4">
+              <p className="text-xs text-muted-foreground mb-1">Receipt sent</p>
+              <ul className="space-y-1">
+                {receiptDeliveries!.map((delivery) => (
+                  <li key={delivery.id} className="flex items-center gap-2 text-xs">
+                    <Badge variant={delivery.status === 'sent' ? 'secondary' : 'destructive'}>{delivery.status}</Badge>
+                    <span className="capitalize">{delivery.channel}</span>
+                    <span className="text-muted-foreground">{delivery.recipient}</span>
+                    {delivery.sent_at && <span className="text-muted-foreground">{formatDate(delivery.sent_at)}</span>}
+                    {delivery.error && <span className="text-destructive">{delivery.error}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {detail.notes && (
             <div className="border-t pt-4">

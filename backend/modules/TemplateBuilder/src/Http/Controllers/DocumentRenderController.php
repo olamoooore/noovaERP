@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\Response;
  * These live at the resource path so the existing detail-page buttons work:
  *   GET /invoices/{id}/pdf          (fixes the previously-broken button)
  *   GET /purchase-orders/{id}/pdf
- *   GET /payments/{id}/pdf
+ *   GET /payments/{id}/pdf          (+ /html, issue #500)
  *
  * Issue #615 (TP5) adds the sales order family and credit note:
  *   GET /sales/orders/{id}/pdf (+ /html)
@@ -68,6 +68,12 @@ class DocumentRenderController extends Controller
     public function paymentReceiptPdf(Request $request, string $id): Response
     {
         return $this->renderDocument('receipt', $id, $request, 'receipt-'.$id.'.pdf');
+    }
+
+    /** Issue #500: on-screen preview of the payment receipt. */
+    public function paymentReceiptHtml(Request $request, string $id): Response
+    {
+        return $this->renderDocument('receipt', $id, $request, null, 'html');
     }
 
     public function deliveryOrderPdf(Request $request, string $id): Response

@@ -578,6 +578,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('accounting.view')); // #481
         Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
 
+        // Issue #500: send the official receipt (email / WhatsApp) and read its
+        // delivery history. Sending a document to the customer reuses the
+        // seeded invoices.send grant; both actions also pass the #611 receipt
+        // authorizer (accounting.view + the payment's legal entity).
+        Route::post('/payments/{payment}/send-receipt', [\App\Http\Controllers\Api\PaymentReceiptController::class, 'send'])
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::get('/payments/{payment}/receipt-deliveries', [\App\Http\Controllers\Api\PaymentReceiptController::class, 'index'])
+            ->middleware(RequirePermission::using('accounting.view'));
+
         // Issue #905 (PCU1): read-only audit tab, gated by the payments read
         // permission (#481 uses accounting.view for every payment read).
         Route::get('/payments/{subjectId}/audit', [DocumentAuditController::class, 'index'])

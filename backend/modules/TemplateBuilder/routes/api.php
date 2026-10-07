@@ -45,6 +45,9 @@ Route::middleware([
         ->middleware($perm('document.view'));
     Route::get('/payments/{id}/pdf', [DocumentRenderController::class, 'paymentReceiptPdf'])
         ->middleware($perm('document.view'));
+    // Issue #500: receipt preview, same gate + #611 authorizer as the PDF.
+    Route::get('/payments/{id}/html', [DocumentRenderController::class, 'paymentReceiptHtml'])
+        ->middleware($perm('document.view'));
     Route::get('/delivery-orders/{id}/pdf', [DocumentRenderController::class, 'deliveryOrderPdf'])
         ->middleware($perm('document.view'));
     Route::get('/delivery-orders/pdf-templates', [DocumentRenderController::class, 'deliveryOrderTemplates'])
