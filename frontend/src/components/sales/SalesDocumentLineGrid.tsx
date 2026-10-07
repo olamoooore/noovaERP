@@ -14,6 +14,7 @@ import { SALES_RADIUS } from '@/components/sales/salesDesignTokens'
 import {
   LINE_CELL,
   LINE_CELL_BOX,
+  LINE_CELL_TIGHT,
   LINE_INPUT,
   LINE_INPUT_NUMERIC,
   LINE_PRODUCT_WRAP,
@@ -23,15 +24,20 @@ import {
   productLineColumns,
 } from '@/components/sales/ProductLineTable'
 import {
+  CREDIT_QUANTITY_EPSILON,
+  creditableQuantity,
   duplicateSalesDocumentLine,
   emptySalesDocumentLine,
+  exceedsCreditableQuantity,
   getSalesDocumentLineTotal,
   isBlankSalesDocumentLine,
   moveSalesDocumentLine,
   removeSalesDocumentLine,
   resetSalesDocumentLine,
+  withCreditQuantity,
   type SalesDocumentLine,
 } from '@/lib/salesDocumentLines'
+import type { LineItemsColumn } from '@/components/sales/LineItemsTable'
 import { lineFieldKey } from '@/lib/serverValidation'
 import { FieldSlot } from '@/components/ui/field-errors'
 import { useFieldErrorsContext } from '@/hooks/useFieldErrors'
@@ -58,6 +64,13 @@ import { useFieldErrorsContext } from '@/hooks/useFieldErrors'
  * becomes a real line when a product is picked on it. Typing or scanning a
  * SKU/barcode on a product cell picks the exact match (ProductSearchCombobox
  * `keyboardEntry`).
+ *
+ * Issue #526 (CN-UX5): `credit` mode for credit notes. The lines are the
+ * invoice's lines (each carrying `credit` info); the grid adds the Invoiced,
+ * Already credited and To credit columns, caps the quantity at what is still
+ * creditable (#522/#513), keeps the shared line-total calculation and the
+ * keyboard flow (Tab qty -> price, Enter -> next creditable line), and drops
+ * product picking, new lines and row actions.
  */
 
 /** Focusable line cells, in keyboard (Tab/Enter) order. */
@@ -97,7 +110,26 @@ export interface SalesDocumentLineGridProps {
   tableMinWidth?: string
   /** Extra action buttons (Repeat last invoice, Recalculate, ...). */
   extraActions?: React.ReactNode
+  /** #526: credit-note mode; `readOnly` shows the quantities/prices as text (full credit). */
+  credit?: { readOnly?: boolean }
 }
+
+/** #526: credit-mode columns — the invoice line plus what it allows to be credited. */
+function creditLineColumns(options: { taxRate: boolean; discount: boolean }): LineItemsColumn[] {
+  return [
+    { key: 'index', label: '#', align: 'center', minWidth: 'w-10', className: 'w-10' },
+    { key: 'description', label: 'Description', minWidth: 'min-w-[14rem]' },
+    { key: 'invoiced', label: 'Invoiced', align: 'right', minWidth: 'min-w-[5rem]' },
+    { key: 'credited', label: 'Already credited', align: 'right', minWidth: 'min-w-[6rem]' },
+    { key: 'qty', label: 'To credit', align: 'right', minWidth: 'min-w-[6rem]' },
+    { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
+    { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[4rem]', hidden: !options.taxRate },
+    { key: 'discount', label: 'Disc', align: 'right', minWidth: 'min-w-[5rem]', hidden: !options.discount },
+    { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[7rem]' },
+  ]
+}
+
+const fmtCreditQty = (value: number) => String(Number(value.toFixed(4)))
 
 export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, SalesDocumentLineGridProps>(function SalesDocumentLineGrid({
   lines,
@@ -115,7 +147,10 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
   tableClass = 'sales-document-columns',
   tableMinWidth = 'min-w-[1200px]',
   extraActions,
+  credit,
 }, ref) {
+  const isCredit = !!credit
+  const creditReadOnly = !!credit?.readOnly
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>(defaultHiddenColumns)
   const isNarrow = useMediaQuery(SALES_LINE_CARDS_MEDIA_QUERY)
@@ -129,14 +164,16 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
   const emptyLine = (): SalesDocumentLine => emptySalesDocumentLine()
   const getLineTotal = (line: SalesDocumentLine) => getSalesDocumentLineTotal(line)
 
-  const columns = productLineColumns({
-    sku: showSku,
-    description: true,
-    modelNumber: showModelNumber,
-    productNotes: showProductNotes,
-    taxRate: showTaxRate,
-    discount: showDiscount,
-  })
+  const columns = isCredit
+    ? creditLineColumns({ taxRate: showTaxRate, discount: showDiscount })
+    : productLineColumns({
+        sku: showSku,
+        description: true,
+        modelNumber: showModelNumber,
+        productNotes: showProductNotes,
+        taxRate: showTaxRate,
+        discount: showDiscount,
+      })
   const menuColumns = columns.map((column, index) => ({
     label: String(column.label ?? '') || 'Actions',
     index: index + 1,
@@ -154,12 +191,17 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
   // #319: keyboard flow. Cells are found through their #318 FieldSlot keys.
   const containerRef = useRef<HTMLDivElement>(null)
   const pendingFocusRef = useRef<{ row: number; cell: LineFlowCell } | null>(null)
-  const flowCells: LineFlowCell[] = [
-    'product_id',
-    'quantity',
-    'unit_price',
-    ...(showDiscount && columnVisible('discount') ? (['discount_amount'] as const) : []),
-  ]
+  // #526: credit lines keep their invoice product/discount — only qty and price are entered.
+  const flowCells: LineFlowCell[] = isCredit
+    ? (creditReadOnly ? [] : ['quantity', 'unit_price'])
+    : [
+        'product_id',
+        'quantity',
+        'unit_price',
+        ...(showDiscount && columnVisible('discount') ? (['discount_amount'] as const) : []),
+      ]
+  const isCreditableRow = (line?: SalesDocumentLine) =>
+    !!line?.credit && creditableQuantity(line.credit) > CREDIT_QUANTITY_EPSILON
   const isProductRow = (line?: SalesDocumentLine) => !!line && (line.line_type ?? 'product') === 'product'
 
   const focusCell = (row: number, cell: LineFlowCell): boolean => {
@@ -183,7 +225,7 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
   // #319: the entry row stands in for the empty row at the end whenever the
   // last line has content; it lives at index `lines.length`.
   const entryIndex = lines.length
-  const showEntryRow = lines.length === 0 || !isBlankSalesDocumentLine(lines[lines.length - 1])
+  const showEntryRow = !isCredit && (lines.length === 0 || !isBlankSalesDocumentLine(lines[lines.length - 1]))
   // Row a pick on the entry row turned into (the entry row then moves down).
   const entryPickedRowRef = useRef<number | null>(null)
 
@@ -196,6 +238,12 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
 
   /** Enter on a row's last cell: the next product row, or a new empty one. */
   const goToNextRow = (index: number) => {
+    if (isCredit) {
+      // #526: credit lines are the invoice's lines — move on, never add one.
+      const next = lines.findIndex((line, row) => row > index && isCreditableRow(line))
+      if (next >= 0) focusCell(next, 'quantity')
+      return
+    }
     if (isProductRow(lines[index + 1])) {
       focusCell(index + 1, 'product_id')
       return
@@ -262,6 +310,11 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
 
     if (field === 'unit_price') {
       updated[index] = { ...updated[index], price_mode: 'manual' }
+    }
+
+    // #526: a credit line's discount share follows its quantity to credit.
+    if (field === 'quantity' && updated[index].credit) {
+      updated[index] = withCreditQuantity(updated[index], value as number | '')
     }
 
     setLines(updated)
@@ -595,6 +648,159 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
       <div className="flex justify-end">{lineActions(index, index !== lines.length - 1)}</div>
     </div>
   )
+
+  // #526: credit-mode cells (shared by the table row and the stacked card).
+  const creditQuantityInput = (line: SalesDocumentLine, index: number) => {
+    const info = line.credit!
+    const remaining = creditableQuantity(info)
+    const fullyCredited = remaining <= CREDIT_QUANTITY_EPSILON
+    if (creditReadOnly) {
+      return <span className="text-sm tabular-nums">{fullyCredited ? 'Fully credited' : fmtCreditQty(Number(line.quantity) || 0)}</span>
+    }
+    const tooMuch = exceedsCreditableQuantity(line)
+    return (
+      <div>
+        <input
+          type="number"
+          min="0"
+          max={remaining}
+          step="0.01"
+          aria-label={`Quantity to credit for ${line.description}`}
+          aria-invalid={tooMuch || undefined}
+          disabled={fullyCredited}
+          onKeyDown={handleFlowKeyDown(index, 'quantity')}
+          value={line.quantity}
+          onChange={(event) => {
+            const raw = event.target.value
+            if (raw === '') { updateLine(index, 'quantity', ''); return }
+            const parsed = parseFloat(raw)
+            if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
+          }}
+          onBlur={() => {
+            if (line.quantity !== '') updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number)
+          }}
+          className={cn(LINE_INPUT_NUMERIC_TOKEN, tooMuch && 'border-destructive')}
+        />
+        {tooMuch && <p className="mt-1 text-xs text-destructive">Max {fmtCreditQty(remaining)}</p>}
+      </div>
+    )
+  }
+
+  const creditPriceInput = (line: SalesDocumentLine, index: number) => {
+    if (creditReadOnly) {
+      return <span className="text-sm tabular-nums">{money(Number(line.unit_price) || 0)}</span>
+    }
+    return (
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        aria-label={`Unit price for ${line.description}`}
+        disabled={!isCreditableRow(line)}
+        onKeyDown={handleFlowKeyDown(index, 'unit_price')}
+        value={line.unit_price === '' ? '' : line.unit_price}
+        onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
+        className={LINE_INPUT_NUMERIC_TOKEN}
+      />
+    )
+  }
+
+  const renderCreditRow = (line: SalesDocumentLine, index: number) => {
+    const info = line.credit!
+    return (
+      <tr
+        key={info.invoice_line_id}
+        className={cn('doc-line-row border-b transition-colors hover:bg-muted/20', !isCreditableRow(line) && 'text-muted-foreground')}
+      >
+        <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
+          <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>{index + 1}</div>
+        </td>
+        <td data-label="Description" className={cn(LINE_CELL, 'min-w-[14rem]')}>
+          <div className={cn(LINE_CELL_BOX, 'text-sm')}>{line.description}</div>
+        </td>
+        <td data-label="Invoiced" aria-label="Invoiced" className={LINE_CELL_TIGHT}>{fmtCreditQty(info.invoiced_quantity)}</td>
+        <td data-label="Already credited" aria-label="Already credited" className={LINE_CELL_TIGHT}>{fmtCreditQty(info.credited_quantity)}</td>
+        <td data-label="To credit" className={cn(LINE_CELL, 'text-right')}>
+          <FieldSlot name={lineFieldKey(index, 'quantity')}>{creditQuantityInput(line, index)}</FieldSlot>
+        </td>
+        <td data-label="Unit price" className={cn(LINE_CELL, 'text-right')}>
+          <FieldSlot name={lineFieldKey(index, 'unit_price')}>{creditPriceInput(line, index)}</FieldSlot>
+        </td>
+        {showTaxRate && (
+          <td data-label="Tax %" className={LINE_CELL_TIGHT}>{line.tax_inclusive ? `${line.tax_rate}% incl.` : `${line.tax_rate}%`}</td>
+        )}
+        {showDiscount && (
+          <td data-label="Disc" aria-label="Line discount" className={LINE_CELL_TIGHT}>{money(Number(line.discount_amount) || 0)}</td>
+        )}
+        <td data-label="Total" aria-label="Line total" className={cn(LINE_CELL_TIGHT, 'font-semibold')}>{money(getLineTotal(line))}</td>
+      </tr>
+    )
+  }
+
+  const renderCreditCard = (line: SalesDocumentLine, index: number) => {
+    const info = line.credit!
+    return (
+      <div
+        key={info.invoice_line_id}
+        data-testid="sales-line-card"
+        className={cn('sales-line-card space-y-2 rounded-lg border bg-card p-3 shadow-sm', !isCreditableRow(line) && 'text-muted-foreground')}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium">{line.description}</span>
+          <span aria-label="Line total" className="text-sm font-semibold tabular-nums">{money(getLineTotal(line))}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>Invoiced: <span aria-label="Invoiced">{fmtCreditQty(info.invoiced_quantity)}</span></div>
+          <div>Already credited: <span aria-label="Already credited">{fmtCreditQty(info.credited_quantity)}</span></div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <FieldSlot name={lineFieldKey(index, 'quantity')}>
+            <label className="mb-0.5 block text-xs font-medium text-muted-foreground">To credit</label>
+            {creditQuantityInput(line, index)}
+          </FieldSlot>
+          <FieldSlot name={lineFieldKey(index, 'unit_price')}>
+            <label className="mb-0.5 block text-xs font-medium text-muted-foreground">Unit price</label>
+            {creditPriceInput(line, index)}
+          </FieldSlot>
+        </div>
+        <div className="flex justify-between text-xs text-muted-foreground">
+          {showTaxRate && <span>Tax {line.tax_rate}%{line.tax_inclusive ? ' incl.' : ''}</span>}
+          {showDiscount && <span>Disc <span aria-label="Line discount">{money(Number(line.discount_amount) || 0)}</span></span>}
+        </div>
+      </div>
+    )
+  }
+
+  if (isCredit) {
+    return (
+      <div ref={containerRef} className="contents">
+        {isNarrow ? (
+          <div className="space-y-3" data-testid="sales-line-cards">
+            {lines.map((line, index) => (line.credit ? renderCreditCard(line, index) : null))}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <SalesLineColumnVisibility
+              tableClass={tableClass}
+              columns={menuColumns}
+              hiddenColumns={hiddenLineColumns}
+              onHiddenColumnsChange={setHiddenLineColumns}
+              showMenu={false}
+            >
+              <LineItemsTable
+                variant="raw"
+                tableClassName={cn('doc-lines-table w-full text-sm', tableMinWidth)}
+                headRowClassName="border-b bg-muted/30"
+                columns={columns}
+              >
+                {lines.map((line, index) => (line.credit ? renderCreditRow(line, index) : null))}
+              </LineItemsTable>
+            </SalesLineColumnVisibility>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const entryProductPicker = (
     <FieldSlot name={lineFieldKey(entryIndex, 'product_id')}>

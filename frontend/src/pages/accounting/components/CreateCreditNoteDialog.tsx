@@ -32,6 +32,15 @@ import { cn, formatCurrency } from '@/lib/utils';
 import { todayDateOnly } from '@/lib/dateOnly'; // #519
 import api from '@/lib/api';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { SalesDocumentLineGrid } from '@/components/sales/SalesDocumentLineGrid';
+import {
+  creditableQuantity,
+  emptySalesDocumentLine,
+  exceedsCreditableQuantity,
+  getSalesDocumentLineTotal,
+  withCreditQuantity,
+  type SalesDocumentLine,
+} from '@/lib/salesDocumentLines';
 
 interface CreateCreditNoteDialogProps {
   onClose: () => void;
@@ -69,22 +78,9 @@ interface InvoiceLine {
 
 // #522 (CN-UX1): one row per invoice line, carrying what was invoiced, what
 // POSTED credit notes have already credited (the same rule the #513 per-line
-// cap enforces at post) and how much this credit note credits.
-interface CreditRow {
-  invoice_line_id: number;
-  product_id: number | null;
-  description: string;
-  invoiced_quantity: number;
-  credited_quantity: number;
-  remaining_quantity: number;
-  quantity: number;
-  unit_price: number;
-  tax_rate: number;
-  tax_inclusive: boolean;
-  invoiced_discount: number;
-  account_id: number | null;
-}
-
+// cap enforces at post) and how much this credit note credits. #526 (CN-UX5):
+// the rows are shared SalesDocumentLine rows in the grid's credit mode, so the
+// line arithmetic (discount, tax-inclusive) is the shared one.
 type CreditMode = 'full' | 'partial';
 
 // #527 (SALES-ODOO): the reversal wizard's three modes. 'partial' is the
@@ -116,10 +112,6 @@ interface PriorCreditNote {
   lines?: Array<{ invoice_line_id: number | null; quantity: number | string }>;
 }
 
-const QTY_EPSILON = 0.000001;
-
-const fmtQty = (n: number) => String(Number(n.toFixed(4)));
-
 function creditedQuantities(notes: PriorCreditNote[]): Record<number, number> {
   const credited: Record<number, number> = {};
   for (const note of notes) {
@@ -132,36 +124,26 @@ function creditedQuantities(notes: PriorCreditNote[]): Record<number, number> {
   return credited;
 }
 
-function buildRows(invoice: Invoice, credited: Record<number, number>, mode: CreditMode): CreditRow[] {
+function buildRows(invoice: Invoice, credited: Record<number, number>, mode: CreditMode): SalesDocumentLine[] {
   return invoice.lines.map((line) => {
-    const invoiced = Number(line.quantity) || 0;
-    const already = credited[line.id] ?? 0;
-    const remaining = Math.max(invoiced - already, 0);
-    return {
+    const credit = {
       invoice_line_id: line.id,
-      product_id: line.product_id,
+      invoiced_quantity: Number(line.quantity) || 0,
+      credited_quantity: credited[line.id] ?? 0,
+      invoiced_discount: Number(line.discount_amount) || 0,
+    };
+    const row: SalesDocumentLine = {
+      ...emptySalesDocumentLine(),
+      product_id: line.product_id != null ? String(line.product_id) : '',
       description: line.description,
-      invoiced_quantity: invoiced,
-      credited_quantity: already,
-      remaining_quantity: remaining,
-      quantity: mode === 'full' ? remaining : 0,
       unit_price: Number(line.unit_price) || 0,
       tax_rate: Number(line.tax_rate) || 0,
       tax_inclusive: !!line.tax_inclusive,
-      invoiced_discount: Number(line.discount_amount) || 0,
-      account_id: line.account_id,
+      credit,
     };
+    return withCreditQuantity(row, mode === 'full' ? creditableQuantity(credit) : 0);
   });
 }
-
-// The invoice line's discount covers the invoiced quantity; a credit of part
-// of that quantity carries the matching share of it.
-function lineDiscount(row: CreditRow): number {
-  if (!row.invoiced_discount || !row.invoiced_quantity) return 0;
-  return Math.round(row.invoiced_discount * (row.quantity / row.invoiced_quantity) * 100) / 100;
-}
-
-const exceedsRemaining = (row: CreditRow) => row.quantity > row.remaining_quantity + QTY_EPSILON;
 
 export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, onReissued }: CreateCreditNoteDialogProps) {
   const { toast } = useToast();
@@ -187,7 +169,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, 
   const lineMode: CreditMode = isFullRefund ? 'full' : mode;
   const [credited, setCredited] = useState<Record<number, number> | null>(null);
   const [creditsError, setCreditsError] = useState<string | null>(null);
-  const [rows, setRows] = useState<CreditRow[]>([]);
+  const [rows, setRows] = useState<SalesDocumentLine[]>([]);
 
   const createMutation = useCreateCreditNote();
 
@@ -290,10 +272,6 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, 
       )
     : invoices;
 
-  const handleRowChange = (index: number, field: 'quantity' | 'unit_price', value: number) => {
-    setRows(prev => prev.map((row, i) => (i === index ? { ...row, [field]: Number.isFinite(value) ? Math.max(value, 0) : 0 } : row)));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -315,7 +293,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, 
     // #527: the full refund modes are built and posted server-side from the
     // invoice (remaining quantities), in one step with the new draft.
     if (isFullRefund) {
-      if (!rows.some(row => row.quantity > 0)) {
+      if (!rows.some(row => (Number(row.quantity) || 0) > 0)) {
         toast({ variant: 'destructive', title: 'Nothing to credit', description: 'Every line of this invoice has already been credited in full.' });
         return;
       }
@@ -345,25 +323,29 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, 
       return;
     }
 
-    if (rows.some(exceedsRemaining)) {
+    if (rows.some(exceedsCreditableQuantity)) {
       toast({ variant: 'destructive', title: 'Quantity too high', description: 'A line credits more than its remaining creditable quantity.' });
       return;
     }
 
     // #522: only lines with a quantity to credit are included.
+    const sourceLines = new Map((selectedInvoice?.lines ?? []).map(line => [line.id, line]));
     const lines = rows
-      .filter(row => row.quantity > 0)
-      .map(row => ({
-        invoice_line_id: row.invoice_line_id,
-        product_id: row.product_id,
-        description: row.description,
-        quantity: row.quantity,
-        unit_price: row.unit_price,
-        tax_rate: row.tax_rate,
-        tax_inclusive: row.tax_inclusive,
-        discount_amount: lineDiscount(row),
-        account_id: row.account_id,
-      }));
+      .filter(row => row.credit && (Number(row.quantity) || 0) > 0)
+      .map(row => {
+        const source = sourceLines.get(row.credit!.invoice_line_id);
+        return {
+          invoice_line_id: row.credit!.invoice_line_id,
+          product_id: source?.product_id ?? null,
+          description: row.description,
+          quantity: Number(row.quantity) || 0,
+          unit_price: Number(row.unit_price) || 0,
+          tax_rate: Number(row.tax_rate) || 0,
+          tax_inclusive: !!row.tax_inclusive,
+          discount_amount: Number(row.discount_amount) || 0,
+          account_id: source?.account_id ?? null,
+        };
+      });
 
     if (lines.length === 0) {
       toast({
@@ -387,21 +369,11 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, 
     }
   };
 
-  const calculateLineTotal = (line: CreditRow) => {
-    // #512 (CN3): mirrors the shared line arithmetic — discount applied
-    // first; tax extracted from the price when the line is tax-inclusive,
-    // added on top otherwise. Document-level discount is applied
-    // server-side when the credit note is created.
-    const amount = line.quantity * line.unit_price;
-    const base = Math.max(amount - lineDiscount(line), 0);
-    const rate = Number(line.tax_rate) || 0;
-    if (line.tax_inclusive) return base;
-    return base + base * (rate / 100);
-  };
-
-  const calculateTotal = () => {
-    return rows.reduce((sum, line) => sum + calculateLineTotal(line), 0);
-  };
+  // #526: the shared line calculation (#512: discount first, tax extracted
+  // from tax-inclusive prices). Document-level discount is applied
+  // server-side when the credit note is created.
+  const creditTotal = rows.reduce((sum, line) => sum + getSalesDocumentLineTotal(line), 0);
+  const money = (value: number) => formatCurrency(value, selectedInvoice?.currency_code || undefined);
 
   const isPreselected = !!invoiceId && !!selectedInvoice;
 
@@ -622,88 +594,19 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId, 
                   Loading earlier credits...
                 </div>
               ) : (
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Description</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Invoiced</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Already credited</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">To credit</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Unit Price</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Tax %</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {rows.map((line, index) => {
-                      const tooMuch = exceedsRemaining(line);
-                      const fullyCredited = line.remaining_quantity <= QTY_EPSILON;
-                      return (
-                        <tr key={line.invoice_line_id} className={cn(fullyCredited && 'text-muted-foreground')}>
-                          <td className="px-3 py-2 text-sm">{line.description}</td>
-                          <td className="px-3 py-2 text-right text-sm" aria-label="Invoiced">{fmtQty(line.invoiced_quantity)}</td>
-                          <td className="px-3 py-2 text-right text-sm" aria-label="Already credited">{fmtQty(line.credited_quantity)}</td>
-                          <td className="px-3 py-2">
-                            {lineMode === 'full' ? (
-                              <span className="text-sm">{fullyCredited ? 'Fully credited' : fmtQty(line.quantity)}</span>
-                            ) : (
-                              <>
-                                <input
-                                  type="number"
-                                  aria-label={`Quantity to credit for ${line.description}`}
-                                  aria-invalid={tooMuch || undefined}
-                                  value={line.quantity}
-                                  onChange={(e) => handleRowChange(index, 'quantity', Number(e.target.value))}
-                                  min="0"
-                                  max={line.remaining_quantity}
-                                  step="0.01"
-                                  disabled={fullyCredited}
-                                  className={cn(
-                                    'w-20 rounded border border-input bg-background px-2 py-1',
-                                    tooMuch && 'border-destructive',
-                                  )}
-                                />
-                                {tooMuch && (
-                                  <p className="mt-1 text-xs text-destructive">Max {fmtQty(line.remaining_quantity)}</p>
-                                )}
-                              </>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            {lineMode === 'full' ? (
-                              <span className="text-sm">{formatCurrency(line.unit_price, selectedInvoice.currency_code || undefined)}</span>
-                            ) : (
-                              <input
-                                type="number"
-                                aria-label={`Unit price for ${line.description}`}
-                                value={line.unit_price}
-                                onChange={(e) => handleRowChange(index, 'unit_price', Number(e.target.value))}
-                                min="0"
-                                step="0.01"
-                                disabled={fullyCredited}
-                                className="w-24 rounded border border-input bg-background px-2 py-1"
-                              />
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-sm">{line.tax_rate}%</td>
-                          <td className="px-3 py-2 text-sm font-medium">
-                            {formatCurrency(calculateLineTotal(line), selectedInvoice.currency_code || undefined)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="bg-muted/50">
-                    <tr>
-                      <td colSpan={6} className="px-3 py-2 text-right font-semibold">Total:</td>
-                      <td className="px-3 py-2 font-bold">
-                        {formatCurrency(calculateTotal(), selectedInvoice.currency_code || undefined)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+              <>
+                <SalesDocumentLineGrid
+                  lines={rows}
+                  setLines={setRows}
+                  money={money}
+                  credit={{ readOnly: lineMode === 'full' }}
+                  tableMinWidth="min-w-[720px]"
+                />
+                <div className="mt-2 flex justify-end gap-4 rounded-lg bg-muted/50 px-3 py-2">
+                  <span className="font-semibold">Total:</span>
+                  <span className="font-bold tabular-nums">{money(creditTotal)}</span>
+                </div>
+              </>
               )}
             </div>
           )}

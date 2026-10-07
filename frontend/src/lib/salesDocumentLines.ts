@@ -34,6 +34,45 @@ export interface SalesDocumentLine {
   pricing_base_currency?: string | null
   /** Issue #409: the shipping line added from a delivery method. */
   is_delivery?: boolean
+  /** #526 (#512 CN3): the price already includes tax — tax is extracted, not added. */
+  tax_inclusive?: boolean
+  /** #526: credit-note mode — the invoice line this line credits (see SalesDocumentLineGrid `credit`). */
+  credit?: SalesCreditLineInfo
+}
+
+/**
+ * #526 (CN-UX5) / #522: what an invoice line allows to be credited. Already
+ * credited counts POSTED credit notes only — the same rule the #513 per-line
+ * cap enforces server-side at post.
+ */
+export interface SalesCreditLineInfo {
+  invoice_line_id: number
+  invoiced_quantity: number
+  credited_quantity: number
+  /** The invoice line's discount, which covers the whole invoiced quantity. */
+  invoiced_discount: number
+}
+
+export const CREDIT_QUANTITY_EPSILON = 0.000001
+
+/** Quantity still creditable on the invoice line (never negative). */
+export const creditableQuantity = (credit: SalesCreditLineInfo): number =>
+  Math.max(credit.invoiced_quantity - credit.credited_quantity, 0)
+
+/** The line credits more than its invoice line still allows. */
+export const exceedsCreditableQuantity = (line: SalesDocumentLine): boolean =>
+  !!line.credit && toNumber(line.quantity) > creditableQuantity(line.credit) + CREDIT_QUANTITY_EPSILON
+
+/** A credit of part of the invoiced quantity carries the matching share of the invoice line's discount. */
+export function creditDiscountShare(credit: SalesCreditLineInfo, quantity: number | ''): number {
+  if (!credit.invoiced_discount || !credit.invoiced_quantity) return 0
+  return Math.round(credit.invoiced_discount * (toNumber(quantity) / credit.invoiced_quantity) * 100) / 100
+}
+
+/** Set the quantity to credit and the discount share that follows it. */
+export function withCreditQuantity(line: SalesDocumentLine, quantity: number | ''): SalesDocumentLine {
+  if (!line.credit) return { ...line, quantity }
+  return { ...line, quantity, discount_amount: creditDiscountShare(line.credit, quantity) }
 }
 
 export const emptySalesDocumentLine = (): SalesDocumentLine => ({
@@ -69,12 +108,14 @@ const toNumber = (value: number | '' | null | undefined): number => {
 
 /**
  * Line total = (qty × price − line discount) + tax on the discounted base.
- * Text rows (note/section) never contribute.
+ * A tax-inclusive line (#512 CN3, #526) already carries its tax, so its total
+ * is the discounted amount. Text rows (note/section) never contribute.
  */
 export function getSalesDocumentLineTotal(line: SalesDocumentLine): number {
   if (line.line_type === 'note' || line.line_type === 'section') return 0
   const base = toNumber(line.quantity) * toNumber(line.unit_price)
   const discounted = base - toNumber(line.discount_amount)
+  if (line.tax_inclusive) return discounted
   return discounted + discounted * (toNumber(line.tax_rate) / 100)
 }
 
