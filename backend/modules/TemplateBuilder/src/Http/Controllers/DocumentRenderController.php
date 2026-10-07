@@ -131,12 +131,30 @@ class DocumentRenderController extends Controller
 
     public function proformaInvoicePdf(Request $request, string $id): Response
     {
-        return $this->renderDocument('sales_proforma_invoice', $id, $request, 'proforma-'.$id.'.pdf');
+        return $this->proformaDisabled('sales_proforma_invoice')
+            ?? $this->renderDocument('sales_proforma_invoice', $id, $request, 'proforma-'.$id.'.pdf');
     }
 
     public function proformaInvoiceHtml(Request $request, string $id): Response
     {
-        return $this->renderDocument('sales_proforma_invoice', $id, $request, null, 'html');
+        return $this->proformaDisabled('sales_proforma_invoice')
+            ?? $this->renderDocument('sales_proforma_invoice', $id, $request, null, 'html');
+    }
+
+    /**
+     * Issue #551: Sales Settings → Sales Orders "Pro-forma invoice". When the
+     * tenant switched it off, no pro-forma invoice is rendered.
+     */
+    private function proformaDisabled(string $documentType): ?JsonResponse
+    {
+        if ($documentType !== 'sales_proforma_invoice' || app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled()) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'Pro-forma invoices are turned off in Sales Settings.',
+            'code' => 'PROFORMA_DISABLED',
+        ], 403);
     }
 
     public function creditNotePdf(Request $request, string $id): Response
@@ -219,6 +237,10 @@ class DocumentRenderController extends Controller
     {
         if (! $this->dataSources->has($documentType)) {
             return response()->json(['message' => "No render path for document type '{$documentType}'."], 404);
+        }
+
+        if ($disabled = $this->proformaDisabled($documentType)) {
+            return $disabled;
         }
 
         $denied = $this->authorizeRender($documentType, $id, $request);

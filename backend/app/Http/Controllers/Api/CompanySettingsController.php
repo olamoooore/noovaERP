@@ -842,6 +842,11 @@ class CompanySettingsController extends Controller
                     'require_payment' => app(\App\Services\SalesSettings::class)->quotationRequirePayment(),
                     'prepayment_percent' => app(\App\Services\SalesSettings::class)->quotationPrepaymentPercent(),
                 ],
+                // Issue #551: the sales order screen hides the pro-forma
+                // action when the tenant turned it off.
+                'sales_order' => [
+                    'proforma_enabled' => app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled(),
+                ],
                 'tax' => $this->salesTaxDefaults(),
             ],
         ]);
@@ -972,6 +977,8 @@ class CompanySettingsController extends Controller
                     // Issue #545: Sales Orders section.
                     'auto_lock_on_confirm' => app(\App\Services\SalesSettings::class)->autoLockOnConfirm(),
                     'default_invoicing_policy' => app(\App\Services\SalesSettings::class)->defaultInvoicingPolicy(),
+                    // Issue #551: pro-forma invoice toggle.
+                    'proforma_enabled' => app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled(),
                 ],
                 'invoice_threshold' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice_threshold.reviewer_user_ids', []))),
@@ -1084,6 +1091,7 @@ class CompanySettingsController extends Controller
             'quotation.prepayment_percent' => 'nullable|numeric|gt:0|max:100',
             'sales_order.auto_lock_on_confirm' => 'nullable|boolean',
             'sales_order.default_invoicing_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::INVOICING_POLICIES)],
+            'sales_order.proforma_enabled' => 'nullable|boolean',
             // Issue #326: invoice credit-limit policy.
             'invoice.credit_limit_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::CREDIT_LIMIT_POLICIES)],
         ]);

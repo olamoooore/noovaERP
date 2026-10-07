@@ -27,6 +27,7 @@ use Modules\Sales\Http\Controllers\SalesOrderController;
 use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\TemplateBuilder\Http\Controllers\DocumentRenderController;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
 
 /**
@@ -214,6 +215,8 @@ class SettingsRegistry implements SettingsRegistryContract
             'quotation.default_terms' => ['key' => SalesSettings::QUOTATION_DEFAULT_TERMS, 'type' => 'text', 'default' => null, 'via' => [SalesSettings::class.'::quotationDefaultTerms'], 'readers' => [QuotationController::class.'::store', CompanySettingsController::class.'::getSalesDocumentDefaults']],
             'sales_order.auto_lock_on_confirm' => ['key' => SalesSettings::AUTO_LOCK_ON_CONFIRM, 'type' => 'bool', 'default' => false, 'via' => [SalesSettings::class.'::autoLockOnConfirm'], 'readers' => [SalesOrderService::class.'::autoLockOnConfirmEnabled']],
             'sales_order.default_invoicing_policy' => ['key' => SalesSettings::DEFAULT_INVOICING_POLICY, 'type' => 'enum', 'default' => 'ordered_qty', 'via' => [SalesSettings::class.'::defaultInvoicingPolicy'], 'readers' => [SalesOrderController::class.'::applyDefaultInvoicingPolicy']],
+            // Issue #551: pro-forma invoice toggle (render routes + UI action).
+            'sales_order.proforma_enabled' => ['key' => SalesSettings::PROFORMA_ENABLED, 'type' => 'bool', 'default' => true, 'via' => [SalesSettings::class.'::proformaInvoiceEnabled', DocumentRenderController::class.'::proformaDisabled'], 'readers' => [DocumentRenderController::class.'::proformaInvoicePdf', DocumentRenderController::class.'::proformaInvoiceHtml', DocumentRenderController::class.'::regenerate', CompanySettingsController::class.'::getSalesDocumentDefaults']],
         ];
 
         // Issue #645: one reviewer pool per request type, all resolved by

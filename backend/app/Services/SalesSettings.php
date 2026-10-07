@@ -70,6 +70,9 @@ class SalesSettings
 
     public const DEFAULT_INVOICING_POLICY = 'sales.sales_order.default_invoicing_policy';
 
+    /** Issue #551: whether sales orders offer a pro-forma invoice. */
+    public const PROFORMA_ENABLED = 'sales.sales_order.proforma_enabled';
+
     /** Issue #326: what a failed credit check does on invoice create / post. */
     public const CREDIT_LIMIT_POLICY = 'sales.invoice.credit_limit_policy';
 
@@ -270,6 +273,15 @@ class SalesSettings
     public function autoLockOnConfirm(): bool
     {
         return $this->bool(self::AUTO_LOCK_ON_CONFIRM, false);
+    }
+
+    /**
+     * Issue #551: pro-forma invoices for sales orders. On by default — the
+     * pro-forma print action has been available since #405/#615.
+     */
+    public function proformaInvoiceEnabled(): bool
+    {
+        return $this->bool(self::PROFORMA_ENABLED, true);
     }
 
     /**

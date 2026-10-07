@@ -93,6 +93,8 @@ export interface SalesSettings {
   sales_order: ReviewerConfig & {
     auto_lock_on_confirm?: boolean
     default_invoicing_policy?: 'ordered_qty' | 'delivered_qty'
+    // Issue #551: offer the pro-forma invoice on sales orders.
+    proforma_enabled?: boolean
   }
   invoice_threshold: ReviewerConfig
   // Issue #553: creation defaults for new sales documents.
@@ -163,6 +165,7 @@ export const emptySalesSettings: SalesSettings = {
     reviewer_roles: [],
     auto_lock_on_confirm: false,
     default_invoicing_policy: 'ordered_qty',
+    proforma_enabled: true,
   },
   invoice_threshold: {
     reviewer_user_ids: [],
@@ -1834,7 +1837,10 @@ export function QuotationSettings() {
 
 // ─── Sales Orders (Issue #545) ──────────────────────────────────────────────
 
-type SalesOrderSectionFields = Pick<SalesSettings['sales_order'], 'auto_lock_on_confirm' | 'default_invoicing_policy'>
+type SalesOrderSectionFields = Pick<
+  SalesSettings['sales_order'],
+  'auto_lock_on_confirm' | 'default_invoicing_policy' | 'proforma_enabled'
+>
 
 export function SalesOrderSettings() {
   const { data, isLoading } = useSalesSettings()
@@ -1881,6 +1887,17 @@ export function SalesOrderSettings() {
             aria-label="Lock confirmed orders"
             checked={Boolean(order.auto_lock_on_confirm)}
             onCheckedChange={(v) => setLocal({ ...local, auto_lock_on_confirm: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Pro-forma invoice"
+          description="Offer a pro-forma invoice from sales orders. When off, the print action is hidden and the pro-forma document cannot be generated."
+        >
+          <Switch
+            aria-label="Pro-forma invoice"
+            checked={order.proforma_enabled !== false}
+            onCheckedChange={(v) => setLocal({ ...local, proforma_enabled: v })}
           />
         </SettingsRow>
       </CardContent>
