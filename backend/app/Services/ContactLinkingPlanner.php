@@ -74,6 +74,12 @@ use Modules\Contact\src\Support\ContactTaxonomyRegistry;
  * TARGET too (candidate organisation, matched person, merge survivor), so
  * each row's `fingerprint` covers the source row AND the current state of
  * every target in `targetIds()`.
+ *
+ * Review of linking plan revision 3: a person row can depend on other rows.
+ * Linking a contact runs ensureOrganisationContact(), which CREATES the
+ * company of an unlinked customer, so the row depends on that customer's
+ * organisation row (`organisation:<customer_id>`); a link to
+ * `batch:<id>` depends on row <id> creating the person (`person:<id>`).
  */
 class ContactLinkingPlanner
 {
@@ -126,6 +132,7 @@ class ContactLinkingPlanner
         // Step 0 (performance): the Contact Master is read ONCE and indexed,
         // instead of reloading every record for each unlinked customer.
         $existingIds = array_flip(CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', false)->pluck('id')->all());
+        $this->existingIds = $existingIds;
         $this->deletedIds = array_flip(CoreContact::onlyTrashed()->where('tenant_id', $tenantId)->pluck('id')->all());
         $this->mergedIds = CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', true)->pluck('merged_into_id', 'id')->all();
         $this->damagedPeople = collect($this->damage->plan($tenantId)['people'])->pluck('severity', 'person_id')->all();
@@ -177,7 +184,7 @@ class ContactLinkingPlanner
 
         $people = [];
         foreach ($unlinkedPeople as $contact) {
-            $people[] = $this->withTargetFingerprint($this->planPerson($tenantId, $contact, $links, $sharedInBatch));
+            $people[] = $this->withDependencies($this->withTargetFingerprint($this->planPerson($tenantId, $contact, $links, $sharedInBatch)), $contact);
         }
 
         return [
@@ -573,8 +580,34 @@ class ContactLinkingPlanner
         return array_values(array_unique($targets));
     }
 
+    /** @var array<string, int> live, non-duplicate Contact Master ids */
+    private array $existingIds = [];
+
     /** @var array<string, string> target id → print (cached per run) */
     private array $targetPrints = [];
+
+    /**
+     * The rows this person row needs decided (and run) first.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function withDependencies(array $row, CustomerContact $contact): array
+    {
+        $dependsOn = [];
+        $orgUuid = $contact->customer?->core_contact_uuid;
+        if ($orgUuid === null || ! isset($this->existingIds[$orgUuid])) {
+            $dependsOn[] = 'organisation:'.$contact->customer_id;
+        }
+        foreach (['person_id', 'candidate_person_id'] as $key) {
+            if (is_string($row[$key] ?? null) && str_starts_with($row[$key], 'batch:')) {
+                $dependsOn[] = 'person:'.substr($row[$key], 6);
+            }
+        }
+        $row['depends_on'] = $dependsOn;
+
+        return $row;
+    }
 
     /**
      * Fold the current state of every target into the row's fingerprint.

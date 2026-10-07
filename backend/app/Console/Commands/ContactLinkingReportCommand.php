@@ -66,20 +66,32 @@ class ContactLinkingReportCommand extends Command
     private function writeReviewSheet(string $path, bool $redact): void
     {
         $handle = fopen($path, 'w');
-        fputcsv($handle, ['tenant_id', 'kind', 'row_id', 'fingerprint', 'name', 'action', 'reason', 'targets', 'allowed_decisions', 'proposed_decision', 'decision', 'decision_target', 'decided_by', 'decided_at', 'note']);
+        fputcsv($handle, ['tenant_id', 'kind', 'row_id', 'fingerprint', 'name', 'action', 'reason', 'targets', 'depends_on', 'allowed_decisions', 'proposed_decision', 'decision', 'decision_target', 'decided_by', 'decided_at', 'note']);
         foreach ($this->reports as $report) {
+            // A dependent row is proposed only when everything it depends on
+            // is proposed to create/link/keep (rows are written in run order).
+            $proposals = [];
             foreach (['organisation' => $report['organisations'], 'person' => $report['people']] as $kind => $rows) {
                 foreach ($rows as $row) {
                     [$allowed, $proposed] = $this->decisionsFor($row);
+                    $dependsOn = $row['depends_on'] ?? [];
+                    foreach ($dependsOn as $dependency) {
+                        if (! in_array($proposals[$dependency] ?? '', ['create', 'link', 'keep'], true)) {
+                            $proposed = '';
+                        }
+                    }
+                    $rowId = $kind === 'organisation' ? $row['customer_id'] : $row['customer_contact_id'];
+                    $proposals[$kind.':'.$rowId] = $proposed;
                     fputcsv($handle, [
                         $report['tenant_id'],
                         $kind,
-                        $kind === 'organisation' ? $row['customer_id'] : $row['customer_contact_id'],
+                        $rowId,
                         $row['fingerprint'],
                         $redact ? ReportRedactor::MARK : SpreadsheetCell::escape($kind === 'organisation' ? $row['customer_name'] : $row['name']),
                         $row['action'],
                         $row['reason'] ?? '',
                         implode('|', ContactLinkingPlanner::targetIds($row)),
+                        implode('|', $dependsOn),
                         implode('|', $allowed),
                         $proposed,
                         '', '', '', '', '',

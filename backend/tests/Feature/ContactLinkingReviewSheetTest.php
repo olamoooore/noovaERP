@@ -104,7 +104,9 @@ class ContactLinkingReviewSheetTest extends TenantTestCase
         // B
         $rows = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($this->sheetPath))));
         $header = array_shift($rows);
-        $this->assertSame(['tenant_id', 'kind', 'row_id', 'fingerprint', 'name', 'action', 'reason', 'targets', 'allowed_decisions', 'proposed_decision', 'decision', 'decision_target', 'decided_by', 'decided_at', 'note'], $header);
+        // `depends_on` added by the review of linking plan revision 3
+        // (ContactLinkingDependenciesTest).
+        $this->assertSame(['tenant_id', 'kind', 'row_id', 'fingerprint', 'name', 'action', 'reason', 'targets', 'depends_on', 'allowed_decisions', 'proposed_decision', 'decision', 'decision_target', 'decided_by', 'decided_at', 'note'], $header);
         $sheet = collect($rows)->map(fn ($r) => array_combine($header, $r));
 
         $lookalikeRow = $sheet->first(fn ($r) => $r['kind'] === 'organisation' && $r['row_id'] === (string) $lookalike->id);
