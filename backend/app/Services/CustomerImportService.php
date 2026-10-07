@@ -59,6 +59,12 @@ class CustomerImportService
         private readonly ContactTaxonomyService $taxonomy,
     ) {}
 
+    /** #1037: marker that rolls back a commit which imported nothing. */
+    private const NOTHING_COMMITTED = 'IMPORT_NOTHING_COMMITTED';
+
+    /** #1037: at most this many rejections are returned and audited. */
+    public const MAX_REPORTED_REJECTIONS = 500;
+
     /** @var array<string, bool> tenant-vocabulary validity per "tenant|type|code" (#1037) */
     private array $validTaxonomyCodes = [];
 
@@ -266,67 +272,107 @@ class CustomerImportService
         $rejected = 0;
         // #1037: why each row was not imported, returned to the caller.
         $rejections = [];
+        // Rows that failed while being written (not rows already flagged at
+        // staging, which the user commits knowing they will be skipped).
+        $failedAtCommit = 0;
 
-        DB::transaction(function () use ($rows, $tenantId, $legalEntityId, &$imported, &$rejected, &$rejections, &$batch) {
-            foreach ($rows as $staging) {
-                if (in_array($staging->status, [self::STATUS_IMPORTED], true)) {
-                    continue;
-                }
-                // Only commit-ready rows are written; warnings/candidates/errors
-                // are rejected or held for review at COMMIT time.
-                if (! in_array($staging->status, [self::STATUS_VALID, self::STATUS_DUPLICATE], true)) {
-                    $rejected++;
-                    $rejections[] = [
-                        'row_number' => (int) $staging->row_number,
-                        'reason' => "Not commit-ready at staging ({$staging->status})".($staging->errors ? ': '.$staging->errors : ''),
-                    ];
-
-                    continue;
-                }
-
-                $mapped = $staging->mapped_data;
-                $taxonomy = $mapped['_taxonomy'] ?? [];
-
-                // Reject at COMMIT if any controlled value remained unresolved.
-                if (! empty($taxonomy['unknown'])) {
-                    $reason = 'Unknown controlled value at COMMIT: '.implode('; ', (array) $taxonomy['unknown']);
-                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => $reason]);
-                    $rejected++;
-                    $rejections[] = ['row_number' => (int) $staging->row_number, 'reason' => $reason];
-
-                    continue;
-                }
-
-                // #1037: one savepoint per row. A business rejection raised while
-                // writing (an unknown taxonomy code in a batch staged before the
-                // vocabulary check, a vocabulary changed since staging, an
-                // invalid site, a contact that vanished) rolls back only this
-                // row's writes and rejects it with its reason; the rest of the
-                // batch still imports. Other errors still abort the commit.
-                try {
-                    DB::transaction(fn () => $this->writeAuthoritative($mapped, $taxonomy, $tenantId, $legalEntityId));
-                } catch (\DomainException|\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-                    $reason = 'Rejected at COMMIT: '.$e->getMessage();
-                    if ($e->getMessage() === 'UNKNOWN_TAXONOMY_VALUE') {
-                        // The exception names no value; give the row's own values.
-                        $reason .= ' (contact_category: '.($mapped['contact_category'] ?? '—').', contact_type: '.($mapped['contact_type'] ?? '—').')';
+        $committed = true;
+        try {
+            DB::transaction(function () use ($rows, $tenantId, $legalEntityId, &$imported, &$rejected, &$rejections, &$failedAtCommit, &$batch) {
+                foreach ($rows as $staging) {
+                    if (in_array($staging->status, [self::STATUS_IMPORTED], true)) {
+                        continue;
                     }
-                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => $reason]);
-                    $rejected++;
-                    $rejections[] = ['row_number' => (int) $staging->row_number, 'reason' => $reason];
+                    // Only commit-ready rows are written; warnings/candidates/errors
+                    // are rejected or held for review at COMMIT time.
+                    if (! in_array($staging->status, [self::STATUS_VALID, self::STATUS_DUPLICATE], true)) {
+                        $rejected++;
+                        $rejections[] = [
+                            'row_number' => (int) $staging->row_number,
+                            'reason' => "Not commit-ready at staging ({$staging->status})".($staging->errors ? ': '.$staging->errors : ''),
+                        ];
 
-                    continue;
+                        continue;
+                    }
+
+                    $mapped = $staging->mapped_data;
+                    $taxonomy = $mapped['_taxonomy'] ?? [];
+
+                    // Reject at COMMIT if any controlled value remained unresolved.
+                    if (! empty($taxonomy['unknown'])) {
+                        $reason = 'Unknown controlled value at COMMIT: '.implode('; ', (array) $taxonomy['unknown']);
+                        $staging->update(['status' => self::STATUS_ERROR, 'errors' => $reason]);
+                        $rejected++;
+                        $failedAtCommit++;
+                        $rejections[] = ['row_number' => (int) $staging->row_number, 'reason' => $reason];
+
+                        continue;
+                    }
+
+                    // #1037: one savepoint per row. A business rejection raised while
+                    // writing (an unknown taxonomy code in a batch staged before the
+                    // vocabulary check, a vocabulary changed since staging, an
+                    // invalid site, a contact that vanished) rolls back only this
+                    // row's writes and rejects it with its reason; the rest of the
+                    // batch still imports. Other errors still abort the commit.
+                    try {
+                        DB::transaction(fn () => $this->writeAuthoritative($mapped, $taxonomy, $tenantId, $legalEntityId));
+                    } catch (\DomainException|\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+                        $reason = 'Rejected at COMMIT: '.$e->getMessage();
+                        if ($e->getMessage() === 'UNKNOWN_TAXONOMY_VALUE') {
+                            // The exception names no value: find the code(s) this
+                            // tenant does not have.
+                            $failing = [];
+                            foreach ([
+                                ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY => $taxonomy['functional_category'] ?? null,
+                                ContactTaxonomyRegistry::TYPE_CLASSIFICATION => $taxonomy['classification'] ?? null,
+                                ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE => $taxonomy['persistent_role'] ?? null,
+                            ] as $type => $code) {
+                                if ($code !== null && ! $this->isValidTaxonomyCode($type, (string) $code)) {
+                                    $failing[] = "{$type} {$code}";
+                                }
+                            }
+                            $reason .= $failing
+                                ? ' ('.implode(', ', $failing).' is not in this tenant\'s vocabulary)'
+                                : ' (contact_category: '.($mapped['contact_category'] ?? '—').', contact_type: '.($mapped['contact_type'] ?? '—').')';
+                        }
+                        $staging->update(['status' => self::STATUS_ERROR, 'errors' => $reason]);
+                        $rejected++;
+                        $failedAtCommit++;
+                        $rejections[] = ['row_number' => (int) $staging->row_number, 'reason' => $reason];
+
+                        continue;
+                    }
+
+                    $staging->update(['status' => self::STATUS_IMPORTED]);
+                    $imported++;
                 }
 
-                $staging->update(['status' => self::STATUS_IMPORTED]);
-                $imported++;
-            }
+                // #1037: a commit that imports nothing because rows FAILED WHILE
+                // BEING WRITTEN is a failed commit (a systemic cause, or a batch
+                // staged before a vocabulary change). Roll it all back (rows stay as
+                // staged, the batch stays open) so the same batch can be committed
+                // again once the cause is fixed. A batch whose rows were all
+                // flagged at staging still completes with 0 imported (VEN-NT-01).
+                if ($imported === 0 && $failedAtCommit > 0) {
+                    throw new \RuntimeException(self::NOTHING_COMMITTED);
+                }
 
-            $batch->update(['status' => 'completed', 'imported_at' => now()]);
-        });
+                $batch->update(['status' => 'completed', 'imported_at' => now()]);
+            });
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== self::NOTHING_COMMITTED) {
+                throw $e;
+            }
+            $committed = false;
+        }
+
+        // #1037: bounded response and audit entry.
+        $truncated = count($rejections) > self::MAX_REPORTED_REJECTIONS;
+        $rejections = array_slice($rejections, 0, self::MAX_REPORTED_REJECTIONS);
 
         $this->audit->log(
-            operation: 'customer_import_committed',
+            operation: $committed ? 'customer_import_committed' : 'customer_import_commit_rejected',
             referenceType: 'import_batch',
             referenceId: 0,
             metadata: [
@@ -334,10 +380,19 @@ class CustomerImportService
                 'imported' => $imported,
                 'rejected' => $rejected,
                 'total_rows' => $batch->total_rows,
+                'rejections' => $rejections,
+                'rejections_truncated' => $truncated,
             ]
         );
 
-        return ['imported' => $imported, 'rejected' => $rejected, 'rejections' => $rejections, 'batch_id' => $batch->id];
+        return [
+            'committed' => $committed,
+            'imported' => $imported,
+            'rejected' => $rejected,
+            'rejections' => $rejections,
+            'rejections_truncated' => $truncated,
+            'batch_id' => $batch->id,
+        ];
     }
 
     /**

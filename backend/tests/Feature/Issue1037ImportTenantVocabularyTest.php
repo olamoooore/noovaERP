@@ -124,7 +124,7 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
         $this->assertSame('Import committed: 1 imported, 1 rejected.', $commit->json('message'));
         $this->assertSame([[
             'row_number' => (int) $first->row_number,
-            'reason' => 'Rejected at COMMIT: UNKNOWN_TAXONOMY_VALUE (contact_category: Finance, contact_type: Primary)',
+            'reason' => 'Rejected at COMMIT: UNKNOWN_TAXONOMY_VALUE (functional_category CLINICAL is not in this tenant\'s vocabulary)',
         ]], $commit->json('rejections'));
 
         $row = DB::table('contact_import_staging')->where('id', $first->id)->first();
@@ -132,6 +132,70 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
         $this->assertStringContainsString('UNKNOWN_TAXONOMY_VALUE', (string) $row->errors);
         $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
         $this->assertDatabaseHas('customers', ['code' => 'VC0002', 'name' => 'Bayu Trading']);
+    }
+
+    /**
+     * Hostile review of the response change: a commit that imports NOTHING
+     * must not read as success or close the batch. It returns 422 with the
+     * reasons, writes nothing, leaves the batch open, and the same batch
+     * commits once the cause is fixed.
+     */
+    public function test_a_commit_that_imports_nothing_returns_422_and_the_batch_can_be_committed_again(): void
+    {
+        $headers = $this->authorisedHeaders();
+        $csv = "name,code,contact_name,contact_category,contact_type\n".
+            'Acme Corp,VC0001,John Doe,Finance,Primary';
+        $batchId = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
+            ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile($csv)])
+            ->assertOk()->json('batch_id');
+        $this->stageAsClinical($batchId);
+
+        $failed = $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit");
+        $failed->assertStatus(422);
+        $this->assertSame(0, $failed->json('imported'));
+        $this->assertSame(1, $failed->json('rejected'));
+        $this->assertStringContainsString('CLINICAL', (string) $failed->json('rejections.0.reason'));
+        $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
+        $this->assertNotSame('completed', DB::table('contact_import_batches')->where('id', $batchId)->value('status'), 'The batch stays open.');
+        $this->assertSame('valid', DB::table('contact_import_staging')->where('batch_id', $batchId)->value('status'), 'The row is left as staged, not marked rejected.');
+
+        // Fix the cause, then commit the SAME batch.
+        Setting::setValue(ContactTaxonomyRegistry::HEALTHCARE_SETTING_KEY, true);
+        $retry = $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")->assertOk();
+        $this->assertSame(1, $retry->json('imported'));
+        $this->assertDatabaseHas('customers', ['code' => 'VC0001']);
+    }
+
+    /** The rejections list is capped so a large failed file stays a bounded response. */
+    public function test_the_rejections_list_is_capped(): void
+    {
+        $headers = $this->authorisedHeaders();
+        $lines = ['name,code,contact_name,contact_category,contact_type'];
+        for ($i = 1; $i <= 502; $i++) {
+            $lines[] = "Customer {$i},C{$i},Person {$i},Clinical,Primary";
+        }
+        $batchId = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
+            ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile(implode("\n", $lines))])
+            ->assertOk()->json('batch_id');
+
+        // Rows flagged at staging: the commit completes with 0 imported (as
+        // VEN-NT-01 requires), and the list of reasons is still capped.
+        $commit = $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")->assertOk();
+        $this->assertSame(502, $commit->json('rejected'));
+        $this->assertCount(500, $commit->json('rejections'));
+        $this->assertTrue($commit->json('rejections_truncated'));
+    }
+
+    /** What a batch staged before the vocabulary check looks like: CLINICAL, commit-ready. */
+    private function stageAsClinical(string $batchId): void
+    {
+        foreach (DB::table('contact_import_staging')->where('batch_id', $batchId)->get() as $row) {
+            $mapped = json_decode((string) $row->mapped_data, true);
+            $mapped['_taxonomy']['functional_category'] = 'CLINICAL';
+            $mapped['_taxonomy']['functional_category_label'] = 'Clinical';
+            $mapped['_taxonomy']['unknown'] = [];
+            DB::table('contact_import_staging')->where('id', $row->id)->update(['mapped_data' => json_encode($mapped), 'status' => 'valid']);
+        }
     }
 
     /** @return array<string, string> */

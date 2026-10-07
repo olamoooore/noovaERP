@@ -225,12 +225,23 @@ class CustomersController extends Controller
                 request()->input('legal_entity_id')
             );
 
-            // #1037: a commit with rejected rows must not read as a clean import.
-            return response()->json([
+            // #1037: a commit with rejected rows must not read as a clean
+            // import, and one that imported nothing is a failure (422) that
+            // leaves the batch open for another commit.
+            $body = [
                 'imported' => $result['imported'],
                 'rejected' => $result['rejected'],
                 'rejections' => $result['rejections'],
+                'rejections_truncated' => $result['rejections_truncated'],
                 'batch_id' => $result['batch_id'],
+            ];
+            if (! $result['committed']) {
+                return response()->json($body + [
+                    'message' => "Nothing imported: {$result['rejected']} rows rejected. The batch is still open; fix the cause and commit it again.",
+                ], 422);
+            }
+
+            return response()->json($body + [
                 'message' => $result['rejected'] > 0
                     ? "Import committed: {$result['imported']} imported, {$result['rejected']} rejected."
                     : 'Import committed.',
