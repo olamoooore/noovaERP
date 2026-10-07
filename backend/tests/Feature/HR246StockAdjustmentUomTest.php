@@ -105,12 +105,13 @@ class HR246StockAdjustmentUomTest extends TenantTestCase
         ]);
     }
 
-    private function reason(string $type = 'increase'): StockAdjustmentReason
+    private function reason(string $type = 'increase', ?string $mappingKey = null): StockAdjustmentReason
     {
         return StockAdjustmentReason::create([
             'name' => 'HR246 '.Str::random(4),
             'code' => 'hr246-'.Str::lower(Str::random(6)),
             'type' => $type,
+            'expense_account_mapping_key' => $mappingKey,
             'requires_approval' => false,
             'is_active' => true,
         ]);
@@ -125,11 +126,14 @@ class HR246StockAdjustmentUomTest extends TenantTestCase
 
     public function test_stock_in_converts_uom_and_keeps_fractional_base_quantity(): void
     {
+        // #1017 decision (2026-10-07, option A): an increase only posts with an
+        // explicit reason mapping; this test's subject is the fractional UOM
+        // valuation, so it configures one.
         $movement = app(StockAdjustmentService::class)->stockIn(
             $this->product->id,
             $this->warehouse->id,
             2, // 2 Boxes
-            $this->reason('increase')->id,
+            $this->reason('increase', 'cogs')->id,
             'uom stock in',
             null,
             null,
