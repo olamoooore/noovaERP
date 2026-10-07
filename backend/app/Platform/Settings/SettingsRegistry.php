@@ -19,6 +19,8 @@ use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceSendBundleService;
 use App\Services\InvoiceService;
+use App\Services\PaymentPostingService;
+use App\Services\PaymentWriteOffService;
 use App\Services\SalesApprovalGate;
 use App\Services\SalesDefaultsService;
 use App\Services\SalesOrderAcceptanceService;
@@ -223,6 +225,9 @@ class SettingsRegistry implements SettingsRegistryContract
             // Issue #328: customer follow-up reminders.
             'followup.auto_send_enabled' => ['key' => SalesSettings::FOLLOWUP_AUTO_SEND, 'type' => 'bool', 'via' => [SalesSettings::class.'::followupAutoSendEnabled'], 'readers' => [CustomerFollowupService::class.'::runAutomatic']],
             'followup.levels' => ['key' => SalesSettings::FOLLOWUP_LEVELS, 'type' => 'list', 'default' => SalesSettings::DEFAULT_FOLLOWUP_LEVELS, 'via' => [SalesSettings::class.'::followupLevels'], 'readers' => [CustomerFollowupService::class.'::runAutomatic', CustomerFollowupService::class.'::sendForCustomer', CustomerFollowupService::class.'::sendForInvoice'], 'note' => 'Each level: days overdue, action (send = reminder on the customer\'s preferred channel, manual = log a manual follow-up), Communication template key.'],
+            // Issue #494: payment difference handling (keep open vs write off).
+            'payment.write_off_tolerance' => ['key' => SalesSettings::PAYMENT_WRITE_OFF_TOLERANCE, 'type' => 'decimal', 'via' => [SalesSettings::class.'::paymentWriteOffTolerance', PaymentWriteOffService::class.'::assertWithinTolerance', PaymentWriteOffService::class.'::resolveForPayment', PaymentWriteOffService::class.'::assertPostable'], 'readers' => [PaymentController::class.'::store', PaymentPostingService::class.'::post'], 'note' => 'Largest short-payment difference (document currency) a payment may write off when marked fully paid; 0 disables write-offs on payment.'],
+            'payment.write_off_reasons' => ['key' => SalesSettings::PAYMENT_WRITE_OFF_REASONS, 'type' => 'list', 'default' => [], 'via' => [SalesSettings::class.'::paymentWriteOffReasons', SalesSettings::class.'::paymentWriteOffReason', PaymentWriteOffService::class.'::resolveForPayment'], 'readers' => [PaymentController::class.'::store'], 'note' => 'Each reason: code, label and the active expense account the written-off difference posts to.'],
         ];
 
         // Issue #645: one reviewer pool per request type, all resolved by

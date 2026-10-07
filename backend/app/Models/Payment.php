@@ -25,6 +25,11 @@ class Payment extends Model
         'payment_date',
         'amount',
         'discount_amount',
+        // #494: payment difference written off to a write-off reason account.
+        'write_off_amount',
+        'write_off_account_id',
+        'write_off_reason',
+        'write_off_label',
         'method',
         'reference',
         'notes',

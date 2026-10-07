@@ -1063,6 +1063,13 @@ class CompanySettingsController extends Controller
                     'levels' => app(\App\Services\SalesSettings::class)->followupLevels(),
                     'actions' => \App\Services\SalesSettings::FOLLOWUP_ACTIONS,
                 ],
+                // Issue #494: payment difference handling — the write-off
+                // tolerance and the reasons (each with its expense account)
+                // offered when a short payment is marked as fully paid.
+                'payment' => [
+                    'write_off_tolerance' => app(\App\Services\SalesSettings::class)->paymentWriteOffTolerance(),
+                    'write_off_reasons' => app(\App\Services\SalesSettings::class)->paymentWriteOffReasons(),
+                ],
                 // Issue #549: read-only defaults for the "changed from default"
                 // markers. Not accepted by updateSalesSettings; a reset is a
                 // normal PUT of the default value.
@@ -1152,7 +1159,35 @@ class CompanySettingsController extends Controller
             'followup.levels.*.days' => 'required|integer|min:1|max:365|distinct',
             'followup.levels.*.action' => ['required', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::FOLLOWUP_ACTIONS)],
             'followup.levels.*.template' => 'nullable|string|max:191',
+            // Issue #494: payment difference write-off tolerance + reasons.
+            'payment.write_off_tolerance' => 'nullable|numeric|min:0|max:1000000',
+            'payment.write_off_reasons' => 'nullable|array|max:50',
+            'payment.write_off_reasons.*.code' => ['required', 'string', 'max:50', 'distinct', 'regex:/^[A-Za-z0-9_-]+$/'],
+            'payment.write_off_reasons.*.label' => 'required|string|max:191',
+            'payment.write_off_reasons.*.account_id' => 'required|integer|exists:chart_of_accounts,id',
         ]);
+
+        // Issue #494: a write-off reason posts its difference to an expense
+        // account — reject anything else rather than save a reason that
+        // could never post.
+        if (isset($validated['payment']['write_off_reasons']) && is_array($validated['payment']['write_off_reasons'])) {
+            $reasons = [];
+            foreach ($validated['payment']['write_off_reasons'] as $i => $reason) {
+                $account = \App\Models\ChartOfAccount::query()->whereKey((int) $reason['account_id'])->first();
+                if (! $account || ! $account->is_active || $account->type !== 'expense') {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "payment.write_off_reasons.{$i}.account_id" => 'Choose an active expense account for the write-off reason.',
+                    ]);
+                }
+
+                $reasons[] = [
+                    'code' => trim((string) $reason['code']),
+                    'label' => trim((string) $reason['label']),
+                    'account_id' => (int) $account->id,
+                ];
+            }
+            $validated['payment']['write_off_reasons'] = $reasons;
+        }
 
         // Issue #328: levels are stored ascending by days overdue.
         if (isset($validated['followup']['levels']) && is_array($validated['followup']['levels'])) {

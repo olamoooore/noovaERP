@@ -80,7 +80,7 @@ class PaymentController extends Controller
         if ($unappliedOnly) {
             $liveApplied = '(SELECT COALESCE(SUM(pa.applied_amount), 0) FROM payment_applications pa '
                 .'WHERE pa.payment_id = payments.id AND pa.reversed_at IS NULL)';
-            $unappliedSql = "ROUND(CAST(payments.amount + COALESCE(payments.discount_amount, 0) - {$liveApplied} AS numeric), 2)";
+            $unappliedSql = "ROUND(CAST(payments.amount + COALESCE(payments.discount_amount, 0) + COALESCE(payments.write_off_amount, 0) - {$liveApplied} AS numeric), 2)";
             $query->where('payment_status', 'applied')
                 ->whereNotNull('customer_id')
                 ->select('payments.*')
@@ -302,6 +302,12 @@ class PaymentController extends Controller
             // #490: the bank's actual rate, edited in the payment dialog.
             // Absent → the payment-date snapshot is used (unchanged).
             'exchange_rate' => 'nullable|numeric|gt:0',
+            // #494: payment difference — keep the residual open (default) or
+            // mark fully paid, writing the difference off to the account of
+            // a configured write-off reason (within the tenant tolerance).
+            'payment_difference' => ['nullable', 'string', Rule::in(\App\Services\PaymentWriteOffService::MODES)],
+            'write_off_reason' => 'nullable|string|max:50',
+            'write_off_label' => 'nullable|string|max:255',
         ]);
 
         // #486: field requirements come from the method master, not a
@@ -313,10 +319,34 @@ class PaymentController extends Controller
             ], 422);
         }
 
+        $paymentDifference = $validated['payment_difference'] ?? null;
+        $writeOffReason = $validated['write_off_reason'] ?? null;
+        $writeOffLabel = $validated['write_off_label'] ?? null;
+        unset($validated['payment_difference'], $validated['write_off_reason'], $validated['write_off_label']);
+
         try {
             $invoice = Invoice::findOrFail($validated['invoice_id']);
             $discountAmount = $validated['discount_amount'] ?? 0;
-            $totalApplied = $validated['amount'] + $discountAmount;
+
+            // #494: resolve the write-off before any balance check — the
+            // written-off difference is part of what settles the invoice.
+            try {
+                $writeOff = app(\App\Services\PaymentWriteOffService::class)->resolveForPayment(
+                    $invoice,
+                    (float) $validated['amount'],
+                    (float) $discountAmount,
+                    $paymentDifference,
+                    $writeOffReason,
+                    $writeOffLabel,
+                );
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'code' => 'PAYMENT_WRITE_OFF_NOT_ALLOWED',
+                ], 422);
+            }
+
+            $totalApplied = $validated['amount'] + $discountAmount + (float) ($writeOff['write_off_amount'] ?? 0);
 
             if ($totalApplied <= 0) {
                 return response()->json([
@@ -362,7 +392,7 @@ class PaymentController extends Controller
             // it previously posted to the GL immediately, which surprised
             // operators who expected a draft to review first.
             // #492: tag the origin so a hand-typed draft is not shown as an import.
-            $payment = $this->invoiceService->recordPayment($invoice, $validated + ['source' => 'manual'], postImmediately: false);
+            $payment = $this->invoiceService->recordPayment($invoice, $validated + $writeOff + ['source' => 'manual'], postImmediately: false);
 
             return response()->json([
                 'message' => 'Draft payment recorded — post it from the Payments page to hit the ledger',

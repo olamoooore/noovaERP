@@ -2698,7 +2698,13 @@ class InvoiceService
 
         // #478: a cash discount is part of what settles the invoice — the
         // customer pays `amount` and the discount clears the rest.
-        $settled = round((float) $payment->amount + (float) ($payment->discount_amount ?? 0), 2);
+        // #494: so does a payment-difference write-off ("mark as fully paid").
+        $settled = round(
+            (float) $payment->amount
+            + (float) ($payment->discount_amount ?? 0)
+            + (float) ($payment->write_off_amount ?? 0),
+            2
+        );
 
         $this->syncInvoicePaymentState($invoice, $settled, $payment);
     }

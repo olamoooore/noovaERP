@@ -297,7 +297,10 @@ class PaymentAllocationService
 
         // #478: a cash discount is part of the payment's settlement capacity,
         // so it must count when computing what is still unapplied.
-        $capacity = (float) $payment->amount + (float) ($payment->discount_amount ?? 0);
+        // #494: so is a payment-difference write-off.
+        $capacity = (float) $payment->amount
+            + (float) ($payment->discount_amount ?? 0)
+            + (float) ($payment->write_off_amount ?? 0);
 
         return round($capacity - $applied, 2);
     }

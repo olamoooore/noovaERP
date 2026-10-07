@@ -21,7 +21,14 @@ import {
   SettingsSectionHeader,
   type SettingsDefaultMarkerProps,
 } from '@/components/settings/settings-ui'
-import { followupLevelsError, isChangedFromDefault, type FollowupLevel } from './salesSettingsTools'
+import {
+  followupLevelsError,
+  isChangedFromDefault,
+  writeOffReasonCode,
+  writeOffReasonsError,
+  type FollowupLevel,
+  type PaymentWriteOffReason,
+} from './salesSettingsTools'
 
 export interface ReviewerConfig {
   reviewer_user_ids?: number[]
@@ -124,12 +131,19 @@ export interface SalesSettings {
     levels: FollowupLevel[]
     actions?: string[]
   }
+  // Issue #494: payment difference handling — the largest short-payment
+  // difference that may be written off, and the reasons offered (each with
+  // the expense account the difference posts to).
+  payment?: {
+    write_off_tolerance: number
+    write_off_reasons: PaymentWriteOffReason[]
+  }
   // Issue #549: read-only server defaults (group => field => default) for the
   // "changed from default" markers. Never sent back.
   default_values?: Partial<Record<DefaultGroup, Record<string, unknown>>>
 }
 
-type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist' | 'followup'
+type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist' | 'followup' | 'payment'
 
 const DEFAULT_FOLLOWUP_TEMPLATE = 'invoice.overdue'
 
@@ -203,6 +217,10 @@ export const emptySalesSettings: SalesSettings = {
   followup: {
     auto_send_enabled: false,
     levels: [{ days: 1, action: 'send', template: DEFAULT_FOLLOWUP_TEMPLATE }],
+  },
+  payment: {
+    write_off_tolerance: 0,
+    write_off_reasons: [],
   },
 }
 
@@ -1894,6 +1912,148 @@ export function FollowupSettings() {
         }}
         onCancel={reset}
         label="Save follow-up settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Payment Differences (Issue #494) ───────────────────────────────────────
+
+export function PaymentDifferenceSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [tolerance, setTolerance] = useState<number | undefined>(undefined)
+  const [reasons, setReasons] = useState<PaymentWriteOffReason[] | undefined>(undefined)
+  const reset = () => {
+    setTolerance(undefined)
+    setReasons(undefined)
+  }
+  const mutation = useSalesSettingsMutation('payment', 'Payment difference settings saved', reset)
+  const marker = useDefaultMarkers(data, 'payment', () => setTolerance(undefined))
+
+  // Only expense accounts can carry a payment write-off (the backend rejects
+  // anything else).
+  const { data: accounts } = useQuery({
+    queryKey: ['chart-of-accounts', 'payment-write-off'],
+    queryFn: async () => {
+      const res = await api.get('/chart-of-accounts', { params: { is_active: 1 } })
+      return ((res.data?.data ?? []) as Array<{ id: number; code: string; name: string; type: string }>)
+        .filter((account) => account.type === 'expense')
+    },
+  })
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const saved = data.payment ?? emptySalesSettings.payment!
+  const currentTolerance = tolerance ?? saved.write_off_tolerance
+  const currentReasons = reasons ?? saved.write_off_reasons
+  const reasonsError = reasons ? writeOffReasonsError(reasons) : null
+
+  const updateReason = (index: number, change: Partial<PaymentWriteOffReason>) =>
+    setReasons(currentReasons.map((reason, i) => (i === index ? { ...reason, ...change } : reason)))
+
+  const patch: Record<string, unknown> = {}
+  if (tolerance !== undefined) patch.write_off_tolerance = tolerance
+  if (reasons !== undefined) {
+    patch.write_off_reasons = reasons.map((reason) => ({
+      code: reason.code || writeOffReasonCode(reason.label),
+      label: reason.label.trim(),
+      account_id: reason.account_id,
+    }))
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:hand-money-bold-duotone"
+        title="Payment Differences"
+        description="When a customer pays slightly less than the invoice (bank charges, rounding), the payment can keep the invoice open or mark it fully paid and write the difference off."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Write-off tolerance"
+          description="The largest difference, in the invoice currency, a payment may write off. 0 turns write-offs off — every short payment keeps the invoice open."
+          {...marker('write_off_tolerance')}
+        >
+          <Input
+            type="number"
+            min={0}
+            step={0.01}
+            aria-label="Write-off tolerance"
+            value={Number.isFinite(currentTolerance) ? currentTolerance : ''}
+            onChange={(e) => setTolerance(Math.max(0, parseFloat(e.target.value) || 0))}
+            className="w-28 text-center"
+          />
+        </SettingsRow>
+
+        <div className="space-y-3 py-4">
+          <div>
+            <p className="text-sm font-medium">Write-off reasons</p>
+            <p className="text-xs text-muted-foreground">
+              Offered when a payment is marked fully paid. Each reason posts the difference to its expense account
+              in the payment's own journal entry.
+            </p>
+          </div>
+          {currentReasons.length === 0 && (
+            <p className="text-xs text-muted-foreground">No reasons yet — add one to allow write-offs.</p>
+          )}
+          {currentReasons.map((reason, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2" data-testid="write-off-reason">
+              <Input
+                className="w-56"
+                aria-label={`Reason ${index + 1} label`}
+                placeholder="e.g. Bank charges"
+                value={reason.label}
+                maxLength={191}
+                onChange={(e) => updateReason(index, { label: e.target.value })}
+              />
+              <Select
+                value={reason.account_id ? String(reason.account_id) : undefined}
+                onValueChange={(v) => updateReason(index, { account_id: parseInt(v, 10) })}
+              >
+                <SelectTrigger className="w-72" aria-label={`Reason ${index + 1} account`}>
+                  <SelectValue placeholder="Select an expense account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(accounts ?? []).map((account) => (
+                    <SelectItem key={account.id} value={String(account.id)}>
+                      {account.code} — {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={`Remove reason ${index + 1}`}
+                onClick={() => setReasons(currentReasons.filter((_, i) => i !== index))}
+              >
+                <Icon icon="solar:trash-bin-minimalistic-bold-duotone" className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={currentReasons.length >= 50}
+            onClick={() => setReasons([...currentReasons, { code: '', label: '', account_id: null }])}
+          >
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1 h-4 w-4" />
+            Add reason
+          </Button>
+          {reasonsError && <p className="text-xs text-destructive">{reasonsError}</p>}
+        </div>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(patch).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => {
+          if (reasonsError) return
+          mutation.mutate(patch)
+        }}
+        onCancel={reset}
+        label="Save payment difference settings"
       />
     </Card>
   )

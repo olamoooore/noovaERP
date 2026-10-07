@@ -46,7 +46,7 @@ class PaymentPostingService
      * payment-date snapshot), and the difference is the realized gain/loss.
      * Base-currency payments keep both rates at 1.0.
      *
-     * @return array{currency:string, base_currency_code:string, foreign:bool, exchange_rate:float, rate_source:string, rate_resolved:bool, invoice_rate:float, amount:float, discount_amount:float, base_amount:float, ar_cash_base_amount:float, discount_base_amount:float, ar_base_amount:float, fx_amount:float, fx_type:string}
+     * @return array{currency:string, base_currency_code:string, foreign:bool, exchange_rate:float, rate_source:string, rate_resolved:bool, invoice_rate:float, amount:float, discount_amount:float, base_amount:float, ar_cash_base_amount:float, discount_base_amount:float, write_off_amount:float, write_off_base_amount:float, ar_base_amount:float, fx_amount:float, fx_type:string}
      *
      * @throws \App\Exceptions\PricingException when a foreign payment has no rate
      */
@@ -106,10 +106,14 @@ class PaymentPostingService
         // invoice snapshot rate (it reduces the receivable at that rate).
         $amount = round((float) $payment->amount, 2);
         $discount = round((float) ($payment->discount_amount ?? 0), 2);
+        // #494: a payment-difference write-off settles the rest of the
+        // invoice without cash, like the discount — at the invoice rate.
+        $writeOff = round((float) ($payment->write_off_amount ?? 0), 2);
         $bankBase = round((float) $payment->amount * $payRate, 2);
         $arCashBase = round((float) $payment->amount * $invoiceRate, 2);
         $discountBase = round($discount * $invoiceRate, 2);
-        $arBase = round($arCashBase + $discountBase, 2);
+        $writeOffBase = round($writeOff * $invoiceRate, 2);
+        $arBase = round($arCashBase + $discountBase + $writeOffBase, 2);
         $fx = round($bankBase - $arCashBase, 2);
 
         return [
@@ -125,6 +129,8 @@ class PaymentPostingService
             'base_amount' => $bankBase,
             'ar_cash_base_amount' => $arCashBase,
             'discount_base_amount' => $discountBase,
+            'write_off_amount' => $writeOff,
+            'write_off_base_amount' => $writeOffBase,
             'ar_base_amount' => $arBase,
             'fx_amount' => $fx,
             'fx_type' => $fx > 0 ? 'gain' : ($fx < 0 ? 'loss' : 'none'),
@@ -206,6 +212,12 @@ class PaymentPostingService
             // pre-posting preview shown to the operator is the SAME
             // computation that posts here (preview == posted).
             $invoice = $payment->invoice;
+
+            // #494: a write-off must still settle the invoice exactly, within
+            // the tolerance, to an active expense account — re-checked here
+            // because a draft can wait while the invoice moves.
+            app(PaymentWriteOffService::class)->assertPostable($payment, $invoice);
+
             $settlement = $this->settlementPreview($payment);
 
             $docCurrency = $settlement['currency'];
@@ -227,6 +239,8 @@ class PaymentPostingService
             $discount = $settlement['discount_amount'];
             $bankBase = $settlement['base_amount'];
             $discountBase = $settlement['discount_base_amount'];
+            $writeOff = $settlement['write_off_amount'];
+            $writeOffBase = $settlement['write_off_base_amount'];
             $arBase = $settlement['ar_base_amount'];
             $fx = $settlement['fx_amount'];
 
@@ -258,6 +272,22 @@ class PaymentPostingService
                 );
             }
 
+            if ($writeOff > 0) {
+                // #494: DR the write-off reason's expense account — the
+                // payment difference the operator marked as fully paid.
+                $lines[] = new PostingRequestLine(
+                    accountMappingKey: 'payment_write_off',
+                    accountId: (int) $payment->write_off_account_id,
+                    debit: $writeOffBase,
+                    credit: 0,
+                    description: 'Payment difference written off - '.$payment->payment_number
+                        .($payment->write_off_label ? ' ('.$payment->write_off_label.')' : ''),
+                    currencyCode: $foreign ? $baseCurrency : null,
+                    originalAmount: $foreign ? $writeOff : null,
+                    exchangeRate: $foreign ? $invoiceRate : null,
+                );
+            }
+
             // CR Accounts Receivable (at the invoice snapshot rate) — for
             // standalone payments this leaves a customer credit that nets
             // against future invoices. The AR cleared is amount + discount.
@@ -268,7 +298,7 @@ class PaymentPostingService
                 credit: $arBase,
                 description: 'Payment received - '.$payment->payment_number,
                 currencyCode: $foreign ? $baseCurrency : null,
-                originalAmount: $foreign ? round((float) $payment->amount + $discount, 2) : null,
+                originalAmount: $foreign ? round((float) $payment->amount + $discount + $writeOff, 2) : null,
                 exchangeRate: $foreign ? $invoiceRate : null,
             );
 
