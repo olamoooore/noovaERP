@@ -56,6 +56,14 @@ use Modules\Contact\src\Services\ContactTaxonomyService;
  * reported and fingerprinted. Contact Master loyalty points are manual
  * entries (`manual_loyalty_points`); the accounting profile balance is never
  * maintained and is not reported.
+ *
+ * Fifth review (reproduced on main: every identifier-less contact lands on
+ * the same person, so damage concentrates on a few people with very many
+ * links): decisions are checked per link. `identity_fingerprint` covers the
+ * person's own identity, person roles and classifications;
+ * `link_fingerprint` covers that identity, the link's contact row and its
+ * company relationship — it does not change when another link changes.
+ * `documents_by_customer` sums documents per customer.
  */
 class PersonMergeDamagePlanner
 {
@@ -151,6 +159,7 @@ class PersonMergeDamagePlanner
             unset($link);
 
             $classifications = $this->classifications($tenantId, $person->id);
+            $contactsById = $contacts->keyBy('id');
             $documents = $this->documents($person->id, $links);
             $owned = $this->ownedData($person->id);
             $relationships = $this->relationships($tenantId, $person->id);
@@ -160,6 +169,18 @@ class PersonMergeDamagePlanner
                 ->orderBy('role')
                 ->pluck('role')
                 ->all();
+
+            // S: per-link fingerprints for review decisions.
+            $identityFingerprint = $this->identityFingerprint($person, $personRoles, $classifications);
+            $relationshipsByOrganisation = collect($relationships)->keyBy('organisation_id');
+            foreach ($links as &$link) {
+                $link['link_fingerprint'] = hash('sha256', json_encode([
+                    $identityFingerprint,
+                    $this->contactPrint($contactsById[$link['customer_contact_id']]),
+                    $link['organisation_id'] !== null ? ($relationshipsByOrganisation[$link['organisation_id']] ?? null) : null,
+                ]));
+            }
+            unset($link);
             $linkedOrganisations = array_filter(array_column($links, 'organisation_id'));
             foreach ($relationships as &$relationship) {
                 $relationship['has_linked_contact'] = in_array($relationship['organisation_id'], $linkedOrganisations, true);
@@ -188,6 +209,8 @@ class PersonMergeDamagePlanner
                 'manual_loyalty_points' => $this->manualLoyaltyPoints($person->id),
                 'person_roles' => $personRoles,
                 'documents' => $documents,
+                'documents_by_customer' => $this->documentsByCustomer($documents),
+                'identity_fingerprint' => $identityFingerprint,
                 'fingerprint' => $this->fingerprint($person, $contacts->all(), $classifications, $relationships, $personRoles),
             ];
         }
@@ -284,14 +307,48 @@ class PersonMergeDamagePlanner
         return hash('sha256', json_encode([
             $person->id, $person->display_name, $person->email, $person->mobile, $person->phone,
             $person->is_duplicate, $person->updated_at?->toIso8601String(), $person->deleted_at?->toIso8601String(),
-            array_map(fn (CustomerContact $c) => [
-                $c->id, $c->customer_id, $c->name, $c->email, $c->mobile, $c->phone,
-                $c->contact_category, $c->contact_type, $c->department_name, $c->core_contact_uuid, $c->deleted_at?->toIso8601String(),
-            ], $contacts),
+            array_map(fn (CustomerContact $c) => $this->contactPrint($c), $contacts),
             $relationships,
             $classifications,
             $personRoles,
         ]));
+    }
+
+    /** @return list<mixed> the contact fields a decision depends on */
+    private function contactPrint(CustomerContact $c): array
+    {
+        return [
+            $c->id, $c->customer_id, $c->name, $c->email, $c->mobile, $c->phone,
+            $c->contact_category, $c->contact_type, $c->department_name, $c->core_contact_uuid, $c->deleted_at?->toIso8601String(),
+        ];
+    }
+
+    /** S: the person's own identity, person roles and classifications. */
+    private function identityFingerprint(CoreContact $person, array $personRoles, array $classifications): string
+    {
+        return hash('sha256', json_encode([
+            $person->id, $person->display_name, $person->email, $person->mobile, $person->phone,
+            $person->is_duplicate, $person->deleted_at?->toIso8601String(), $personRoles, $classifications,
+        ]));
+    }
+
+    /**
+     * U: issued and draft documents per customer.
+     *
+     * @param  list<array<string, mixed>>  $documents
+     * @return list<array{customer_id: int, issued: int, draft: int}>
+     */
+    private function documentsByCustomer(array $documents): array
+    {
+        $totals = [];
+        foreach ($documents as $document) {
+            $totals[$document['customer_id']] ??= ['customer_id' => $document['customer_id'], 'issued' => 0, 'draft' => 0];
+            $totals[$document['customer_id']]['issued'] += $document['issued'];
+            $totals[$document['customer_id']]['draft'] += $document['draft'];
+        }
+        ksort($totals);
+
+        return array_values($totals);
     }
 
     /**

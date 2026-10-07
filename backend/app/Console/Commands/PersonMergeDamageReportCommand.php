@@ -65,7 +65,7 @@ class PersonMergeDamageReportCommand extends Command
     private function writeReviewSheet(string $path, bool $redact): void
     {
         $handle = fopen($path, 'w');
-        fputcsv($handle, ['tenant_id', 'person_id', 'person_fingerprint', 'customer_contact_id', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note']);
+        fputcsv($handle, ['tenant_id', 'person_id', 'person_identity_fingerprint', 'customer_contact_id', 'link_fingerprint', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note']);
         foreach ($this->reports as $report) {
             foreach ($report['people'] as $person) {
                 foreach ($person['links'] as $link) {
@@ -75,10 +75,10 @@ class PersonMergeDamageReportCommand extends Command
                         default => 'review',
                     };
                     fputcsv($handle, [
-                        $report['tenant_id'], $person['person_id'], $person['fingerprint'],
-                        $link['customer_contact_id'], $link['customer_id'],
-                        $redact ? ReportRedactor::MARK : $link['name'],
-                        $redact ? ReportRedactor::MARK : $person['person_name'],
+                        $report['tenant_id'], $person['person_id'], $person['identity_fingerprint'],
+                        $link['customer_contact_id'], $link['link_fingerprint'], $link['customer_id'],
+                        $redact ? ReportRedactor::MARK : $this->cell($link['name']),
+                        $redact ? ReportRedactor::MARK : $this->cell($person['person_name']),
                         $link['status'], $link['bug_signature'] ? 'yes' : 'no', $proposed,
                         '', '', '', '',
                     ]);
@@ -86,6 +86,18 @@ class PersonMergeDamageReportCommand extends Command
             }
         }
         fclose($handle);
+    }
+
+    /**
+     * Free text (names) is opened in a spreadsheet by reviewers: a value
+     * starting with = + - @ or a tab/CR would run as a formula, so it is
+     * prefixed with an apostrophe (CSV/formula injection).
+     */
+    private function cell(?string $value): string
+    {
+        $value = (string) $value;
+
+        return $value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true) ? "'".$value : $value;
     }
 
     private function reportTenant(PersonMergeDamagePlanner $planner, string $tenantId): int

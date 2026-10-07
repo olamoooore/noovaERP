@@ -357,9 +357,13 @@ class PersonMergeDamageStep4Test extends TenantTestCase
         // R
         $rows = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
         $header = array_shift($rows);
-        $this->assertSame(['tenant_id', 'person_id', 'person_fingerprint', 'customer_contact_id', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note'], $header);
+        // Revised by the fifth review: decisions are checked per link
+        // (link_fingerprint) plus the person's identity, not against the
+        // whole person, which changes whenever any of its links changes.
+        $this->assertSame(['tenant_id', 'person_id', 'person_identity_fingerprint', 'customer_contact_id', 'link_fingerprint', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note'], $header);
         $byContact = collect($rows)->map(fn ($r) => array_combine($header, $r))->keyBy('customer_contact_id');
-        $this->assertSame($print, $byContact[(string) $ali]['person_fingerprint']);
+        $this->assertSame($person['identity_fingerprint'], $byContact[(string) $ali]['person_identity_fingerprint']);
+        $this->assertSame($links[$ali]['link_fingerprint'], $byContact[(string) $ali]['link_fingerprint']);
         $this->assertSame('split', $byContact[(string) $ali]['proposed_decision']);
         $this->assertSame('review', $byContact[(string) $drift]['proposed_decision']);
         $this->assertSame('keep', $byContact[(string) $siti['id']]['proposed_decision']);
@@ -373,6 +377,69 @@ class PersonMergeDamageStep4Test extends TenantTestCase
         $this->assertNotContains('Ali', array_merge(...$redacted));
         $this->assertNotContains('Siti', array_merge(...$redacted));
         @unlink($sheet);
+    }
+
+    /**
+     * Fifth hostile review of the repair plan (2026-10-07). Reproduced on
+     * `main`: every contact without email and mobile, across companies,
+     * lands on the SAME person (`first()` without ORDER BY) — the damage
+     * concentrates on a few "victim" people with very many links. So:
+     *  S. decisions are checked per link: `link_fingerprint` changes only
+     *     with that link (and its company relationship) or the person's
+     *     identity — not when another link of the person changes;
+     *  T. the review sheet escapes spreadsheet formulas in names;
+     *  U. documents are also summed per customer (`documents_by_customer`).
+     */
+    public function test_link_fingerprints_formula_escaping_and_documents_by_customer(): void
+    {
+        [$hospital] = $this->createCustomer('Acme Hospital');
+        [$clinic, $clinicOrg] = $this->createCustomer('Bayu Clinic');
+        [$lab] = $this->createCustomer('Delima Lab');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+
+        $ali = $this->wronglyMerged($clinic, $clinicOrg, 'Ali', $sitiPerson);
+        $evil = $this->wronglyMerged($lab, null, '=HYPERLINK("http://evil.test","x")', $sitiPerson);
+
+        Invoice::factory()->create(['customer_id' => $clinic, 'status' => 'posted', 'doctor_contact_id' => $sitiPerson]);
+        Invoice::factory()->create(['customer_id' => $clinic, 'status' => 'posted', 'requestor_contact_id' => $sitiPerson]);
+        Invoice::factory()->create(['customer_id' => $lab, 'status' => 'draft', 'doctor_contact_id' => $sitiPerson]);
+
+        $sheet = tempnam(sys_get_temp_dir(), 'review-sheet-');
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath, '--review-sheet' => $sheet])->assertExitCode(0);
+        $person = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id')[$sitiPerson];
+        $aliPrint = collect($person['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'];
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $aliPrint);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $person['identity_fingerprint']);
+
+        // T
+        $rows = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
+        $header = array_shift($rows);
+        $evilRow = collect($rows)->map(fn ($r) => array_combine($header, $r))->firstWhere('customer_contact_id', (string) $evil);
+        $this->assertSame("'=HYPERLINK(\"http://evil.test\",\"x\")", $evilRow['contact_name'], 'A formula-looking name is escaped.');
+        @unlink($sheet);
+
+        // U
+        $byCustomer = collect($person['documents_by_customer'])->keyBy('customer_id');
+        $this->assertSame([2, 0], [$byCustomer[$clinic]['issued'], $byCustomer[$clinic]['draft']]);
+        $this->assertSame([0, 1], [$byCustomer[$lab]['issued'], $byCustomer[$lab]['draft']]);
+
+        // S: another link of the person changing does not invalidate Ali's…
+        $this->wronglyMerged($lab, null, 'New Porter', $sitiPerson);
+        DB::table('customer_contacts')->where('id', $evil)->update(['name' => 'Renamed']);
+        $again = $this->report()[$sitiPerson];
+        $this->assertSame($aliPrint, collect($again['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint']);
+        $this->assertNotSame($person['fingerprint'], $again['fingerprint'], 'The whole-person fingerprint does change.');
+
+        // …but Ali's own row, Ali's company relationship, or the person's identity does.
+        app(ContactMasterService::class)->setRelationshipRoles(collect($again['relationships'])->firstWhere('organisation_id', $clinicOrg)['relationship_id'], ['BILLING_CONTACT'], $this->tenantId);
+        $afterRole = $this->report()[$sitiPerson];
+        $this->assertNotSame($aliPrint, collect($afterRole['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'], 'Its company relationship is part of the link fingerprint.');
+
+        DB::table('core_contacts')->where('id', $sitiPerson)->update(['email' => 'siti.new@acme.test']);
+        $afterIdentity = $this->report()[$sitiPerson];
+        $this->assertNotSame($afterRole['identity_fingerprint'], $afterIdentity['identity_fingerprint']);
+        $this->assertNotSame(collect($afterRole['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'], collect($afterIdentity['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'], 'The person identity is part of every link fingerprint.');
     }
 
     /** @return array<string, array<string, mixed>> */
