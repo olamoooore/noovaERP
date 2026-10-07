@@ -19,6 +19,8 @@ class Payment extends Model
         'customer_id',
         'vendor_id',
         'invoice_id',
+        // #1001: the uploaded payment advice this receipt was confirmed from.
+        'payment_advice_import_id',
         'bill_id',
         'payment_date',
         'amount',

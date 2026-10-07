@@ -121,3 +121,6 @@ backend/storage/app/ocr-documents/
 # Playwright artifacts
 test-results/
 playwright-report/
+
+# #1001 payment advice uploads (runtime tenant documents)
+backend/storage/app/payment-advices/

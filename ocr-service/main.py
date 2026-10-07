@@ -692,6 +692,31 @@ async def health():
     return {"status": "healthy", "service": "ocr-bookkeeping", "version": "1.0.0"}
 
 
+@app.post("/api/ocr/raw", dependencies=[Depends(require_service_key)])
+async def ocr_raw(request: Request, file: UploadFile = File(...)):
+    """
+    Raw OCR text for a document — used by the payment-advice parsers (#1001),
+    which apply their own per-bank layout rules.
+    """
+    allowed_types = {
+        "image/jpeg", "image/png", "image/jpg",
+        "application/pdf",
+    }
+    if file.content_type and file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file.content_type}. Allowed: JPG, PNG, PDF",
+        )
+
+    contents = await _read_upload_capped(file, request, OCR_MAX_UPLOAD_BYTES)
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    raw_text, avg_confidence = run_ocr(contents, file.filename or "advice.jpg")
+
+    return {"text": raw_text, "confidence": avg_confidence}
+
+
 @app.post("/api/bookkeeping/upload", dependencies=[Depends(require_service_key)])
 async def upload_document(request: Request, file: UploadFile = File(...)):
     """

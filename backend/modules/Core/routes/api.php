@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\JournalsController;
 use App\Http\Controllers\Api\LockDatesController;
 use App\Http\Controllers\Api\MedicalCaseController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
+use App\Http\Controllers\Api\PaymentAdviceController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
 use App\Http\Controllers\Api\PaymentMethodsController;
@@ -549,6 +550,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost'])
             ->middleware(RequirePermission::using('accounting.post')); // #480
         Route::post('/payments', [PaymentController::class, 'store']);
+
+        // #1001: customer payment advice reconciliation — parse the uploaded
+        // advice, review the invoice matches, then confirm the allocations
+        // (draft payments only; posting stays a deliberate operator action).
+        Route::get('/payment-advices', [PaymentAdviceController::class, 'index'])
+            ->middleware(RequirePermission::using('accounting.view'));
+        Route::get('/payment-advices/{id}', [PaymentAdviceController::class, 'show'])
+            ->middleware(RequirePermission::using('accounting.view'));
+        Route::post('/payment-advices', [PaymentAdviceController::class, 'store'])
+            ->middleware(RequirePermission::using('accounting.write'));
+        Route::post('/payment-advices/{id}/confirm', [PaymentAdviceController::class, 'confirm'])
+            ->middleware(RequirePermission::using('accounting.write'));
         // #489 (PAY-UX3): customer-first receipt — record + post + allocate in
         // one atomic request; it posts to the GL, so it needs accounting.post.
         Route::post('/payments/receipts', [PaymentController::class, 'storeReceipt'])
