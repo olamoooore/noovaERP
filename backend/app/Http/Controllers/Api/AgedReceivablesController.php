@@ -132,46 +132,36 @@ class AgedReceivablesController extends Controller
             $invoiceDetails = [];
 
             foreach ($invoices as $invoice) {
-                $amount = round((float) $invoice->balance, 2);
-                if ($amount <= 0) {
+                if (round((float) $invoice->balance, 2) <= 0) {
                     continue;
                 }
 
-                $dueDate = $invoice->due_date
-                    ? Carbon::parse($invoice->due_date)
-                    : Carbon::parse($invoice->invoice_date)->addDays($customer->payment_terms ?? 30);
+                // Issue #324: each open instalment ages by its own due date.
+                foreach ($invoice->agingPortions() as $portion) {
+                    $amount = round((float) $portion['amount'], 2);
 
-                $daysOverdue = (int) $now->diffInDays($dueDate, false);
+                    $dueDate = $portion['due_date']
+                        ? Carbon::parse($portion['due_date'])
+                        : Carbon::parse($invoice->invoice_date)->addDays($customer->payment_terms ?? 30);
 
-                if ($dueDate->isAfter($now)) {
-                    // Not yet due
-                    $bucketKey = 'not_due';
-                } elseif ($daysOverdue <= 30) {
-                    $bucketKey = '1_30';
-                } elseif ($daysOverdue <= 60) {
-                    $bucketKey = '31_60';
-                } elseif ($daysOverdue <= 90) {
-                    $bucketKey = '61_90';
-                } elseif ($daysOverdue <= 180) {
-                    $bucketKey = '91_180';
-                } else {
-                    $bucketKey = '180_plus';
+                    $daysOverdue = (int) $now->diffInDays($dueDate, false);
+                    $bucketKey = $this->bucketKey($dueDate, $now);
+
+                    $buckets[$bucketKey] += $amount;
+
+                    $invoiceDetails[] = [
+                        'id' => $invoice->id,
+                        'invoice_number' => $invoice->invoice_number,
+                        'invoice_date' => $invoice->invoice_date->format('Y-m-d'),
+                        'due_date' => $dueDate->format('Y-m-d'),
+                        'days_overdue' => max(0, $daysOverdue),
+                        'total' => round((float) $invoice->total, 2),
+                        'paid_amount' => round((float) $invoice->paid_amount, 2),
+                        'balance' => $amount,
+                        'status' => $invoice->status,
+                        'aging_bucket' => $bucketKey,
+                    ];
                 }
-
-                $buckets[$bucketKey] += $amount;
-
-                $invoiceDetails[] = [
-                    'id' => $invoice->id,
-                    'invoice_number' => $invoice->invoice_number,
-                    'invoice_date' => $invoice->invoice_date->format('Y-m-d'),
-                    'due_date' => $dueDate->format('Y-m-d'),
-                    'days_overdue' => max(0, $daysOverdue),
-                    'total' => round((float) $invoice->total, 2),
-                    'paid_amount' => round((float) $invoice->paid_amount, 2),
-                    'balance' => $amount,
-                    'status' => $invoice->status,
-                    'aging_bucket' => $bucketKey,
-                ];
             }
 
             // Round all bucket values
@@ -222,31 +212,11 @@ class AgedReceivablesController extends Controller
 
             foreach ($invoices as $invoice) {
                 $customerId = $invoice->customer_id;
-                $amount = round((float) $invoice->balance, 2);
-                if ($amount <= 0) {
+                if (round((float) $invoice->balance, 2) <= 0) {
                     continue;
                 }
 
                 $customer = $invoice->customer;
-                $dueDate = $invoice->due_date
-                    ? Carbon::parse($invoice->due_date)
-                    : Carbon::parse($invoice->invoice_date)->addDays($customer->payment_terms ?? 30);
-
-                $daysOverdue = (int) $now->diffInDays($dueDate, false);
-
-                if ($dueDate->isAfter($now)) {
-                    $bucketKey = 'not_due';
-                } elseif ($daysOverdue <= 30) {
-                    $bucketKey = '1_30';
-                } elseif ($daysOverdue <= 60) {
-                    $bucketKey = '31_60';
-                } elseif ($daysOverdue <= 90) {
-                    $bucketKey = '61_90';
-                } elseif ($daysOverdue <= 180) {
-                    $bucketKey = '91_180';
-                } else {
-                    $bucketKey = '180_plus';
-                }
 
                 if (! isset($customerData[$customerId])) {
                     $customerData[$customerId] = [
@@ -264,8 +234,19 @@ class AgedReceivablesController extends Controller
                     ];
                 }
 
-                $customerData[$customerId][$bucketKey] += $amount;
-                $customerData[$customerId]['total'] += $amount;
+                // Issue #324: each open instalment ages by its own due date.
+                foreach ($invoice->agingPortions() as $portion) {
+                    $amount = round((float) $portion['amount'], 2);
+
+                    $dueDate = $portion['due_date']
+                        ? Carbon::parse($portion['due_date'])
+                        : Carbon::parse($invoice->invoice_date)->addDays($customer->payment_terms ?? 30);
+
+                    $bucketKey = $this->bucketKey($dueDate, $now);
+
+                    $customerData[$customerId][$bucketKey] += $amount;
+                    $customerData[$customerId]['total'] += $amount;
+                }
             }
 
             $data = array_values($customerData);
@@ -307,6 +288,31 @@ class AgedReceivablesController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Bucket for one due date (not_due, 1_30 … 180_plus) as of $now —
+     * the bucketing these two endpoints used inline before #324, unchanged.
+     */
+    private function bucketKey(Carbon $dueDate, Carbon $now): string
+    {
+        $daysOverdue = (int) $now->diffInDays($dueDate, false);
+
+        if ($dueDate->isAfter($now)) {
+            return 'not_due';
+        }
+
+        if ($daysOverdue <= 30) {
+            return '1_30';
+        } elseif ($daysOverdue <= 60) {
+            return '31_60';
+        } elseif ($daysOverdue <= 90) {
+            return '61_90';
+        } elseif ($daysOverdue <= 180) {
+            return '91_180';
+        }
+
+        return '180_plus';
     }
 
     private function resolveCurrency(): string

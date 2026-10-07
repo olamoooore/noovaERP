@@ -56,6 +56,16 @@ interface Invoice {
   }
   invoice_date: string
   due_date: string
+  // Issue #324: master payment term + instalment schedule.
+  payment_term?: { id: number; name: string } | null
+  instalments?: Array<{
+    sequence: number
+    due_date: string | null
+    percent: number
+    amount: number
+    paid: number
+    outstanding: number
+  }>
   status: 'draft' | 'posted' | 'sent' | 'paid' | 'partial' | 'overdue' | 'cancelled' | 'written_off'
   subtotal: number
   tax_amount: number
@@ -1003,7 +1013,33 @@ export function InvoiceDetailPage() {
                   <span className="text-muted-foreground">Due Date:</span>
                   <span>{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</span>
                 </div>
+                {invoice.payment_term?.name && (
+                  <div className="flex justify-between gap-8">
+                    <span className="text-muted-foreground">Payment Term:</span>
+                    <span>{invoice.payment_term.name}</span>
+                  </div>
+                )}
               </div>
+              {(invoice.instalments?.length ?? 0) > 1 && (
+                <table className="mt-3 ml-auto text-xs" data-testid="invoice-instalments">
+                  <thead>
+                    <tr className="text-muted-foreground">
+                      <th className="px-2 text-left font-medium">Instalment due</th>
+                      <th className="px-2 text-right font-medium">Amount</th>
+                      <th className="px-2 text-right font-medium">Outstanding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.instalments!.map((row) => (
+                      <tr key={row.sequence}>
+                        <td className="px-2 text-left">{row.due_date ? formatDate(row.due_date) : '—'}</td>
+                        <td className="px-2 text-right">{money(Number(row.amount))}</td>
+                        <td className="px-2 text-right">{money(Number(row.outstanding))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 

@@ -69,7 +69,8 @@ class SalesDefaultsService
     }
 
     /**
-     * Fill the salesperson/team on a document creation payload when the caller
+     * Fill the salesperson/team (and, #324, the customer's default payment
+     * term) on a document creation payload when the caller
      * did not supply them. Values already present (including explicit
      * conversions carrying the parent document's values) are never replaced.
      *
@@ -84,6 +85,15 @@ class SalesDefaultsService
 
         if (empty($data['sales_team'])) {
             $data['sales_team'] = $this->defaultTeam($userId);
+        }
+
+        // Issue #324: the customer's default master payment term flows onto
+        // the new document (quotation / sales order) unless one was picked.
+        if (empty($data['payment_term_id']) && ! empty($data['customer_id'])) {
+            $customerTerm = \App\Models\Customer::query()->whereKey($data['customer_id'])->value('payment_term_id');
+            if ($customerTerm !== null) {
+                $data['payment_term_id'] = (int) $customerTerm;
+            }
         }
 
         return $data;

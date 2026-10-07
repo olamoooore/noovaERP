@@ -478,13 +478,17 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // #321: prefer the master payment term matching the customer's day count;
     // without one the day count is kept as text (no term is invented).
     const days = Number(customerDetail.payment_terms)
-    const matchingTerm = Number.isFinite(days) && days >= 0
+    // #324: the customer's own default master term wins over a day-count match.
+    const customerDefaultTerm = customerDetail.payment_term_id
+      ? paymentTermRows.find((term) => term.id === Number(customerDetail.payment_term_id))
+      : undefined
+    const matchingTerm = customerDefaultTerm ?? (Number.isFinite(days) && days >= 0
       ? paymentTermRows.find((term) => term.is_active !== false && (
         days === 0
           ? term.type === 'immediate' || (term.type === 'net_days' && Number(term.days) === 0)
           : term.type === 'net_days' && Number(term.days) === days
       ))
-      : undefined
+      : undefined)
     const nextCreditTerms = matchingTerm
       ? matchingTerm.name
       : Number.isFinite(days) && days >= 0 ? (days > 0 ? `Net ${days} days` : 'Due on receipt') : ''

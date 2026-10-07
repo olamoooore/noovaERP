@@ -968,15 +968,18 @@ class SalesOrderService
             $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
-            // Issue #321: the order's master payment term (carried from the
-            // quotation) sets the due date; without one the customer's day
-            // count applies as before.
+            // Issue #321/#324: the order's master payment term (carried from
+            // the quotation), else the customer's default master term, sets
+            // the due date (and the instalment schedule) — computed by
+            // InvoiceService from the final invoice date. Without a master
+            // term the customer's day count applies as before.
             $invoiceDate = now()->toDateString();
-            $paymentTerm = $order->payment_term_id
-                ? \App\Models\PaymentTerm::query()->find($order->payment_term_id)
+            $paymentTermId = $order->payment_term_id ?: $order->customer?->payment_term_id;
+            $paymentTerm = $paymentTermId
+                ? \App\Models\PaymentTerm::query()->find($paymentTermId)
                 : null;
             $dueDate = $paymentTerm
-                ? $paymentTerm->calculateDueDate($invoiceDate)->toDateString()
+                ? null
                 // #539: the tenant's default terms only when the customer has none.
                 : now()->addDays(
                     $order->customer->payment_terms ?? app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays()
@@ -1140,6 +1143,18 @@ class SalesOrderService
             // Merge overrides into creation data so the Invoice creating boot hook
             // respects imported values (especially invoice_number) instead of auto-generating.
             if (! empty($totalOverrides)) {
+                // Issue #324: a hand-entered due date without a term is a
+                // manual date — it detaches the order's master term so the
+                // stored term and the due date can never disagree.
+                if (! empty($totalOverrides['due_date']) && empty($totalOverrides['payment_term_id'])) {
+                    $invoiceData['payment_term_id'] = null;
+                }
+                // A term picked on the invoice itself is authoritative for
+                // the due date (computed from it by InvoiceService).
+                if (! empty($totalOverrides['payment_term_id'])) {
+                    unset($totalOverrides['due_date']);
+                    $invoiceData['due_date'] = null;
+                }
                 $invoiceData = array_merge($invoiceData, $totalOverrides);
             }
 

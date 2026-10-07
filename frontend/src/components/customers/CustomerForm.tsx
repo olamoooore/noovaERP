@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -7,6 +8,7 @@ import {
   CUSTOMER_GENDERS,
   type CustomerFormValues,
 } from '@/lib/customerPayload'
+import api from '@/lib/api'
 
 export type { CustomerFormValues } from '@/lib/customerPayload'
 
@@ -30,6 +32,25 @@ const digitsOnly = (value: string) => value.replace(/\D/g, '')
 export function CustomerForm({ value, onChange, compact = false, idPrefix = 'customer', disabled = false }: CustomerFormProps) {
   const set = (patch: Partial<CustomerFormValues>) => onChange({ ...value, ...patch })
   const id = (name: string) => `${idPrefix}-${name}`
+
+  // Issue #324: the payment-terms master for the default-term picker (not
+  // needed by the compact walk-in capture).
+  const [paymentTermOptions, setPaymentTermOptions] = useState<Array<{ id: number; name: string; is_active?: boolean }>>([])
+  useEffect(() => {
+    if (compact) return
+    let cancelled = false
+    api.get('/accounting/payment-terms')
+      .then((response) => {
+        const rows = Array.isArray(response?.data) ? response.data : response?.data?.data
+        if (!cancelled && Array.isArray(rows)) setPaymentTermOptions(rows)
+      })
+      .catch(() => {
+        // The picker stays at "None"; the day count still applies.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [compact])
 
   if (compact) {
     return (
@@ -343,6 +364,25 @@ export function CustomerForm({ value, onChange, compact = false, idPrefix = 'cus
               onChange={(e) => set({ credit_limit: e.target.value })}
               disabled={disabled}
             />
+          </div>
+          <div className="col-span-2 space-y-2">
+            {/* Issue #324: default term from the payment-terms master — it
+                flows onto the customer's quotes, orders and invoices. */}
+            <Label htmlFor={id('payment-term-id')}>Default Payment Term</Label>
+            <select
+              id={id('payment-term-id')}
+              value={value.payment_term_id ?? ''}
+              onChange={(e) => set({ payment_term_id: e.target.value })}
+              disabled={disabled}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">None (use the day count)</option>
+              {paymentTermOptions
+                .filter((term) => term.is_active !== false || String(term.id) === String(value.payment_term_id ?? ''))
+                .map((term) => (
+                  <option key={term.id} value={String(term.id)}>{term.name}</option>
+                ))}
+            </select>
           </div>
           <div className="space-y-2">
             <Label htmlFor={id('payment-terms')}>Payment Terms (days)</Label>

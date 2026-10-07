@@ -239,6 +239,8 @@ class Invoice extends Model implements WorkflowSubject
         'payment_terms_snapshot',
         // Issue #321: master payment term carried from the sales order.
         'payment_term_id',
+        // Issue #324: instalment schedule snapshot from the master term.
+        'payment_schedule',
         'company_registration_number',
         'tax_registration_number',
         'tax_exemption_code',
@@ -316,6 +318,8 @@ class Invoice extends Model implements WorkflowSubject
         'invoice_date' => 'date',
         'exchange_rate' => 'decimal:6',
         'due_date' => 'date',
+        // Issue #324: [{sequence, due_date, percent}] from the payment term.
+        'payment_schedule' => 'array',
         'date_of_case' => 'date',
         'delivery_date' => 'date',
         'sent_at' => 'datetime',
@@ -429,6 +433,92 @@ class Invoice extends Model implements WorkflowSubject
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'sales_order_id');
+    }
+
+    /**
+     * Issue #321/#324: the master payment term behind the due date.
+     */
+    public function paymentTerm(): BelongsTo
+    {
+        return $this->belongsTo(PaymentTerm::class, 'payment_term_id');
+    }
+
+    /**
+     * Issue #324: the instalment schedule with amounts. Each instalment's
+     * amount is its share of the invoice total (the last one absorbs the
+     * rounding so they add up to the total); settled value (total − balance)
+     * is applied to the earliest instalments first. Without a schedule the
+     * invoice is a single instalment due on its due date.
+     *
+     * @return list<array{sequence: int, due_date: ?string, percent: float, amount: float, paid: float, outstanding: float}>
+     */
+    public function instalmentBreakdown(): array
+    {
+        $total = round((float) $this->total, 2);
+        $balance = round((float) $this->balance, 2);
+        $settled = max(0.0, round($total - $balance, 2));
+
+        $schedule = is_array($this->payment_schedule) && $this->payment_schedule !== []
+            ? array_values($this->payment_schedule)
+            : [['sequence' => 1, 'due_date' => $this->due_date?->toDateString(), 'percent' => 100.0]];
+
+        $rows = [];
+        $assigned = 0.0;
+        $last = count($schedule) - 1;
+        foreach ($schedule as $index => $row) {
+            $amount = $index === $last
+                ? round($total - $assigned, 2)
+                : round($total * (float) ($row['percent'] ?? 0) / 100, 2);
+            $assigned = round($assigned + $amount, 2);
+
+            $paid = round(min($amount, $settled), 2);
+            $settled = round($settled - $paid, 2);
+
+            $rows[] = [
+                'sequence' => (int) ($row['sequence'] ?? $index + 1),
+                'due_date' => $row['due_date'] ?? null,
+                'percent' => (float) ($row['percent'] ?? 0),
+                'amount' => $amount,
+                'paid' => $paid,
+                'outstanding' => round($amount - $paid, 2),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Issue #324: the open balance split by due date for receivables ageing —
+     * one portion per instalment still outstanding. Without a schedule this
+     * is the whole balance on the invoice due date (previous behaviour).
+     *
+     * @return list<array{due_date: ?string, amount: float}>
+     */
+    public function agingPortions(): array
+    {
+        $balance = round((float) $this->balance, 2);
+
+        if (! is_array($this->payment_schedule) || count($this->payment_schedule) < 2) {
+            return [['due_date' => $this->due_date?->toDateString(), 'amount' => $balance]];
+        }
+
+        $portions = [];
+        foreach ($this->instalmentBreakdown() as $instalment) {
+            if ($instalment['outstanding'] > 0) {
+                $portions[] = ['due_date' => $instalment['due_date'], 'amount' => $instalment['outstanding']];
+            }
+        }
+
+        // Defensive: the portions must always add up to the open balance.
+        $diff = round($balance - array_sum(array_column($portions, 'amount')), 2);
+        if ($portions === []) {
+            return [['due_date' => $this->due_date?->toDateString(), 'amount' => $balance]];
+        }
+        if ($diff !== 0.0) {
+            $portions[count($portions) - 1]['amount'] = round($portions[count($portions) - 1]['amount'] + $diff, 2);
+        }
+
+        return $portions;
     }
 
     public function quotation(): BelongsTo

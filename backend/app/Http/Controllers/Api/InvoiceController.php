@@ -437,6 +437,9 @@ class InvoiceController extends Controller
             'invoice_date' => 'nullable|date',
             'due_date' => 'nullable|date',
             'payment_terms' => 'nullable|integer|min:0|max:365',
+            // Issue #324: payment term from the payment-terms master — it
+            // sets the due date and the instalment schedule.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'case_number' => 'nullable|string|max:100',
             'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
             'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
@@ -1082,6 +1085,9 @@ class InvoiceController extends Controller
             // currency → entity base) and optional explicit list selection.
             'currency_code' => $data['currency_code'] ?? null,
             'price_list_id' => $data['price_list_id'] ?? null,
+            // Issue #324: the picked master term (else the customer default,
+            // applied by the order's creation defaults).
+            'payment_term_id' => $data['payment_term_id'] ?? null,
         ], fn ($v) => $v !== null));
 
         // Fast-track admin orders through confirm -> allocate. #373 (O4):
@@ -1123,6 +1129,9 @@ class InvoiceController extends Controller
             'terms' => $data['terms'] ?? null,
             'discount_amount' => $data['discount_amount'] ?? null,
             'po_number' => $data['po_number'] ?? null,
+            // Issue #324: a term picked on the invoice is authoritative for
+            // the due date (SalesOrderService drops a typed due date then).
+            'payment_term_id' => $data['payment_term_id'] ?? null,
             // Contact IDs are handled separately via UPDATE after invoice creation
             // to bypass FK violations caused by connection recycling during SO lifecycle
         ], fn ($v) => $v !== null);
@@ -1339,11 +1348,15 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy', 'writeOffs'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy', 'writeOffs', 'paymentTerm'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
+
+        // Issue #324: the instalment schedule (amount / paid / outstanding
+        // per due date) — a single row when the term has no instalments.
+        $invoice->instalments = $invoice->instalmentBreakdown();
 
         // Confirmation state drives the "Evidence confirmed" UI/step.
         $invoice->evidence_confirmed = $invoice->evidence
@@ -1423,6 +1436,8 @@ class InvoiceController extends Controller
             ],
             'invoice_date' => 'date',
             'due_date' => 'date',
+            // Issue #324: payment term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'case_number' => 'nullable|string|max:100',
             'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
             'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
@@ -1617,6 +1632,26 @@ class InvoiceController extends Controller
                 if (array_key_exists('cases', $validated)) {
                     $validated['case_information'] = $validated['cases'];
                     unset($validated['cases']);
+                }
+
+                // Issue #324: picking a master term (or re-dating an invoice
+                // that has one) recomputes the due date and the instalment
+                // schedule from the term; a typed due date without a term
+                // detaches it (manual date). Clearing the term clears the
+                // schedule.
+                $termId = array_key_exists('payment_term_id', $validated)
+                    ? $validated['payment_term_id']
+                    : (array_key_exists('due_date', $validated) ? null : $invoice->payment_term_id);
+                if (! array_key_exists('payment_term_id', $validated) && array_key_exists('due_date', $validated)) {
+                    $validated['payment_term_id'] = null;
+                    $validated['payment_schedule'] = null;
+                } elseif ($termId && (array_key_exists('payment_term_id', $validated) || array_key_exists('invoice_date', $validated))) {
+                    $validated = $this->invoiceService->applyPaymentTerm(array_merge($validated, [
+                        'payment_term_id' => $termId,
+                        'invoice_date' => $validated['invoice_date'] ?? $invoice->invoice_date?->toDateString(),
+                    ]), forceDueDate: true);
+                } elseif (array_key_exists('payment_term_id', $validated)) {
+                    $validated['payment_schedule'] = null;
                 }
 
                 $invoice->update($validated);

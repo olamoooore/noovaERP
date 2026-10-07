@@ -93,6 +93,51 @@ class InvoiceService
     }
 
     /**
+     * Issue #324: resolve the master payment term for an invoice payload and
+     * derive its due date and instalment schedule from it.
+     *
+     *  - an explicit payment_term_id wins; otherwise the customer's default
+     *    master term applies, but only when no due date was set by hand
+     *    (a manual date keeps its meaning);
+     *  - with a term and no explicit due date, the due date is the term's
+     *    (last-instalment) due date for the invoice date;
+     *  - the schedule snapshot (due date + share of the total per instalment)
+     *    is stored so a later master edit never re-dates the invoice.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function applyPaymentTerm(array $data, bool $forceDueDate = false): array
+    {
+        $termId = $data['payment_term_id'] ?? null;
+
+        if (empty($termId) && empty($data['due_date']) && ! empty($data['customer_id'])) {
+            $termId = Customer::query()->whereKey($data['customer_id'])->value('payment_term_id');
+        }
+
+        $term = $termId ? \App\Models\PaymentTerm::query()->with('lines')->find((int) $termId) : null;
+        if (! $term) {
+            if (array_key_exists('payment_term_id', $data)) {
+                $data['payment_schedule'] = null;
+            }
+
+            return $data;
+        }
+
+        $invoiceDate = \Illuminate\Support\Carbon::parse($data['invoice_date'] ?? now())->toDateString();
+
+        $data['payment_term_id'] = $term->id;
+        if ($forceDueDate || empty($data['due_date'])) {
+            $data['due_date'] = $term->calculateDueDate($invoiceDate)->toDateString();
+        }
+
+        $schedule = $term->instalmentSchedule($invoiceDate);
+        $data['payment_schedule'] = $schedule !== [] ? $schedule : null;
+
+        return $data;
+    }
+
+    /**
      * Create invoice with lines — structurally non-public.
      *
      * Callers must hold a valid InvoiceCreationToken obtained from issueCreationToken().
@@ -117,6 +162,12 @@ class InvoiceService
             // customer's own terms first, the tenant default only when the
             // customer has none.
             $salesSettings = app(SalesSettings::class);
+
+            // Issue #324: the payment-terms master drives the due date and the
+            // instalment schedule — the document's own term first, else the
+            // customer's default term when no due date was set by hand.
+            $data = $this->applyPaymentTerm($data);
+
             if (empty($data['due_date'])) {
                 $customerTerms = isset($data['customer_id'])
                     ? Customer::query()->whereKey($data['customer_id'])->value('payment_terms')

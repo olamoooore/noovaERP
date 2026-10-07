@@ -174,6 +174,8 @@ interface CustomerRecord {
   company_registration_number?: string | null;
   website?: string | null;
   payment_terms?: number | null;
+  // Issue #324: the customer's default master payment term.
+  payment_term_id?: number | null;
   notes?: string | null;
   billing_address?: string | null;
   shipping_address?: string | null;
@@ -392,6 +394,43 @@ export const CreateInvoicePage: React.FC = () => {
   const [customerId, setCustomerId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => todayDateOnly());
   const [paymentTerms, setPaymentTerms] = useState(30);
+  // Issue #324: the payment term picked from the payment-terms master. When
+  // set, the due date (and any instalment schedule) comes from the master's
+  // calculate-due-date; typing days or a due date by hand detaches it.
+  const [paymentTermId, setPaymentTermId] = useState('');
+  const [termInstalments, setTermInstalments] = useState<Array<{ due_date: string; percent: number }>>([]);
+  const { data: paymentTermRows = [] } = useQuery({
+    queryKey: ['payment-terms'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-terms');
+      const rows = Array.isArray(response.data) ? response.data : response.data?.data;
+      return (Array.isArray(rows) ? rows : []) as Array<{ id: number; name: string; type?: string; days?: number; is_active?: boolean }>;
+    },
+  });
+  const selectedPaymentTermName = paymentTermId
+    ? paymentTermRows.find((term) => String(term.id) === paymentTermId)?.name ?? null
+    : null;
+  const paymentTermRequestRef = useRef(0);
+  const applyMasterPaymentTerm = async (termId: string, date: string) => {
+    const requestId = ++paymentTermRequestRef.current;
+    if (!termId || !date) {
+      setTermInstalments([]);
+      return;
+    }
+    try {
+      const response = await api.post('/accounting/payment-terms/calculate-due-date', {
+        payment_term_id: Number(termId),
+        invoice_date: date,
+      });
+      if (requestId !== paymentTermRequestRef.current) return;
+      if (response.data?.due_date) setDueDate(String(response.data.due_date));
+      const instalments = Array.isArray(response.data?.instalments) ? response.data.instalments : [];
+      setTermInstalments(instalments.length > 1 ? instalments : []);
+    } catch {
+      // The server derives the due date from the term on save regardless.
+      if (requestId === paymentTermRequestRef.current) setTermInstalments([]);
+    }
+  };
   // HR71-04: explicit override intent. Once the user manually edits terms or
   // due date, a later customer change must not silently overwrite it.
   const [termsOverridden, setTermsOverridden] = useState(false);
@@ -639,8 +678,17 @@ export const CreateInvoicePage: React.FC = () => {
     // populate a DEFAULT only when the user has NOT intentionally overridden
     // terms/due date, and never re-derives a saved invoice's historical due
     // date while editing (originalCustomerId guard above returns early).
+    // Issue #324: a customer default master term beats its day count.
+    if (!termsOverridden && selectedCustomer.payment_term_id) {
+      const termId = String(selectedCustomer.payment_term_id);
+      setPaymentTermId(termId);
+      void applyMasterPaymentTerm(termId, invoiceDate);
+      return;
+    }
     const customerTerms = Number(selectedCustomer.payment_terms);
     if (!termsOverridden && Number.isFinite(customerTerms) && customerTerms >= 0) {
+      setPaymentTermId('');
+      setTermInstalments([]);
       setPaymentTerms(customerTerms);
       setDueDate(calcDueDate(invoiceDate, customerTerms));
     }
@@ -786,6 +834,13 @@ export const CreateInvoicePage: React.FC = () => {
       setPaymentTerms(restoredTerms);
       setTermsOverridden(true);
     }
+    // Issue #324: the saved master term and its instalment schedule.
+    setPaymentTermId(existingInvoice.payment_term_id ? String(existingInvoice.payment_term_id) : '');
+    setTermInstalments(
+      Array.isArray(existingInvoice.payment_schedule) && existingInvoice.payment_schedule.length > 1
+        ? existingInvoice.payment_schedule
+        : [],
+    );
     setCustomInvoiceNumber(existingInvoice.invoice_number || '');
     setBillingContactId(existingInvoice.billing_contact_id ? String(existingInvoice.billing_contact_id) : '');
     setShippingContactId(existingInvoice.shipping_contact_id ? String(existingInvoice.shipping_contact_id) : '');
@@ -894,8 +949,7 @@ export const CreateInvoicePage: React.FC = () => {
     // settings response arrived), the setting must not clobber them.
     const customerTerms = Number(selectedCustomer?.payment_terms);
     const customerHasTerms = selectedCustomer != null
-      && Number.isFinite(customerTerms)
-      && customerTerms >= 0;
+      && ((Number.isFinite(customerTerms) && customerTerms >= 0) || !!selectedCustomer.payment_term_id);
     const defaultTermsDays = Number((inv as any)?.default_payment_terms_days);
     if (!termsOverridden && !customerHasTerms && Number.isFinite(defaultTermsDays) && defaultTermsDays >= 0) {
       setPaymentTerms(defaultTermsDays);
@@ -933,7 +987,7 @@ export const CreateInvoicePage: React.FC = () => {
     ready: !isEditMode || invoiceLoaded,
     persist: !isEditMode,
     snapshot: {
-      customerId, invoiceDate, paymentTerms, termsOverridden, requiresApproval, customInvoiceNumber, dueDate,
+      customerId, invoiceDate, paymentTerms, paymentTermId, termsOverridden, requiresApproval, customInvoiceNumber, dueDate,
       caseNumber, prNo, contractNo, buyerContactId, plantCode, companyCode, dateOfCase, caseLocation,
       patientName, costCenterId, deliveryDate, warehouseId, poNumber, doctorContactId, requestorContactId,
       extraCases, primaryMedicalCaseId, billingContactId, shippingContactId, billingAddress, shippingAddress,
@@ -945,6 +999,7 @@ export const CreateInvoicePage: React.FC = () => {
       setCustomerId(draft.customerId);
       setInvoiceDate(draft.invoiceDate);
       setPaymentTerms(draft.paymentTerms);
+      setPaymentTermId(draft.paymentTermId ?? '');
       setTermsOverridden(draft.termsOverridden);
       setRequiresApproval(draft.requiresApproval);
       setCustomInvoiceNumber(draft.customInvoiceNumber);
@@ -1875,6 +1930,8 @@ export const CreateInvoicePage: React.FC = () => {
       notes: notes || undefined,
       terms: terms || undefined,
       payment_terms: paymentTerms,
+      // Issue #324: the master term (null = manual days/due date).
+      ...(!isQuoteMode ? { payment_term_id: paymentTermId ? Number(paymentTermId) : null } : {}),
       discount_amount: documentDiscountAmount || 0,
       // FR-5.1/FR-5.2: explicit document currency; empty = resolve default.
       ...(currencyCode ? { currency_code: currencyCode } : {}),
@@ -2178,7 +2235,11 @@ export const CreateInvoicePage: React.FC = () => {
                     onChange={(event) => {
                       const newDate = event.target.value;
                       setInvoiceDate(newDate);
-                      setDueDate(calcDueDate(newDate, paymentTerms));
+                      if (paymentTermId && !isQuoteMode) {
+                        void applyMasterPaymentTerm(paymentTermId, newDate);
+                      } else {
+                        setDueDate(calcDueDate(newDate, paymentTerms));
+                      }
                       // #299 (F7): price lists are date-effective — a new
                       // invoice date must re-resolve auto/carried lines for
                       // that date (manual lines are kept by the apply loop).
@@ -2196,11 +2257,38 @@ export const CreateInvoicePage: React.FC = () => {
                     <label className="mb-1 block text-xs font-medium">Terms</label>
                     <HeaderChip
                       icon="solar:calendar-bold-duotone"
-                      value={`${paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt'} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
+                      value={`${selectedPaymentTermName ?? (paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt')} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
                       title="Payment terms and due date"
                       className="w-full justify-between"
                     >
                       <div className="space-y-2">
+                        <div>
+                          {/* Issue #324: picked from the payment-terms master. */}
+                          <label className="mb-1 block text-xs font-medium" htmlFor="invoice-payment-term">Payment term</label>
+                          <select
+                            id="invoice-payment-term"
+                            aria-label="Payment term"
+                            value={paymentTermId}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setPaymentTermId(next);
+                              setTermsOverridden(true);
+                              const term = paymentTermRows.find((row) => String(row.id) === next);
+                              if (term && Number.isFinite(Number(term.days))) {
+                                setPaymentTerms(Number(term.days));
+                              }
+                              void applyMasterPaymentTerm(next, invoiceDate);
+                            }}
+                            className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                          >
+                            <option value="">Custom (days / due date)</option>
+                            {paymentTermRows
+                              .filter((term) => term.is_active !== false || String(term.id) === paymentTermId)
+                              .map((term) => (
+                                <option key={term.id} value={String(term.id)}>{term.name}</option>
+                              ))}
+                          </select>
+                        </div>
                         <div>
                           <label className="mb-1 block text-xs font-medium">Payment terms (days)</label>
                           <input
@@ -2213,6 +2301,9 @@ export const CreateInvoicePage: React.FC = () => {
                               setDueDate(calcDueDate(invoiceDate, days));
                               // HR71-04: an intentional term edit is an override.
                               setTermsOverridden(true);
+                              // #324: a hand-typed day count detaches the master term.
+                              setPaymentTermId('');
+                              setTermInstalments([]);
                             }}
                             className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                           />
@@ -2226,10 +2317,26 @@ export const CreateInvoicePage: React.FC = () => {
                               setDueDate(event.target.value);
                               // HR71-04: an intentional due-date edit is an override.
                               setTermsOverridden(true);
+                              // #324: a hand-typed due date detaches the master term.
+                              setPaymentTermId('');
+                              setTermInstalments([]);
                             }}
                             className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
+                        {termInstalments.length > 1 && (
+                          <div data-testid="invoice-instalment-preview">
+                            <p className="mb-1 text-xs font-medium">Instalments</p>
+                            <ul className="space-y-0.5 text-xs text-muted-foreground">
+                              {termInstalments.map((row, index) => (
+                                <li key={`${row.due_date}-${index}`} className="flex justify-between gap-2">
+                                  <span>{formatDate(row.due_date)}</span>
+                                  <span>{Number(row.percent).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     </HeaderChip>
                   </div>

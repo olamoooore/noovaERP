@@ -308,6 +308,8 @@ class CustomerController extends Controller
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
+            // Issue #324: default term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'price_list_id' => 'nullable|integer',
 
             // Personal
@@ -502,6 +504,8 @@ class CustomerController extends Controller
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
+            // Issue #324: default term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'price_list_id' => 'nullable|integer',
 
             // Personal

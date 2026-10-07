@@ -170,13 +170,16 @@ class InvoiceDataSource implements DataSourceContract
                 // Printed Payment Terms: the free-text terms win when written;
                 // otherwise fall back to the Net-N snapshot so picking "30
                 // days" on the invoice actually shows on the PDF.
+                // Issue #324: a master payment term prints by its name.
                 'terms' => $invoice->terms
+                    ?: ($invoice->paymentTerm?->name
+                        ?: (($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
+                            ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
+                            : '')),
+                'payment_terms' => $invoice->paymentTerm?->name
                     ?: (($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
                         ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
                         : ''),
-                'payment_terms' => ($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms)
-                    ? 'Net '.($invoice->payment_terms_snapshot ?: $invoice->customer?->payment_terms).' days'
-                    : '',
                 'attention_to' => $invoice->attention_to ?? '',
                 'shipping_method' => $invoice->shipping_method ?? '',
                 // Issue #333: Incoterm code + place (blank when unset).
@@ -571,6 +574,12 @@ class InvoiceDataSource implements DataSourceContract
         $terms = trim((string) ($invoice->terms ?? ''));
         if ($terms !== '') {
             return $terms;
+        }
+
+        // Issue #324: a master payment term prints by its name.
+        $termName = trim((string) ($invoice->paymentTerm?->name ?? ''));
+        if ($termName !== '') {
+            return $termName;
         }
 
         $snapshot = trim((string) ($invoice->payment_terms_snapshot ?? ''));
