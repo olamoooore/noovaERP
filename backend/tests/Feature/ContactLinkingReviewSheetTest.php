@@ -122,6 +122,13 @@ class ContactLinkingReviewSheetTest extends TenantTestCase
         $this->assertSame('link|create|skip', $sitiRow['allowed_decisions']);
         $this->assertSame($sitiPerson, $sitiRow['targets']);
         $this->assertSame('', $sitiRow['decision']);
+
+        // --redact blanks names in the sheet too.
+        $this->artisan('contacts:linking-report', ['--tenant' => $this->tenantId, '--review-sheet' => $this->sheetPath, '--redact' => true])->assertExitCode(0);
+        $redacted = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($this->sheetPath))));
+        array_shift($redacted);
+        $this->assertNotContains('Siti', array_merge(...$redacted));
+        $this->assertNotContains('ACME  Hospital', array_merge(...$redacted));
     }
 
     /** @return array<string, mixed> */
