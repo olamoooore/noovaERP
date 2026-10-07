@@ -34,9 +34,13 @@ import {
   getSalesDocumentLineTotal,
   isBlankSalesDocumentLine,
   keepFocLinesUnderSource,
+  matchPastedProduct,
   moveSalesDocumentLineWithFoc,
+  parsePastedSalesRows,
   removeSalesDocumentLineWithFoc,
+  repeatSalesLineForRepricing,
   resetSalesDocumentLine,
+  type PastedSalesRowError,
   type SalesDocumentLine,
 } from '@/lib/salesDocumentLines';
 import pricingApi from '@/lib/pricingApi'
@@ -486,6 +490,8 @@ export const CreateInvoicePage: React.FC = () => {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [pasteBusy, setPasteBusy] = useState(false);
+  // #343: what the last paste could not add (unknown SKUs, unreadable rows) — shown per row.
+  const [pasteReport, setPasteReport] = useState<{ added: number; ignoredPrices: number; problems: PastedSalesRowError[] } | null>(null);
   const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
   // #298 (F6): pending warehouse change + the line indexes whose lot/serial
   // pick does NOT exist in the new warehouse (only those are cleared).
@@ -1423,28 +1429,29 @@ export const CreateInvoicePage: React.FC = () => {
     setWarehouseClearConfirm(null);
   };
 
-  // D6(a): load the previous invoice's lines. Prices are carried verbatim, so
-  // a repeat keeps the agreed numbers until someone edits them.
+  // D6(a) / #343: load the previous invoice's lines with FRESH pricing and
+  // tax. Only product, description and quantity are copied; the old price,
+  // discount and tax identity are dropped so the engine re-prices the lines
+  // now and the server re-prices/re-taxes them on save (never stale numbers).
   const performRepeatLastInvoice = () => {
     if (!lastInvoice?.lines?.length) return;
     const mapped: InvoiceLine[] = lastInvoice.lines
       .filter((line: any) => (line.line_type ?? 'product') === 'product' && (line.product_id || line.description))
       .map((line: any) => ({
         ...emptyLine(),
-        product_id: line.product_id ? String(line.product_id) : '',
-        sku: line.product?.sku ?? '',
-        description: line.description ?? '',
-        description_html: line.description_html || '',
-        quantity: line.quantity != null ? (normalizeQuantity(line.quantity) || 1) as number : 1,
-        unit_price: line.unit_price != null ? Number(line.unit_price) : '',
-        tax_rate: line.tax_rate != null ? Number(line.tax_rate) : (defaultTaxRate || ''),
-        discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
-        price_mode: 'carried',
-        list_price: line.pricing_trace?.list_price ?? null,
+        ...repeatSalesLineForRepricing(
+          { ...line, quantity: line.quantity != null ? normalizeQuantity(line.quantity) : null },
+          defaultTaxRate,
+        ),
       }));
     setLines(mapped);
     setRepeatConfirmOpen(false);
-    toast({ title: `Loaded ${mapped.length} line${mapped.length === 1 ? '' : 's'} from ${lastInvoice.number}` });
+    void resolvePricingForLines(customerId, mapped);
+    const unpriced = mapped.filter((line) => !line.product_id).length;
+    toast({
+      title: `Loaded ${mapped.length} line${mapped.length === 1 ? '' : 's'} from ${lastInvoice.number}`,
+      description: `Prices and tax are re-resolved for this invoice.${unpriced ? ` ${unpriced} free-text line${unpriced === 1 ? ' needs' : 's need'} a price.` : ''}`,
+    });
   };
 
   const repeatLastInvoice = () => {
@@ -1460,67 +1467,82 @@ export const CreateInvoicePage: React.FC = () => {
     performRepeatLastInvoice();
   };
 
-  // D6(c): paste rows copied from Excel — "SKU ⇥ Qty [⇥ Price]" per line.
-  const parsePastedRows = (text: string) =>
-    text
-      .split(/\r?\n/)
-      .map((row) => row.split('\t'))
-      .filter((cols) => cols.some((col) => col.trim() !== ''))
-      .map((cols) => {
-        const qty = Number((cols[1] ?? '').trim());
-        const price = Number((cols[2] ?? '').trim());
-        return {
-          code: (cols[0] ?? '').trim(),
-          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
-          price: Number.isFinite(price) && price > 0 ? price : null,
-        };
-      })
-      .filter((row) => row.code !== '');
-
+  // D6(c) / #343: paste rows copied from Excel — "SKU ⇥ Qty [⇥ Price]" (tab
+  // or comma separated). Each code must match a product's SKU or barcode
+  // exactly; unknown codes and unreadable rows are reported per row and kept
+  // in the paste box to fix, never added as free-text lines. A pasted price
+  // is not applied: matched lines are priced by the engine (auto) and
+  // re-priced/re-taxed by the server on save.
   const importPastedRows = async (text: string) => {
-    const rows = parsePastedRows(text);
-    if (!rows.length) {
+    const { rows, errors } = parsePastedSalesRows(text);
+    if (!rows.length && !errors.length) {
       toast({ variant: 'destructive', title: 'Nothing to paste', description: 'Expected rows like SKU ⇥ Qty.' });
       return;
     }
     setPasteBusy(true);
     try {
-      const additions: InvoiceLine[] = [];
-      for (const row of rows) {
-        let product: any = null;
-        try {
-          const res = await api.get('/products', { params: { search: row.code, per_page: 10 } });
-          const results: any[] = res.data?.data ?? [];
-          const needle = row.code.toLowerCase();
-          product = results.find((candidate) =>
-            [candidate.sku, candidate.barcode].filter(Boolean).some((code: string) => String(code).toLowerCase() === needle))
-            ?? results.find((candidate) => String(candidate.name ?? '').toLowerCase() === needle)
-            ?? null;
-        } catch {
-          product = null;
-        }
+      const matches = await Promise.all(
+        rows.map(async (row) => {
+          try {
+            const res = await api.get('/products', { params: { search: row.code, per_page: 20, is_active: 'true' } });
+            return { row, product: matchPastedProduct(row.code, (res.data?.data ?? []) as any[]), failed: false };
+          } catch {
+            return { row, product: null, failed: true };
+          }
+        }),
+      );
 
+      const problems: PastedSalesRowError[] = [...errors];
+      const additions: InvoiceLine[] = [];
+      const rawRows = text.split(/\r?\n/);
+      for (const { row, product, failed } of matches) {
         if (!product) {
-          additions.push({ ...emptyLine(), description: row.code, quantity: row.quantity, unit_price: row.price ?? '', tax_rate: defaultTaxRate || '' });
+          problems.push({
+            row: row.row,
+            text: rawRows[row.row - 1] ?? row.code,
+            reason: failed ? `${row.code} — lookup failed, try again` : `${row.code} — SKU not found`,
+          });
           continue;
         }
         additions.push({
           ...emptyLine(),
           product_id: String(product.id),
           sku: product.sku || '',
-          description: product.name || '',
+          description: getProductLineDescription(product),
           quantity: row.quantity,
-          unit_price: row.price ?? '',
+          unit_price: '',
           price_mode: 'auto',
           tax_rate: resolveLineTaxRate(product, defaultTaxRate),
+          tracking_method: product.tracking_method || 'none',
         });
       }
-      const next = [...lines, ...additions];
-      setLines(next);
+      problems.sort((a, b) => a.row - b.row);
+
+      if (additions.length) {
+        const base = lines.length === 1 && isBlankPlaceholderLine(lines[0]) ? [] : lines;
+        const next = [...base, ...additions];
+        setLines(next);
+        void resolvePricingForLines(customerId, next);
+      }
+
+      const ignoredPrices = matches.filter(({ row, product }) => product && row.price !== null).length;
+      if (problems.length) {
+        // Keep the dialog open with only the rows that still need fixing.
+        setPasteReport({ added: additions.length, ignoredPrices, problems });
+        setPasteText(problems.map((problem) => problem.text).join('\n'));
+        setPasteOpen(true);
+        return;
+      }
+
+      setPasteReport(null);
       setPasteOpen(false);
       setPasteText('');
-      void resolvePricingForLines(customerId, next);
-      toast({ title: `Added ${additions.length} row${additions.length === 1 ? '' : 's'}` });
+      toast({
+        title: `Added ${additions.length} row${additions.length === 1 ? '' : 's'}`,
+        description: ignoredPrices
+          ? 'Pasted prices are not applied — lines use the current engine price. Type a price on a line to override it.'
+          : undefined,
+      });
     } finally {
       setPasteBusy(false);
     }
@@ -1535,11 +1557,12 @@ export const CreateInvoicePage: React.FC = () => {
 
   // D6(b): one click adds a frequently bought product (priced by the engine).
   const addFrequentProduct = (product: { id: number; name: string; sku?: string | null }) => {
-    const next = [...lines];
-    const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id));
-    if (existing) {
-      const current = existing.quantity === '' ? 0 : Number(existing.quantity);
-      existing.quantity = current + 1;
+    // #343: the lone untouched starter row is replaced, not left behind.
+    const next = lines.length === 1 && isBlankPlaceholderLine(lines[0]) ? [] : [...lines];
+    const existingIndex = next.findIndex((line) => line.line_type === 'product' && line.product_id === String(product.id));
+    if (existingIndex >= 0) {
+      const current = next[existingIndex].quantity === '' ? 0 : Number(next[existingIndex].quantity);
+      next[existingIndex] = { ...next[existingIndex], quantity: current + 1 };
     } else {
       next.push({
         ...emptyLine(),
@@ -3127,7 +3150,7 @@ export const CreateInvoicePage: React.FC = () => {
                   {/* D6(c): paste rows copied from a spreadsheet. */}
                   <button
                     type="button"
-                    onClick={() => setPasteOpen(true)}
+                    onClick={() => { setPasteReport(null); setPasteOpen(true); }}
                     className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent"
                   >
                     <Icon icon="solar:clipboard-text-bold-duotone" className="h-4 w-4" />
@@ -3620,15 +3643,41 @@ export const CreateInvoicePage: React.FC = () => {
       </Dialog>
 
       {/* D6(c): paste rows copied from Excel — SKU ⇥ Qty [⇥ Price]. */}
-      <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
+      <Dialog
+        open={pasteOpen}
+        onOpenChange={(open) => {
+          setPasteOpen(open);
+          if (!open) setPasteReport(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Paste rows from Excel</DialogTitle>
             <DialogDescription>
-              Copy rows from your spreadsheet and paste them below. Columns: SKU or barcode, quantity
-              (optional price). Unknown codes are added as free-text lines.
+              Copy rows from your spreadsheet and paste them below (tab- or comma-separated). Columns: SKU or
+              barcode, quantity, optional price. Lines are priced and taxed at today&apos;s rates — a pasted
+              price is not applied. Unknown SKUs are listed so you can fix them.
             </DialogDescription>
           </DialogHeader>
+          {/* #343: rows the last paste could not add, by row number. */}
+          {pasteReport && (
+            <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
+              <p className="font-medium">
+                {pasteReport.added > 0
+                  ? `Added ${pasteReport.added} row${pasteReport.added === 1 ? '' : 's'}. `
+                  : ''}
+                {pasteReport.problems.length} row{pasteReport.problems.length === 1 ? '' : 's'} could not be added:
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {pasteReport.problems.map((problem) => (
+                  <li key={problem.row}>{`Row ${problem.row}: ${problem.reason}`}</li>
+                ))}
+              </ul>
+              {pasteReport.ignoredPrices > 0 && (
+                <p className="mt-1 text-muted-foreground">Pasted prices were not applied — added lines use the engine price.</p>
+              )}
+            </div>
+          )}
           <textarea
             value={pasteText}
             onChange={(event) => setPasteText(event.target.value)}
@@ -3638,7 +3687,7 @@ export const CreateInvoicePage: React.FC = () => {
             autoFocus
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPasteOpen(false)}>
+            <Button variant="outline" onClick={() => { setPasteOpen(false); setPasteReport(null); }}>
               Cancel
             </Button>
             <Button onClick={() => void importPastedRows(pasteText)} disabled={pasteBusy || !pasteText.trim()}>

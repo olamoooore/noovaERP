@@ -142,8 +142,9 @@ describe('CreateInvoicePage date-effective pricing (#299 / F7)', () => {
     const { container } = renderPage()
     await pickCustomerAndRepeat(container)
 
-    // Sanity: no pricing resolution has happened yet (repeat carries prices).
-    expect(resolveBatchMock).not.toHaveBeenCalled()
+    // #343 (approved 7 Oct 2026): repeat re-prices through the engine instead
+    // of carrying the old prices.
+    await waitFor(() => expect(resolveBatchMock).toHaveBeenCalled())
 
     // Change the invoice date to a different price-list validity period.
     const dateLabel = [...container.querySelectorAll('label')].find(

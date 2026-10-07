@@ -235,3 +235,131 @@ export function focPayloadFields<T extends FocPairableLine>(
     : -1
   return sourceIndex >= 0 ? { is_foc: true, source_line_index: sourceIndex } : { is_foc: true }
 }
+
+/**
+ * #343 (D6): rapid line entry — rows pasted from a spreadsheet as
+ * "SKU ⇥ Qty [⇥ Price]" (tab- or comma-separated). The price column is read
+ * only so it can be reported: pasted lines are priced by the engine and taxed
+ * by the server, never at a copied price. Rows that cannot be read are
+ * returned as errors with their row number, never silently dropped or guessed.
+ */
+export interface PastedSalesRow {
+  /** 1-based row number in the pasted text. */
+  row: number
+  code: string
+  quantity: number
+  /** The pasted price (informational only — never applied to the line). */
+  price: number | null
+}
+
+export interface PastedSalesRowError {
+  row: number
+  text: string
+  reason: string
+}
+
+const PASTE_HEADER_CODE = /^(sku|code|item|product|barcode)( ?(code|no\.?|#))?$/i
+const PASTE_HEADER_QTY = /^(qty|quantity)$/i
+
+const parsePastedNumber = (raw: string, delimiter: string): number => {
+  // A tab-separated cell may carry a thousands separator ("1,000").
+  const cleaned = delimiter === '\t' ? raw.replace(/,/g, '') : raw
+  return cleaned === '' ? NaN : Number(cleaned)
+}
+
+export function parsePastedSalesRows(text: string): { rows: PastedSalesRow[]; errors: PastedSalesRowError[] } {
+  const rows: PastedSalesRow[] = []
+  const errors: PastedSalesRowError[] = []
+  let seenContent = false
+
+  text.split(/\r?\n/).forEach((rawRow, index) => {
+    const rowNumber = index + 1
+    if (rawRow.trim() === '') return
+    const delimiter = rawRow.includes('\t') ? '\t' : ','
+    const cells = rawRow.split(delimiter).map((cell) => cell.trim())
+    const [code = '', qtyCell = '', priceCell = ''] = cells
+
+    // A spreadsheet header ("SKU ⇥ Qty ⇥ Price") as the first row is skipped.
+    const isFirst = !seenContent
+    seenContent = true
+    if (isFirst && (PASTE_HEADER_CODE.test(code) || PASTE_HEADER_QTY.test(qtyCell)) && !Number.isFinite(parsePastedNumber(qtyCell, delimiter))) {
+      return
+    }
+
+    if (code === '') {
+      errors.push({ row: rowNumber, text: rawRow, reason: 'Missing SKU' })
+      return
+    }
+
+    const quantity = qtyCell === '' ? 1 : parsePastedNumber(qtyCell, delimiter)
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      errors.push({ row: rowNumber, text: rawRow, reason: `Invalid quantity "${qtyCell}"` })
+      return
+    }
+
+    const price = parsePastedNumber(priceCell, delimiter)
+    rows.push({ row: rowNumber, code, quantity, price: Number.isFinite(price) && price >= 0 ? price : null })
+  })
+
+  return { rows, errors }
+}
+
+/** #343: the product whose SKU or barcode is exactly the pasted code (case-insensitive). */
+export function matchPastedProduct<P extends { sku?: string | null; barcode?: string | null }>(
+  code: string,
+  candidates: P[],
+): P | null {
+  const needle = code.trim().toLowerCase()
+  if (!needle) return null
+  return candidates.find((candidate) =>
+    [candidate.sku, candidate.barcode]
+      .filter(Boolean)
+      .some((value) => String(value).trim().toLowerCase() === needle),
+  ) ?? null
+}
+
+/**
+ * #343 (D6): a previous document's line brought into a new one ("Repeat last
+ * invoice" / copy lines). Only what the customer bought is copied — product,
+ * description and quantity. The old price, line discount and tax identity
+ * are dropped: the line is `price_mode: 'auto'` so the pricing engine
+ * re-prices it (and the server re-prices auto lines on save), and its tax
+ * starts from the product's current rate (else the default) so the #302
+ * SalesLineTaxResolver re-resolves it on save instead of a stale rate, rule
+ * or explicit 0%. A free-text line has no engine price and comes in unpriced.
+ */
+export function repeatSalesLineForRepricing(
+  previous: {
+    product_id?: number | string | null
+    product?: { sku?: string | null; effective_tax_rate?: unknown; tax_rate?: unknown; tracking_method?: string | null } | null
+    description?: string | null
+    description_html?: string | null
+    quantity?: number | string | null
+    [key: string]: unknown
+  },
+  defaultTaxRate?: number | null,
+): Pick<SalesDocumentLine, 'product_id' | 'sku' | 'description' | 'quantity' | 'unit_price' | 'discount_amount' | 'tax_rate' | 'price_mode'> & {
+  description_html: string
+  tracking_method?: string
+} {
+  const hasProduct = previous.product_id !== null && previous.product_id !== undefined && previous.product_id !== ''
+  const quantity = Number(previous.quantity)
+  const productRate = Number(previous.product?.effective_tax_rate ?? previous.product?.tax_rate ?? 0)
+  const fallbackRate = Number(defaultTaxRate ?? 0)
+  const taxRate: number | '' = hasProduct && Number.isFinite(productRate) && productRate > 0
+    ? productRate
+    : (Number.isFinite(fallbackRate) && fallbackRate > 0 ? fallbackRate : '')
+
+  return {
+    product_id: hasProduct ? String(previous.product_id) : '',
+    sku: previous.product?.sku ?? '',
+    description: previous.description ?? '',
+    description_html: previous.description_html || '',
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    unit_price: '',
+    discount_amount: '',
+    tax_rate: taxRate,
+    ...(hasProduct ? { price_mode: 'auto' as const } : {}),
+    ...(previous.product?.tracking_method ? { tracking_method: previous.product.tracking_method } : {}),
+  }
+}
