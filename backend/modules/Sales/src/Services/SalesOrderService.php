@@ -282,6 +282,8 @@ class SalesOrderService
             'product_notes' => $lineData['product_notes'] ?? null,
             'variant_id' => $lineData['variant_id'] ?? null,
             'description' => $lineData['description'] ?? '',
+            // #1004: sanitized rich-text description.
+            'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($lineData['description_html'] ?? null),
             'sku' => $lineData['sku'] ?? null,
             'quantity' => $lineData['quantity'] ?? (($lineData['line_type'] ?? 'product') === 'product' ? 1 : 0),
             'unit' => $lineData['unit'] ?? 'pcs',
@@ -713,6 +715,8 @@ class SalesOrderService
             'product_notes' => $lineData['product_notes'] ?? null,
             'variant_id' => $lineData['variant_id'] ?? null,
             'description' => $lineData['description'] ?? '',
+            // #1004: sanitized rich-text description.
+            'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($lineData['description_html'] ?? null),
             'sku' => $lineData['sku'] ?? $product?->sku,
             'quantity' => $lineData['quantity'] ?? ($lineType === 'product' ? 1 : 0),
             'unit' => $lineData['unit'] ?? $product?->unit ?? 'pcs',
@@ -1056,6 +1060,8 @@ class SalesOrderService
                     'model_number' => $line->model_number,
                     'product_notes' => $line->product_notes,
                     'description' => $description,
+                    // #1004: the order line's sanitized rich text lands on the invoice line.
+                    'description_html' => $line->description_html,
                     'quantity' => $invoiceQuantity,
                     // Issue #685: the sales UoM travels onto the invoice so the
                     // document says "2 BX" and the e-invoice mapper can read

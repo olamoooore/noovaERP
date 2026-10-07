@@ -692,7 +692,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 {invoice.lines && invoice.lines.length > 0 ? (
                   invoice.lines.map((line: any, index: number) => (
                     <TableRow key={index}>
-                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
+                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4">{line.description_html ? <span dangerouslySetInnerHTML={{ __html: line.description_html }} /> : <span>{line.description}</span>}{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           {line.product?.image ? (
@@ -712,7 +712,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
-                      <TableCell className="whitespace-pre-line align-top">{line.description || '-'}</TableCell>
+                      <TableCell className="whitespace-pre-line align-top">{line.description_html ? <span dangerouslySetInnerHTML={{ __html: line.description_html }} /> : (line.description || '-')}</TableCell>
                       <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>

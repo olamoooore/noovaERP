@@ -142,4 +142,74 @@ class AdminInvoiceCreationFlowTest extends TenantTestCase
             'discount_amount' => 5,
         ]);
     }
+
+    /** #1004: rich-text description persists sanitized and travels to the sales-order line. */
+    public function test_invoice_line_rich_text_description_is_sanitized_and_stored(): void
+    {
+        $tenant = Tenant::withoutEvents(fn () => Tenant::factory()->create(['id' => '44444444-4444-4444-4444-444444444444']));
+        $this->bindTenantContext($tenant->id);
+
+        $user = User::create([
+            'name' => 'Rich Admin',
+            'email' => 'admin-rich@test.local',
+            'password' => bcrypt('password'),
+        ]);
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $customer = Customer::factory()->create();
+        $product = Product::factory()->create([
+            'track_inventory' => false,
+            'cost' => 10,
+            'price' => 25,
+        ]);
+
+        $rich = '<p style="text-align:center"><b>Bold</b> <i>italic</i> <u>under</u>'
+            .'<span style="color:#b91c1c;font-family:Georgia;font-size:14px">red serif</span>'
+            .'<script>alert(1)</script><img src=x onerror=alert(1)></p>'
+            .'<ul><li>First</li></ul>';
+
+        $response = $this->actingAs($user)->postJson('/api/v1/invoices', [
+            'customer_id' => $customer->id,
+            'invoice_date' => '2026-04-19',
+            'lines' => [[
+                'product_id' => $product->id,
+                'description' => 'Rich line',
+                'description_html' => $rich,
+                'quantity' => 1,
+                'unit_price' => 25,
+                'tax_rate' => 0,
+            ]],
+        ]);
+
+        $response->assertCreated();
+
+        $line = \App\Models\InvoiceLine::where('invoice_id', $response->json('id'))->firstOrFail();
+        $this->assertStringContainsString('<b>Bold</b>', $line->description_html);
+        $this->assertStringContainsString('<u>under</u>', $line->description_html);
+        $this->assertStringContainsString('color:#b91c1c', $line->description_html);
+        $this->assertStringContainsString('font-family:georgia', $line->description_html);
+        $this->assertStringContainsString('font-size:14px', $line->description_html);
+        $this->assertStringContainsString('text-align:center', $line->description_html);
+        $this->assertStringContainsString('<ul><li>First</li></ul>', $line->description_html);
+        $this->assertStringNotContainsString('<script', $line->description_html);
+        $this->assertStringNotContainsString('onerror', $line->description_html);
+        $this->assertStringNotContainsString('<img', $line->description_html);
+        // The plain description stays the search/export copy.
+        $this->assertSame('Rich line', $line->description);
+
+        // The sanitized HTML travelled through the sales-order line too.
+        $this->assertDatabaseHas('sales_order_lines', [
+            'description' => 'Rich line',
+        ]);
+        $salesLine = \Modules\Sales\Models\SalesOrderLine::where('description', 'Rich line')->firstOrFail();
+        $this->assertStringContainsString('<b>Bold</b>', $salesLine->description_html);
+        $this->assertStringNotContainsString('<script', $salesLine->description_html);
+    }
 }

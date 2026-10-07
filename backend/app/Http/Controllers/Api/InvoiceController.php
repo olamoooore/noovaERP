@@ -506,6 +506,8 @@ class InvoiceController extends Controller
             'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
+            // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
+            'lines.*.description_html' => 'nullable|string|max:20000',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -829,6 +831,8 @@ class InvoiceController extends Controller
                     'department_id' => $line['department_id'] ?? null,
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
+                    // #1004: sanitized rich-text description.
+                    'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                     'product_notes' => $line['product_notes'] ?? null,
                     'lot_number' => $line['lot_number'] ?? null,
                     'serial_number' => $line['serial_number'] ?? null,
@@ -893,6 +897,8 @@ class InvoiceController extends Controller
                 'department_id' => $line['department_id'] ?? null,
                 'model_number' => $line['model_number'] ?? null,
                 'description' => $line['description'],
+                // #1004: sanitized rich-text description.
+                'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                 'product_notes' => $line['product_notes'] ?? null,
                 'quantity' => $line['quantity'],
                 'uom_id' => $lineUom?->id,
@@ -1359,6 +1365,8 @@ class InvoiceController extends Controller
             'lines.*.department_id' => 'nullable|integer',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
+            // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
+            'lines.*.description_html' => 'nullable|string|max:20000',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -1530,6 +1538,8 @@ class InvoiceController extends Controller
                             'department_id' => $line['department_id'] ?? null,
                             'model_number' => $line['model_number'] ?? null,
                             'description' => $line['description'],
+                            // #1004: sanitized rich-text description.
+                            'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                             'product_notes' => $line['product_notes'] ?? null,
                             'lot_number' => $line['lot_number'] ?? null,
                             'serial_number' => $line['serial_number'] ?? null,

@@ -222,6 +222,8 @@ class InvoiceService
                     'branch_id' => $lineData['branch_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
+                    // #1004: sanitized rich-text description.
+                    'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($lineData['description_html'] ?? null),
                     'product_notes' => $lineData['product_notes'] ?? null,
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'serial_number' => $lineData['serial_number'] ?? null,

@@ -53,6 +53,8 @@ import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
+import { RichTextEditor } from '@/components/ui/RichTextEditor';
+import { htmlToPlainText, plainToRichHtml } from '@/lib/richText';
 import { missingTrackingLineIndex } from '@/lib/lotTracking';
 import { StockAvailabilityChip } from '@/components/sales/StockAvailabilityChip';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
@@ -89,6 +91,9 @@ interface InvoiceLine {
   sku: string;
   model_number: string;
   description: string;
+  // #1004: sanitized rich-text copy of the description (font family/size, colour, bold/italic/underline, alignment, lists).
+  description_html?: string | null;
+  uom_id?: number | string | null;
   product_notes: string;
   lot_number: string;
   serial_number: string;
@@ -198,6 +203,7 @@ const emptyLine = (): InvoiceLine => ({
   sku: '',
   model_number: '',
   description: '',
+  description_html: '',
   product_notes: '',
   lot_number: '',
   serial_number: '',
@@ -801,14 +807,17 @@ export const CreateInvoicePage: React.FC = () => {
       sku: line.product?.sku || '',
       model_number: line.model_number || line.product?.manufacturer_part_number || '',
       description: line.description || '',
+      description_html: line.description_html || '',
       product_notes: line.product_notes || '',
       lot_number: line.lot_number || '',
       serial_number: line.serial_number || '',
       product_batch_id: line.product_batch_id || null,
       product_serial_id: line.product_serial_id || null,
       tracking_method: line.product?.tracking_method || 'none',
+      // #1004: UOM lines keep 4-decimal quantities (spinner step); each lines step by 1.
+      uom_id: line.uom_id ?? null,
       expiry_date: line.expiry_date ? String(line.expiry_date).split('T')[0] : '',
-      quantity: Number(line.quantity ?? 1),
+      quantity: (normalizeQuantity(line.quantity ?? 1) || 1) as number,
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
       discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
@@ -1320,7 +1329,8 @@ export const CreateInvoicePage: React.FC = () => {
         product_id: line.product_id ? String(line.product_id) : '',
         sku: line.product?.sku ?? '',
         description: line.description ?? '',
-        quantity: line.quantity != null ? Number(line.quantity) : 1,
+        description_html: line.description_html || '',
+        quantity: line.quantity != null ? (normalizeQuantity(line.quantity) || 1) as number : 1,
         unit_price: line.unit_price != null ? Number(line.unit_price) : '',
         tax_rate: line.tax_rate != null ? Number(line.tax_rate) : (defaultTaxRate || ''),
         discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
@@ -1874,6 +1884,7 @@ export const CreateInvoicePage: React.FC = () => {
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
           model_number: line.model_number || null,
           description: line.description || 'Item',
+          description_html: line.description_html || null,
           product_notes: line.product_notes || null,
           lot_number: line.lot_number || null,
           serial_number: line.serial_number || null,
@@ -3002,7 +3013,7 @@ export const CreateInvoicePage: React.FC = () => {
                 >
                     {lines.map((line, index) => (
                       <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }} /> : <>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} html={line.description_html || plainToRichHtml(line.description)} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onHtmlChange={(html) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_html: html, description: htmlToPlainText(html) } : item))} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }} /> : <>
                         <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
@@ -3023,6 +3034,8 @@ export const CreateInvoicePage: React.FC = () => {
                                 updated[index].expiry_date = '';
                                 if (product) {
                                   updated[index].description = getProductLineDescription(product);
+                                  // #1004: a new product pick replaces any old rich formatting.
+                                  updated[index].description_html = '';
                                   updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
                                   updated[index].model_number = (product as any).manufacturer_part_number || '';
                                   updated[index].sku = (product as any).sku || '';
@@ -3049,12 +3062,13 @@ export const CreateInvoicePage: React.FC = () => {
                         </td>}
                         {visibleLineColumns.description && <td data-label="Description" className={cn(LINE_CELL, 'min-w-[16rem]')}>
                           <FieldSlot name={lineFieldKey(index, 'description')}>
-                            <textarea
-                              value={line.description}
-                              onChange={(event) => updateLine(index, 'description', event.target.value)}
-                              rows={2}
-                              className={LINE_TEXTAREA}
+                            {/* #1004: WYSIWYG description (bold/italic/underline/colour); plain text stays in sync for search/exports. */}
+                            <RichTextEditor
+                              compact
+                              value={line.description_html || plainToRichHtml(line.description)}
+                              onChange={(html) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_html: html, description: htmlToPlainText(html) } : item))}
                               placeholder="Description"
+                              className="min-w-0 bg-transparent"
                             />
                           </FieldSlot>
                         </td>}
@@ -3097,14 +3111,19 @@ export const CreateInvoicePage: React.FC = () => {
                               <input
                                 type="number"
                                 min="0"
-                                step="0.0001"
+                                step={line.uom_id ? '0.0001' : '1'}
                                 inputMode="decimal"
-                                value={normalizeQuantity(line.quantity)}
+                                value={line.quantity}
                                 onChange={(event) => {
                                   const raw = event.target.value;
                                   if (raw === '') { updateLine(index, 'quantity', ''); return; }
                                   const parsed = Number(raw);
-                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', normalizeQuantity(parsed) as number);
+                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
+                                }}
+                                onBlur={() => {
+                                  if (line.quantity !== '') {
+                                    updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number);
+                                  }
                                 }}
                                 onKeyDown={(event) => {
                                   // D6(e): Enter on the last row starts a new line.

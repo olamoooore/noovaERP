@@ -105,6 +105,9 @@ class InvoiceDataSource implements DataSourceContract
                 'index' => $isProduct ? $productIndex : null,
                 'sku' => $line->product?->sku ?? '',
                 'description' => $line->description ?? '',
+                // #1004: sanitized rich-text description (empty when the line
+                // has no formatting) so templates/PDFs render it verbatim.
+                'description_html' => $line->description_html ?? '',
                 'quantity' => $isProduct ? (float) $line->quantity : null,
                 'unit_price' => $isProduct ? (float) $line->unit_price : null,
                 'tax_rate' => (float) $line->tax_rate,

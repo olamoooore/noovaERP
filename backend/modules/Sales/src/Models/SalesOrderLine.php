@@ -17,6 +17,9 @@ class SalesOrderLine extends Model
         'model_number',
         'variant_id',
         'description',
+        // #1004: sanitized rich-text copy of the description (plain text stays
+        // in `description` for search/exports/e-invoice).
+        'description_html',
         'product_notes',
         'sku',
         'quantity',

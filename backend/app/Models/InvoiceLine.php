@@ -25,6 +25,9 @@ class InvoiceLine extends Model
         'department_id',
         'branch_id',
         'description',
+        // #1004: sanitized rich-text copy of the description (plain text stays
+        // in `description` for search/exports/e-invoice).
+        'description_html',
         'tax_type',
         'tax_exemption_reason',
         'product_notes',

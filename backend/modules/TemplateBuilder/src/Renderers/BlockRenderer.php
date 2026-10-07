@@ -189,7 +189,11 @@ final class BlockRenderer implements TemplateRendererInterface
         foreach ($rows as $index => $row) {
             $lineType = (string) ($row['line_type'] ?? 'product');
             if (in_array($lineType, ['note', 'section'], true)) {
-                $description = htmlspecialchars((string) ($row['description'] ?? ''), ENT_QUOTES);
+                // #1004: sanitized rich text renders verbatim; plain text is escaped.
+                $descriptionHtml = trim((string) ($row['description_html'] ?? ''));
+                $description = $descriptionHtml !== ''
+                    ? $descriptionHtml
+                    : htmlspecialchars((string) ($row['description'] ?? ''), ENT_QUOTES);
                 $textStyle = $lineType === 'section'
                     ? 'font-weight:700;background:#f3f4f6;color:#111827;'
                     : 'font-style:italic;background:#f9fafb;color:#6b7280;';
@@ -222,7 +226,15 @@ final class BlockRenderer implements TemplateRendererInterface
                 : '';
             $body .= '<tr class="'.$class.'"'.$markers.'>';
             foreach ($columns as $col) {
-                $body .= '<td style="'.$this->tdStyle($col).'">'.$this->renderCell($col, $row).'</td>';
+                $cell = $this->renderCell($col, $row);
+                // #1004: the description column renders the sanitized rich text.
+                if (($col['field'] ?? '') === 'description') {
+                    $rich = trim((string) ($row['description_html'] ?? ''));
+                    if ($rich !== '') {
+                        $cell = $rich;
+                    }
+                }
+                $body .= '<td style="'.$this->tdStyle($col).'">'.$cell.'</td>';
             }
             $body .= '</tr>';
         }
