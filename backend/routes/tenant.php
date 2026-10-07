@@ -230,6 +230,22 @@ Route::middleware([
     Route::post('/quotation-accept/{token}/accept', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'accept'])
         ->middleware('throttle:5,1');
 
+    // Issue #337: customer portal (signed, expiring, revocable per-customer
+    // link — no customer login). Tenant resolved from the token through the
+    // central #466 registry; every route has its OWN throttle bucket.
+    Route::prefix('customer-portal/{token}')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\CustomerPortalController::class, 'show'])
+            ->middleware('throttle:60,1,customer-portal-show');
+        Route::get('/statement', [\App\Http\Controllers\Api\CustomerPortalController::class, 'statement'])
+            ->middleware('throttle:30,1,customer-portal-statement');
+        Route::get('/invoices/{invoice}/pdf', [\App\Http\Controllers\Api\CustomerPortalController::class, 'invoicePdf'])
+            ->middleware('throttle:30,1,customer-portal-pdf');
+        Route::get('/quotations/{quotation}/pdf', [\App\Http\Controllers\Api\CustomerPortalController::class, 'quotationPdf'])
+            ->middleware('throttle:30,1,customer-portal-pdf');
+        Route::post('/invoices/{invoice}/pay', [\App\Http\Controllers\Api\CustomerPortalController::class, 'pay'])
+            ->middleware('throttle:10,1,customer-portal-pay');
+    });
+
     // FR-ARC-06 (P2): legacy shopper register/login RETIRED — accounts are
     // not migrated (FR-ARC-05/D8); the retired prefix falls to the 410
     // catch-all below (the P2.6 brute-force throttle concern is moot).

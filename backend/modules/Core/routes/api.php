@@ -727,6 +727,23 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('customers.view'));
     });
 
+    // Issue #337: customer portal links (signed, expiring, revocable). Sharing
+    // a customer's documents is a send action, so the existing invoices.send
+    // grant gates issue/list/revoke (no new permission). Entity scoping of the
+    // customer happens in the controller (same rule as CustomerController).
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::get('/customers/{customer}/portal-links', [\App\Http\Controllers\Api\CustomerPortalLinkController::class, 'index'])
+            ->whereNumber('customer')
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::post('/customers/{customer}/portal-links', [\App\Http\Controllers\Api\CustomerPortalLinkController::class, 'store'])
+            ->whereNumber('customer')
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::delete('/customers/{customer}/portal-links/{link}', [\App\Http\Controllers\Api\CustomerPortalLinkController::class, 'destroy'])
+            ->whereNumber('customer')
+            ->whereNumber('link')
+            ->middleware(RequirePermission::using('invoices.send'));
+    });
+
     // Accounting
     Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Dashboard

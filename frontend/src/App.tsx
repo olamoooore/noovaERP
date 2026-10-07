@@ -39,6 +39,7 @@ const SearchResultsPage = lazy(() => import('@/pages/SearchResultsPage').then(m 
 const ApprovalsInboxPage = lazy(() => import('@/pages/ApprovalsInboxPage').then(m => ({ default: m.default })))
 const InvoiceAcceptancePage = lazy(() => import('@/pages/InvoiceAcceptancePage').then(m => ({ default: m.default })))
 const QuotationAcceptancePage = lazy(() => import('@/pages/QuotationAcceptancePage').then(m => ({ default: m.default })))
+const CustomerPortalPage = lazy(() => import('@/pages/CustomerPortalPage').then(m => ({ default: m.default })))
 const DeliveryOrderAcceptancePage = lazy(() => import('@/pages/DeliveryOrderAcceptancePage').then(m => ({ default: m.default })))
 const EsignPage = lazy(() => import('@/pages/EsignPage').then(m => ({ default: m.EsignPage })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
@@ -354,6 +355,7 @@ function App() {
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/invoice-accept/:token" element={<InvoiceAcceptancePage />} />
             <Route path="/quotation-accept/:token" element={<QuotationAcceptancePage />} />
+            <Route path="/customer-portal/:token" element={<CustomerPortalPage />} />
             <Route path="/do-accept/:token" element={<DeliveryOrderAcceptancePage />} />
             <Route path="/sign/:token" element={<EsignPage />} />
             

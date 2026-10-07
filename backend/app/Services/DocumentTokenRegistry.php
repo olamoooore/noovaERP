@@ -34,6 +34,9 @@ class DocumentTokenRegistry
 
     public const TYPE_SALES_ORDER = 'sales_order';
 
+    /** Issue #337: per-customer portal link (document_id = customer_portal_links.id). */
+    public const TYPE_CUSTOMER_PORTAL = 'customer_portal';
+
     /**
      * Record (or refresh) the token → tenant mapping. Safe to call outside a
      * tenant context: it is then a no-op, because no tenant can be recorded.
@@ -122,7 +125,24 @@ class DocumentTokenRegistry
         return null;
     }
 
-    private function hash(string $token): string
+    /**
+     * Issue #337: drop a token's central mapping (revocation). Callers that
+     * only hold the stored hash pass it directly — the raw token is never
+     * persisted for portal links.
+     */
+    public function forgetHash(string $tokenHash, string $documentType): void
+    {
+        if ($tokenHash === '') {
+            return;
+        }
+
+        DocumentTokenLookup::query()
+            ->where('token_hash', $tokenHash)
+            ->where('document_type', $documentType)
+            ->delete();
+    }
+
+    public function hash(string $token): string
     {
         return hash('sha256', $token);
     }

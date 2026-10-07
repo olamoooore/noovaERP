@@ -29,6 +29,7 @@ import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialo
 import { useCanRegisterPayment } from '@/lib/registerPayment'
 import { CustomerForm } from '@/components/customers/CustomerForm'
 import { CustomerBankAccounts } from '@/components/customers/CustomerBankAccounts' // #444
+import { CustomerPortalLinkButton } from '@/components/customers/CustomerPortalLinkButton' // #337
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
@@ -707,6 +708,7 @@ export function CustomerDetailsPage() {
           >
             Email
           </HeaderActionButton>
+          <CustomerPortalLinkButton customerId={customer.id} />
           <HeaderActionButton icon="solar:pen-bold-duotone" onClick={openEditDialog}>
             Edit
           </HeaderActionButton>

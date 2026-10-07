@@ -133,6 +133,28 @@ class InitializeTenantForPublicAccess
             }
         }
 
+        // Issue #337: customer portal — the token identifies the tenant via the
+        // central #466 registry (one indexed lookup, no tenant scan). An
+        // unregistered/revoked token fails closed here: it never falls through
+        // to host resolution, so no tenant schema is touched for it.
+        if (preg_match('#^api/v1/customer-portal/#', $path)) {
+            $token = (string) ($request->route('token') ?? '');
+            $tenant = $token !== ''
+                ? app(\App\Services\CustomerPortalService::class)->resolveTenantForToken($token)
+                : null;
+
+            if (! $tenant) {
+                return response()->json([
+                    'error' => 'Invalid or expired portal link.',
+                    'code' => 'INVALID_TOKEN',
+                ], 404);
+            }
+
+            $this->tenancy->initialize($tenant);
+
+            return $next($request);
+        }
+
         // Built-in e-signature signing page — the token identifies the tenant.
         if (preg_match('#^api/v1/sign/#', $path)) {
             $token = $request->route('token');
