@@ -348,8 +348,9 @@ class GeneralLedgerService extends BaseReportService
      */
     public function getHierarchy(ReportFilter $filter): array
     {
-        $settings = CompanySettings::query()->first();
-        $fiscalStartMonth = max(1, min(12, (int) ($settings?->fiscal_year_start_month ?? 1)));
+        // Issue #1028: the fiscal year comes from the request's legal entity
+        // (the #768 source of truth), not company_settings.
+        [$fiscalStartMonth] = CompanySettings::fiscalYearStartFor($filter->legalEntityId);
 
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')

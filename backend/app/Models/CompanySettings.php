@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Company Settings - Configuration for accounting system
@@ -106,25 +107,50 @@ class CompanySettings extends Model
     }
 
     /**
-     * Get the current fiscal year start date
+     * Issue #1028 (follow-up to #768): the fiscal year start [month, day]
+     * derived from the legal entity, the single source of truth. The given
+     * entity is used when it exists, otherwise the primary (first active)
+     * entity, as the company-settings fiscal-year endpoint does. Only a
+     * legacy tenant with no legal entity falls back to company_settings.
+     *
+     * @return array{0: int, 1: int}
      */
-    public function getFiscalYearStartDate(?int $year = null): \Carbon\Carbon
+    public static function fiscalYearStartFor(?int $legalEntityId = null): array
     {
-        $year = $year ?? now()->year;
+        $entity = null;
+        if ($legalEntityId !== null) {
+            $entity = DB::table('legal_entities')->where('id', $legalEntityId)->first();
+        }
+        $entity ??= DB::table('legal_entities')->where('status', 'active')->orderBy('id')->first();
 
-        return \Carbon\Carbon::create(
-            $year,
-            $this->fiscal_year_start_month,
-            $this->fiscal_year_start_day
-        );
+        if ($entity) {
+            return FiscalPeriod::parseFiscalYearStart($entity->fiscal_year_start);
+        }
+
+        $settings = DB::table('company_settings')->first();
+        $month = (int) ($settings->fiscal_year_start_month ?? 1);
+        $day = (int) ($settings->fiscal_year_start_day ?? 1);
+
+        return [max(1, min(12, $month)), max(1, min(31, $day))];
     }
 
     /**
-     * Get the current fiscal year end date
+     * Get the fiscal year start date (derived from the legal entity, #1028).
      */
-    public function getFiscalYearEndDate(?int $year = null): \Carbon\Carbon
+    public function getFiscalYearStartDate(?int $year = null, ?int $legalEntityId = null): \Carbon\Carbon
     {
-        return $this->getFiscalYearStartDate($year)->addYear()->subDay();
+        $year = $year ?? now()->year;
+        [$month, $day] = static::fiscalYearStartFor($legalEntityId);
+
+        return \Carbon\Carbon::create($year, $month, $day);
+    }
+
+    /**
+     * Get the fiscal year end date (derived from the legal entity, #1028).
+     */
+    public function getFiscalYearEndDate(?int $year = null, ?int $legalEntityId = null): \Carbon\Carbon
+    {
+        return $this->getFiscalYearStartDate($year, $legalEntityId)->addYear()->subDay();
     }
 
     /**
