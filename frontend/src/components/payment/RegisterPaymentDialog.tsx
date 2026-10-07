@@ -388,6 +388,11 @@ export const RecordPaymentForm: React.FC<{
   const writeOffReasons = writeOffSettings?.write_off_reasons ?? [];
   const writeOffAvailable = writeOffTolerance > 0 && writeOffReasons.length > 0 && paymentDifference <= writeOffTolerance;
   const writeOffSelected = showDifference && writeOffAvailable && differenceMode === 'write_off' && writeOffReason !== '';
+  // #506 (PY4): within tolerance, a one-tap chip applies the write-off with
+  // the suggested reason — the first configured reason.
+  const suggestedWriteOffReason = writeOffAvailable ? writeOffReasons[0] : undefined;
+  const shortPayChipApplied = suggestedWriteOffReason != null
+    && differenceMode === 'write_off' && writeOffReason === suggestedWriteOffReason.code;
 
   // #487: Reference is optional unless the method master requires it — then
   // it is shown up front instead of behind "More".
@@ -512,6 +517,25 @@ export const RecordPaymentForm: React.FC<{
           <p className="text-sm">
             Payment difference: <span className="font-medium" data-testid="payment-difference-amount">{paymentDifference.toFixed(2)}</span>
           </p>
+          {suggestedWriteOffReason && (
+            <button
+              type="button"
+              data-testid="short-pay-chip"
+              aria-pressed={shortPayChipApplied}
+              onClick={() => {
+                setDifferenceMode('write_off');
+                setWriteOffReason(suggestedWriteOffReason.code);
+              }}
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                shortPayChipApplied
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-input bg-background hover:bg-accent'
+              }`}
+            >
+              {shortPayChipApplied ? 'Written off: ' : 'Write off '}
+              {paymentDifference.toFixed(2)} as {suggestedWriteOffReason.label}
+            </button>
+          )}
           <div className="flex flex-col gap-2 text-sm" role="radiogroup" aria-label="Payment difference">
             <label className="flex items-center gap-2">
               <input
