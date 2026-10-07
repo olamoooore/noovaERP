@@ -85,6 +85,63 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
         $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
     }
 
+    /**
+     * Hostile review of the fix: a row that fails during COMMIT for a
+     * business reason (here a batch staged BEFORE the fix, still carrying
+     * CLINICAL as `valid`) must reject only that row — its writes rolled back
+     * — and the rest of the batch must still import.
+     */
+    public function test_a_row_failing_at_commit_is_rejected_alone_and_rolled_back(): void
+    {
+        $headers = $this->authorisedHeaders();
+        $csv = "name,code,contact_name,contact_category,contact_type\n".
+            "Acme Corp,VC0001,John Doe,Finance,Primary\n".
+            'Bayu Trading,VC0002,Siti Aminah,Finance,Primary';
+
+        $batchId = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
+            ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile($csv)])
+            ->assertOk()->json('batch_id');
+
+        // What a batch staged before the fix looks like: CLINICAL resolved
+        // from the static mapping and the row marked commit-ready.
+        $first = DB::table('contact_import_staging')->where('batch_id', $batchId)->orderBy('row_number')->first();
+        $mapped = json_decode((string) $first->mapped_data, true);
+        $mapped['_taxonomy']['functional_category'] = 'CLINICAL';
+        $mapped['_taxonomy']['functional_category_label'] = 'Clinical';
+        $mapped['_taxonomy']['unknown'] = [];
+        DB::table('contact_import_staging')->where('id', $first->id)->update(['mapped_data' => json_encode($mapped), 'status' => 'valid']);
+
+        $commit = $this->withHeaders($headers)
+            ->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")
+            ->assertOk();
+        $this->assertSame(1, $commit->json('imported'));
+        $this->assertSame(1, $commit->json('rejected'));
+
+        $row = DB::table('contact_import_staging')->where('id', $first->id)->first();
+        $this->assertSame('error', $row->status);
+        $this->assertStringContainsString('UNKNOWN_TAXONOMY_VALUE', (string) $row->errors);
+        $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
+        $this->assertDatabaseHas('customers', ['code' => 'VC0002', 'name' => 'Bayu Trading']);
+    }
+
+    /** @return array<string, string> */
+    private function authorisedHeaders(): array
+    {
+        $user = User::factory()->create();
+        $user->assignRole('admin');
+        $user->givePermissionTo('customers.write');
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $this->tenantUuid,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return ['Authorization' => 'Bearer '.$user->createToken('test')->plainTextToken];
+    }
+
     private function csvFile(string $csv): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'import');

@@ -59,6 +59,9 @@ class CustomerImportService
         private readonly ContactTaxonomyService $taxonomy,
     ) {}
 
+    /** @var array<string, bool> tenant-vocabulary validity per "type|code" (#1037) */
+    private array $validTaxonomyCodes = [];
+
     /**
      * Stage + validate rows (DRY_RUN). No authoritative writes occur.
      */
@@ -286,7 +289,20 @@ class CustomerImportService
                     continue;
                 }
 
-                $this->writeAuthoritative($mapped, $taxonomy, $tenantId, $legalEntityId);
+                // #1037: one savepoint per row. A business rejection raised while
+                // writing (an unknown taxonomy code in a batch staged before the
+                // vocabulary check, a vocabulary changed since staging, an
+                // invalid site, a contact that vanished) rolls back only this
+                // row's writes and rejects it with its reason; the rest of the
+                // batch still imports. Other errors still abort the commit.
+                try {
+                    DB::transaction(fn () => $this->writeAuthoritative($mapped, $taxonomy, $tenantId, $legalEntityId));
+                } catch (\DomainException|\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => 'Rejected at COMMIT: '.$e->getMessage()]);
+                    $rejected++;
+
+                    continue;
+                }
 
                 $staging->update(['status' => self::STATUS_IMPORTED]);
                 $imported++;
@@ -556,15 +572,33 @@ class CustomerImportService
             $checks[] = [ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE, $result['persistent_role'], 'contact_type: '.$contactType];
         }
         foreach ($checks as [$type, $code, $source]) {
-            try {
-                $this->taxonomy->assertValidCode($type, (string) $code);
-            } catch (\DomainException) {
+            if (! $this->isValidTaxonomyCode($type, (string) $code)) {
                 $result['unknown'][] = $source;
-                $warnings[] = "Unknown {$source} for this company ({$code} is not in its vocabulary) — no canonical code created.";
+                $warnings[] = "Unknown {$source} for this tenant ({$code} is not in its vocabulary) — no canonical code created.";
             }
         }
 
         return $result;
+    }
+
+    /**
+     * #1037: tenant-vocabulary check, remembered per (type, code) for the
+     * lifetime of this service (one import request), so a large file does
+     * not repeat the same lookups for every row.
+     */
+    private function isValidTaxonomyCode(string $type, string $code): bool
+    {
+        $key = $type.'|'.$code;
+        if (! array_key_exists($key, $this->validTaxonomyCodes)) {
+            try {
+                $this->taxonomy->assertValidCode($type, $code);
+                $this->validTaxonomyCodes[$key] = true;
+            } catch (\DomainException) {
+                $this->validTaxonomyCodes[$key] = false;
+            }
+        }
+
+        return $this->validTaxonomyCodes[$key];
     }
 
     private function validateRow(array $mapped)
