@@ -26,6 +26,7 @@ import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation'
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip'
 import { useCustomerAutofill } from '@/hooks/useCustomerAutofill'
 import { getCustomerContactDefaults, pickCustomerAddress } from '@/lib/customerDocumentDefaults'
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox'
@@ -906,6 +907,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 </FieldSlot>
               </div>
             </div>
+
+            {/* #340: compact AR context for the selected customer (invoice parity). */}
+            <CustomerContextStrip customerId={customerId || null} className="mt-3" />
 
             {/* Row 2: direct dropdowns + chips, one compact strip. */}
             <div className="mt-3 flex flex-wrap items-center gap-2">

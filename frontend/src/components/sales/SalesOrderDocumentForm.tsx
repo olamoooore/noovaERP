@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
 import { SalesDocumentLineGrid, type SalesDocumentLineGridHandle } from '@/components/sales/SalesDocumentLineGrid'
 import { EditingBanner } from '@/components/sales/EditingBanner'
@@ -524,6 +525,9 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
                 />
               </div>
             </div>
+
+            {/* #340: compact AR context for the selected customer (invoice parity). */}
+            <CustomerContextStrip customerId={customerId || null} />
 
             <div className="flex flex-wrap items-center gap-2">
               {mode === 'create' ? (

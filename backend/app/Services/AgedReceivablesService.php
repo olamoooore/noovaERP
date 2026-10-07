@@ -71,10 +71,15 @@ class AgedReceivablesService
             ? round($outstanding / $creditLimit * 100, 1)
             : null;
 
-        $lastInvoiceDate = $customer->invoices()
+        // Issue #340: one row (newest invoice date, then newest id) gives the
+        // date plus the number/id the strip links to.
+        $lastInvoice = $customer->invoices()
             ->whereIn('status', Customer::PURCHASE_INVOICE_STATUSES)
             ->notSuperseded()
-            ->max('invoice_date');
+            ->orderByDesc('invoice_date')
+            ->orderByDesc('id')
+            ->first(['id', 'invoice_number', 'invoice_date']);
+        $lastInvoiceDate = $lastInvoice?->invoice_date;
 
         return [
             'customer_id' => $customerId,
@@ -88,6 +93,8 @@ class AgedReceivablesService
             'credit_utilization_pct' => $utilization,
             'credit_available' => $creditLimit !== null ? round($creditLimit - $outstanding, 2) : null,
             'last_invoice_date' => $lastInvoiceDate ? Carbon::parse($lastInvoiceDate)->toDateString() : null,
+            'last_invoice_id' => $lastInvoice?->id,
+            'last_invoice_number' => $lastInvoice?->invoice_number,
         ];
     }
 

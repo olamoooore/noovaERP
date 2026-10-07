@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, Ban, CalendarClock, CreditCard, Wallet } from 'lucide-react';
 import api from '@/lib/api';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
@@ -16,6 +17,9 @@ export interface CustomerContext {
   credit_utilization_pct: number | null;
   credit_available: number | null;
   last_invoice_date: string | null;
+  /** Issue #340: the invoice behind last_invoice_date, for the strip's link. */
+  last_invoice_id?: number | null;
+  last_invoice_number?: string | null;
   credit_check?: CreditCheckVerdict;
 }
 
@@ -137,7 +141,23 @@ export function CustomerContextStrip({
 
       <span className={cn(CHIP, CHIP_NEUTRAL)}>
         <CalendarClock className="h-3.5 w-3.5" />
-        {context.last_invoice_date ? `Last invoice ${formatDate(context.last_invoice_date)}` : 'No invoices yet'}
+        {context.last_invoice_date ? (
+          <>
+            Last invoice{' '}
+            {context.last_invoice_id && context.last_invoice_number ? (
+              <Link
+                to={`/invoices/${context.last_invoice_id}`}
+                className="font-medium text-primary hover:underline"
+                title="Open the customer's last invoice"
+              >
+                {context.last_invoice_number}
+              </Link>
+            ) : null}{' '}
+            {formatDate(context.last_invoice_date)}
+          </>
+        ) : (
+          'No invoices yet'
+        )}
       </span>
     </div>
   );
