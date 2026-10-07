@@ -25,6 +25,7 @@ import {
 } from '@/lib/salesDashboardPeriods';
 import { formatCurrency } from '@/lib/utils';
 import type { SalesDashboardData } from '@/types/reports';
+import { useAuthStore } from '@/store/authStore';
 import { SavedViewWidgets } from './SavedViewWidgets';
 import { SalesActionQueues } from './SalesActionQueues';
 
@@ -37,6 +38,12 @@ const PERIODS: SalesDashboardPeriod[] = ['today', 'week', 'month', 'year', 'cust
 const YEARS_OFFERED = 10;
 // #361: rows the product and customer widgets request (Top-N).
 const WIDGET_TOP_N = 10;
+
+// #356 (decision 2026-10-07): sales analytics stay behind reports.view, which
+// the Sales role does not hold. The endpoints answer 403 for such users.
+const ANALYTICS_PERMISSION = 'reports.view';
+const isForbidden = (err: unknown) =>
+  (err as { response?: { status?: number } } | null)?.response?.status === 403;
 
 /**
  * Sales Dashboard Page
@@ -51,6 +58,13 @@ export const SalesDashboard: React.FC = () => {
     formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1))
   );
   const [customEnd, setCustomEnd] = useState(() => formatLocalDate(now));
+
+  // #356: when the loaded role is known to lack reports.view, don't fire the
+  // analytics calls at all (they would only 403). With no role loaded yet the
+  // calls go out and a 403 response is handled the same way below.
+  const knownWithoutAnalytics = useAuthStore(
+    (state) => state.role !== null && !state.hasPermission(ANALYTICS_PERMISSION)
+  );
 
   // #358 (S10): one resolved period drives the KPI row AND the charts, with the
   // comparison range the KPI row is measured against.
@@ -81,9 +95,11 @@ export const SalesDashboard: React.FC = () => {
   const {
     data: kpis,
     isLoading: kpisLoading,
+    error: kpisError,
     refetch: refetchKpis,
   } = useQuery({
     queryKey: ['sales-kpis', currentFilters, previousFilters, today],
+    enabled: !knownWithoutAnalytics,
     queryFn: async () => {
       if (!currentFilters || !previousFilters) {
         const todayOnly = await reportApi.getSalesSummary({ start_date: today, end_date: today });
@@ -117,7 +133,7 @@ export const SalesDashboard: React.FC = () => {
   // Fetch dashboard data for selected period
   const { data, isLoading, error, refetch } = useQuery<Omit<SalesDashboardData, 'metrics'> & { base_currency?: string }>({
     queryKey: ['sales-dashboard', currentFilters],
-    enabled: currentFilters !== null,
+    enabled: currentFilters !== null && !knownWithoutAnalytics,
     queryFn: async () => {
       const filters = currentFilters!;
       // Aggregate data from multiple endpoints.
@@ -160,6 +176,43 @@ export const SalesDashboard: React.FC = () => {
     }
     refetchKpis();
   };
+
+  // #356: no reports.view → a clear permission message in place of the
+  // analytics, while the operational cockpit (action queues) keeps working.
+  if (knownWithoutAnalytics || isForbidden(error) || isForbidden(kpisError)) {
+    return (
+      <div className="space-y-4 p-6">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold tracking-tight">Sales Dashboard</h1>
+        </div>
+
+        <SavedViewWidgets />
+
+        <SalesActionQueues />
+
+        <Card
+          role="status"
+          data-testid="sales-analytics-permission"
+          className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40"
+        >
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <Icon icon="solar:lock-keyhole-bold-duotone" className="mt-0.5 h-5 w-5 text-amber-600" />
+              <div>
+                <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Sales analytics need the Reports permission — ask an administrator
+                </h3>
+                <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+                  Revenue figures, trends and top products/customers require the reports.view
+                  permission, which your role does not include.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (

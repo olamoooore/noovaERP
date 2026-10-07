@@ -31,11 +31,13 @@ $tenantMiddleware = [
     \App\Http\Middleware\EnsureEntityAccess::class,
 ];
 
-// Sales cockpit: the Sales dashboard's analytics plus the per-user pinned
-// saved-view widgets. Readable with reports.view OR sales.view, so the Sales
-// role can load its dashboard without gaining the financial reports (P&L,
-// balance sheet, GL, …) that stay reports.view-only below.
-Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission::using('reports.view|sales.view')])
+// Sales analytics read by the Sales dashboard, plus the per-user pinned
+// saved-view widgets. Issue #356, product-owner decision 2026-10-07 ("Revert,
+// keep blocked"): sales analytics are report figures and need reports.view,
+// which the SALES role does not hold — d84241fd's reports.view|sales.view
+// carve-out is reverted. The Sales landing page shows a permission message
+// instead. Kept as its own group only for readability.
+Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission::using('reports.view')])
     ->group(function () {
         Route::prefix('analytics')->name('analytics.')->group(function () {
             Route::get('/sales/by-product', [AnalyticsController::class, 'salesByProduct'])->name('sales.by-product');
@@ -48,7 +50,7 @@ Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission:
             // and filters as the row, so it is readable wherever the row is.
             Route::get('/sales/drilldown', [AnalyticsController::class, 'salesDrilldown'])->name('sales.drilldown');
             // Issue #532: credit note analysis — same read model, filters and
-            // reports.view|sales.view group as the rows it drills from.
+            // reports.view gate as the rows it drills from.
             Route::get('/sales/credit-notes', [AnalyticsController::class, 'creditNoteAnalysis'])->name('sales.credit-notes');
         });
 
@@ -170,8 +172,8 @@ Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission:
             Route::post('/{id}/favourite', [SavedReportViewController::class, 'setFavourite'])->name('favourite');
         });
 
-        // Issue #603: per-user Sales-cockpit widgets pinning a saved view (#598).
-        // Carved out of this group above (reports.view|sales.view).
+        // Issue #603: per-user Sales-cockpit widgets pinning a saved view (#598)
+        // live in the reports.view group above.
 
         // Cache Management
         Route::prefix('reports/cache')->name('reports.cache.')->group(function () {

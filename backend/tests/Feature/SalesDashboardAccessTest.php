@@ -12,10 +12,12 @@ use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 /**
- * The Sales dashboard calls the sales analytics endpoints and the per-user
- * pinned widgets. Those must be readable with reports.view OR sales.view so
- * the Sales role can load its dashboard, while the financial reports
- * (P&L, balance sheet, GL) stay reports.view-only.
+ * Issue #356 — product-owner decision 2026-10-07: "Revert, keep blocked".
+ * The Sales role must NOT have access to sales analytics: /analytics/sales/*
+ * and the reports dashboard widgets stay behind reports.view, which SALES does
+ * not hold (no RolePermissionSeeder change). The Sales cockpit's operational
+ * action queues (#365) are document work lists, not analytics, and stay
+ * readable with sales.view. Every assertion goes through the real router.
  */
 class SalesDashboardAccessTest extends TenantTestCase
 {
@@ -48,48 +50,65 @@ class SalesDashboardAccessTest extends TenantTestCase
     }
 
     /**
+     * Sales analytics / report figures the Sales dashboard reads.
+     *
      * @return string[]
      */
-    private function salesCockpitEndpoints(): array
+    private function salesAnalyticsEndpoints(): array
     {
         $period = '?start_date=2026-10-01&end_date=2026-10-31';
 
         return [
             '/api/v1/analytics/sales/by-product'.$period,
+            '/api/v1/analytics/sales/summary'.$period,
             '/api/v1/analytics/sales/trends'.$period.'&interval=day',
             '/api/v1/analytics/sales/by-customer'.$period,
             '/api/v1/analytics/sales/by-category'.$period,
+            '/api/v1/analytics/sales/credit-notes'.$period.'&group_by=reason',
+            '/api/v1/analytics/sales/drilldown'.$period.'&dimension=product&key=none',
+            '/api/v1/reports/sales-records'.$period,
             '/api/v1/reports/dashboard/widgets',
         ];
     }
 
-    public function test_sales_role_can_load_the_sales_dashboard_but_not_financial_reports(): void
+    public function test_sales_role_is_denied_sales_analytics_and_financial_reports(): void
     {
         $sales = $this->centralUser('sales');
 
-        foreach ($this->salesCockpitEndpoints() as $path) {
-            $this->actingAs($sales)->getJson($path)->assertOk();
+        foreach ($this->salesAnalyticsEndpoints() as $path) {
+            $response = $this->actingAs($sales)->getJson($path);
+            $response->assertStatus(403, "Sales must be denied {$path}");
+            $response->assertJsonPath('required_permission', 'reports.view');
         }
 
-        // The carve-out must not widen Sales into the financial reports.
         $this->actingAs($sales)
             ->getJson('/api/v1/reports/financial/profit-loss')
             ->assertForbidden();
-        $this->actingAs($sales)
-            ->getJson('/api/v1/reports/financial/balance-sheet')
-            ->assertForbidden();
     }
 
-    public function test_reports_view_roles_keep_access_to_both(): void
+    public function test_reports_view_roles_can_read_sales_analytics(): void
     {
-        $admin = $this->centralUser('admin');
-
-        foreach ($this->salesCockpitEndpoints() as $path) {
-            $this->actingAs($admin)->getJson($path)->assertOk();
+        // MANAGER and VIEWER hold reports.view in the seeder (not super roles).
+        foreach (['manager', 'viewer'] as $role) {
+            $user = $this->centralUser($role);
+            foreach ([
+                '/api/v1/analytics/sales/by-product?start_date=2026-10-01&end_date=2026-10-31',
+                '/api/v1/analytics/sales/trends?start_date=2026-10-01&end_date=2026-10-31&interval=day',
+                '/api/v1/analytics/sales/by-customer?start_date=2026-10-01&end_date=2026-10-31',
+                '/api/v1/analytics/sales/by-category?start_date=2026-10-01&end_date=2026-10-31',
+                '/api/v1/reports/dashboard/widgets',
+            ] as $path) {
+                $response = $this->actingAs($user)->getJson($path);
+                $response->assertStatus(200, "{$role} must read {$path}: ".$response->getContent());
+            }
         }
+    }
 
-        $this->actingAs($admin)
-            ->getJson('/api/v1/reports/financial/profit-loss?start_date=2026-10-01&end_date=2026-10-31')
-            ->assertOk();
+    public function test_sales_role_keeps_its_operational_action_queues(): void
+    {
+        $sales = $this->centralUser('sales');
+
+        $response = $this->actingAs($sales)->getJson('/api/v1/sales/dashboard/action-queues');
+        $response->assertStatus(200, $response->getContent());
     }
 }
