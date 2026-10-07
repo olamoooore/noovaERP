@@ -135,6 +135,16 @@ class Customer extends Model
     }
 
     /**
+     * Issue #444: the customer's bank accounts live on its canonical Contact
+     * Master contact (contact_bank_accounts, ADR-003A). Account numbers are
+     * encrypted at rest and masked by viewer permission on the model.
+     */
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(\Modules\Contact\src\Models\ContactBankAccount::class, 'contact_id', 'core_contact_uuid');
+    }
+
+    /**
      * Customer addresses
      */
     public function addresses(): HasMany

@@ -28,6 +28,7 @@ import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog' // #489
 import { useCanRegisterPayment } from '@/lib/registerPayment'
 import { CustomerForm } from '@/components/customers/CustomerForm'
+import { CustomerBankAccounts } from '@/components/customers/CustomerBankAccounts' // #444
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
@@ -1821,6 +1822,9 @@ export function CustomerDetailsPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* #444: customer bank accounts (refund payees). */}
+            {id && <CustomerBankAccounts customerId={id} />}
           </div>
         </TabsContent>
 

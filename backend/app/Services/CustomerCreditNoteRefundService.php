@@ -13,6 +13,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Modules\Contact\src\Models\ContactBankAccount;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -48,7 +49,7 @@ class CustomerCreditNoteRefundService
     ) {}
 
     /**
-     * @param  array{amount: float|int|string, bank_account_id?: int|null, method?: string|null, refund_date?: string|null, reference?: string|null, notes?: string|null, currency_code?: string|null}  $data
+     * @param  array{amount: float|int|string, bank_account_id?: int|null, customer_bank_account_id?: string|null, method?: string|null, refund_date?: string|null, reference?: string|null, notes?: string|null, currency_code?: string|null}  $data
      */
     public function refund(CustomerCreditNote $creditNote, array $data): CustomerCreditNoteRefund
     {
@@ -116,6 +117,29 @@ class CustomerCreditNoteRefundService
                 }
             }
 
+            // #444: the refund can be paid to one of the customer's own bank
+            // accounts (Contact Master contact_bank_accounts). It must belong
+            // to this note's customer, be active and not removed, and be in
+            // the refund currency when it names one.
+            $customerBankAccountId = ! empty($data['customer_bank_account_id']) ? (string) $data['customer_bank_account_id'] : null;
+            if ($customerBankAccountId !== null) {
+                $payeeContactId = $creditNote->customer?->core_contact_uuid;
+                $payee = $payeeContactId
+                    ? ContactBankAccount::query()
+                        ->where('contact_id', $payeeContactId)
+                        ->whereKey($customerBankAccountId)
+                        ->first()
+                    : null;
+                if (! $payee || ! $payee->is_active) {
+                    throw new \InvalidArgumentException("The selected customer bank account is not an active bank account of this credit note's customer.");
+                }
+                if ($payee->currency && strtoupper((string) $payee->currency) !== $currency) {
+                    throw new \InvalidArgumentException(
+                        "The customer's bank account is in {$payee->currency}; the credit note's credit is in {$currency}."
+                    );
+                }
+            }
+
             $available = $this->outcomes->remainingCredit($creditNote);
             if ($amount > $available + 0.005) {
                 throw new \InvalidArgumentException(
@@ -159,6 +183,7 @@ class CustomerCreditNoteRefundService
                 'amount' => $amount,
                 'currency_code' => $currency,
                 'bank_account_id' => $bankAccountId,
+                'customer_bank_account_id' => $customerBankAccountId,
                 'created_by' => $actorId,
             ]);
 
@@ -209,7 +234,7 @@ class CustomerCreditNoteRefundService
             app(\Modules\Sales\Services\SalesDomainEventEmitter::class)
                 ->emitPaymentRefunded($payment, null);
 
-            return $refund->fresh(['payment']);
+            return $refund->fresh(['payment', 'customerBankAccount']);
         });
     }
 

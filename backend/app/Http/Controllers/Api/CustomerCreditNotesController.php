@@ -119,6 +119,8 @@ class CustomerCreditNotesController extends Controller
             'postedBy',
             // #528: refunds of the note's credit (voided rows kept for audit).
             'refunds.payment',
+            // #444: the customer bank account each refund was paid to.
+            'refunds.customerBankAccount',
         ]);
 
         // #525 (CN-UX4): what happened to the credit + e-invoice status.
@@ -384,6 +386,8 @@ class CustomerCreditNotesController extends Controller
         $validated = $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'bank_account_id' => 'nullable|integer|exists:bank_accounts,id',
+            // #444: the customer's bank account the refund is paid to.
+            'customer_bank_account_id' => 'nullable|uuid',
             'method' => 'nullable|string|max:50',
             'refund_date' => 'nullable|date',
             'reference' => 'nullable|string|max:255',

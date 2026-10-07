@@ -732,6 +732,154 @@ class CustomerController extends Controller
     }
 
     // ==========================================
+    // BANK ACCOUNTS
+    // Issue #444: stored on the customer's Contact Master contact
+    // (contact_bank_accounts). Encrypted at rest; account number and IBAN
+    // masked unless the viewer holds contacts.bank_accounts.view (#567 /
+    // Decision on #919). Reached only through a customer inside the
+    // requester's legal-entity scope (#434). No country pack holds a bank
+    // account format, so only generic length rules are applied.
+    // ==========================================
+
+    private const BANK_ACCOUNT_RULES = [
+        'bank_name' => 'nullable|string|max:255',
+        'account_name' => 'nullable|string|max:255',
+        'account_number' => 'string|max:64',
+        'account_type' => 'nullable|string|max:50',
+        'routing_number' => 'nullable|string|max:64',
+        'swift_code' => 'nullable|string|max:11',
+        'iban' => 'nullable|string|max:34',
+        'currency' => 'nullable|string|size:3',
+        'branch_name' => 'nullable|string|max:255',
+        'branch_address' => 'nullable|string|max:255',
+        'is_primary' => 'boolean',
+        'is_active' => 'boolean',
+    ];
+
+    public function bankAccounts(Request $request, $id): JsonResponse
+    {
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
+        $accounts = $customer->core_contact_uuid
+            ? $customer->bankAccounts()->orderByDesc('is_primary')->orderBy('created_at')->get()
+            : collect();
+
+        return response()->json(['data' => $accounts]);
+    }
+
+    public function addBankAccount(Request $request, $id): JsonResponse
+    {
+        $customer = $this->findScopedCustomer($request, $id);
+
+        if (! $customer) {
+            return $this->customerNotFound();
+        }
+
+        $rules = self::BANK_ACCOUNT_RULES;
+        $rules['account_number'] = 'required|'.$rules['account_number'];
+        $validated = $request->validate($rules);
+
+        $model = new \Modules\Contact\src\Models\ContactBankAccount;
+        $validated = $model->filterSensitiveWrite($validated);
+        $validated = $this->normalizeBankAccountInput($validated);
+
+        $account = \Illuminate\Support\Facades\DB::transaction(function () use ($customer, $model, $validated) {
+            $contactId = $customer->core_contact_uuid
+                ?: app(CustomerContactSyncService::class)->ensureOrganisationContact($customer);
+
+            $model->fill($validated + [
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'tenant_id' => tenant()->id,
+                'contact_id' => $contactId,
+            ]);
+            $model->save();
+
+            if ($model->is_primary) {
+                $this->clearOtherPrimaryBankAccounts($contactId, $model->id);
+            }
+
+            return $model;
+        });
+
+        return response()->json($account->fresh(), 201);
+    }
+
+    public function updateBankAccount(Request $request, $customerId, $bankAccountId): JsonResponse
+    {
+        $customer = $this->findScopedCustomer($request, $customerId);
+        $account = $customer?->core_contact_uuid
+            ? $customer->bankAccounts()->whereKey((string) $bankAccountId)->first()
+            : null;
+
+        if (! $account) {
+            return response()->json(['message' => 'Bank account not found'], 404);
+        }
+
+        $validated = $this->normalizeBankAccountInput(
+            $account->filterSensitiveWrite($request->validate(self::BANK_ACCOUNT_RULES))
+        );
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($account, $validated) {
+            $account->update($validated);
+
+            if ($account->is_primary) {
+                $this->clearOtherPrimaryBankAccounts($account->contact_id, $account->id);
+            }
+        });
+
+        return response()->json($account->fresh());
+    }
+
+    public function deleteBankAccount(Request $request, $customerId, $bankAccountId): JsonResponse
+    {
+        $customer = $this->findScopedCustomer($request, $customerId);
+        $account = $customer?->core_contact_uuid
+            ? $customer->bankAccounts()->whereKey((string) $bankAccountId)->first()
+            : null;
+
+        if (! $account) {
+            return response()->json(['message' => 'Bank account not found'], 404);
+        }
+
+        $account->delete();
+
+        return response()->json(['message' => 'Bank account deleted']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizeBankAccountInput(array $data): array
+    {
+        foreach (['account_number', 'iban'] as $field) {
+            if (isset($data[$field]) && is_string($data[$field])) {
+                $data[$field] = preg_replace('/\s+/', '', $data[$field]);
+            }
+        }
+        foreach (['swift_code', 'iban', 'currency'] as $field) {
+            if (isset($data[$field]) && is_string($data[$field])) {
+                $data[$field] = strtoupper($data[$field]);
+            }
+        }
+
+        return $data;
+    }
+
+    private function clearOtherPrimaryBankAccounts(string $contactId, string $keepId): void
+    {
+        \Modules\Contact\src\Models\ContactBankAccount::query()
+            ->where('contact_id', $contactId)
+            ->whereKeyNot($keepId)
+            ->where('is_primary', true)
+            ->update(['is_primary' => false]);
+    }
+
+    // ==========================================
     // CONTACTS
     // ADR-003A: canonical persistence lives in the Contact Master
     // (core_contacts + org-person relationships). customer_contacts is the

@@ -13,6 +13,7 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import type { DepositAccountOption } from '@/lib/paymentDepositAccount';
 import type { CreditNoteRefund } from '@/types/creditNote';
+import { customerBankAccountLabel, type CustomerBankAccount } from '@/types/customerBankAccount';
 
 const errorMessage = (error: unknown, fallback: string) => {
   const data = (error as { response?: { data?: { message?: string; error?: string } } })?.response?.data;
@@ -22,6 +23,8 @@ const errorMessage = (error: unknown, fallback: string) => {
 interface Props {
   creditNoteId: number;
   creditNoteNumber: string;
+  /** #444: offers the customer's bank accounts as the refund payee. */
+  customerId?: number | null;
   currencyCode?: string | null;
   remainingCredit: number;
   refunds: CreditNoteRefund[];
@@ -39,6 +42,7 @@ interface Props {
 export function CreditNoteRefunds({
   creditNoteId,
   creditNoteNumber,
+  customerId,
   currencyCode,
   remainingCredit,
   refunds,
@@ -49,6 +53,7 @@ export function CreditNoteRefunds({
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [bankAccountId, setBankAccountId] = useState('');
+  const [customerBankAccountId, setCustomerBankAccountId] = useState('');
   const [refundDate, setRefundDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const canRefund = canPost && isPosted && remainingCredit > 0;
@@ -58,6 +63,14 @@ export function CreditNoteRefunds({
     queryFn: async () => (await api.get('/accounting/bank-accounts')).data.data as DepositAccountOption[],
     enabled: open,
   });
+
+  // #444: the customer's own bank accounts (active ones) as refund payees.
+  const { data: customerBankAccounts } = useQuery<CustomerBankAccount[]>({
+    queryKey: ['customer-bank-accounts', customerId],
+    queryFn: async () => (await api.get(`/customers/${customerId}/bank-accounts`)).data.data as CustomerBankAccount[],
+    enabled: open && !!customerId,
+  });
+  const payeeOptions = (customerBankAccounts ?? []).filter((account) => account.is_active);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['customer-credit-note'] });
@@ -70,6 +83,7 @@ export function CreditNoteRefunds({
         await api.post(`/accounting/customers/credit-notes/${creditNoteId}/refunds`, {
           amount: Number(amount),
           bank_account_id: bankAccountId ? Number(bankAccountId) : null,
+          customer_bank_account_id: customerBankAccountId || null,
           method: 'bank_transfer',
           refund_date: refundDate,
         })
@@ -89,6 +103,7 @@ export function CreditNoteRefunds({
   const openDialog = () => {
     refundMutation.reset();
     setAmount(remainingCredit.toFixed(2));
+    setCustomerBankAccountId('');
     setOpen(true);
   };
 
@@ -130,6 +145,11 @@ export function CreditNoteRefunds({
                 <TableRow key={refund.id}>
                   <TableCell>
                     {refund.payment?.payment_number ?? '-'}
+                    {refund.customer_bank_account && (
+                      <span className="block text-xs text-muted-foreground">
+                        To {customerBankAccountLabel(refund.customer_bank_account)}
+                      </span>
+                    )}
                     {refund.journal_entry_id && (
                       <>
                         {' · '}
@@ -211,6 +231,24 @@ export function CreditNoteRefunds({
                 </SelectContent>
               </Select>
             </div>
+            {payeeOptions.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="credit-note-refund-payee">Pay to</Label>
+                <Select value={customerBankAccountId || undefined} onValueChange={setCustomerBankAccountId}>
+                  <SelectTrigger id="credit-note-refund-payee" aria-label="Pay to customer bank account">
+                    <SelectValue placeholder="No customer bank account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {payeeOptions.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {customerBankAccountLabel(account)}
+                        {account.is_primary ? ' (primary)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="credit-note-refund-date">Date</Label>
               <Input

@@ -342,6 +342,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         ->middleware(RequirePermission::using('customers.write'));
     Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact'])
         ->middleware(RequirePermission::using('customers.write'));
+    // Issue #444: customer bank accounts. Reads reuse customers.view (account
+    // number/IBAN masked on the model unless contacts.bank_accounts.view);
+    // writes reuse the seeded contacts.bank_accounts.edit literal already
+    // guarding bank data on the Contact Master routes. No new permission.
+    Route::get('customers/{customer}/bank-accounts', [CustomerController::class, 'bankAccounts'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::post('customers/{customer}/bank-accounts', [CustomerController::class, 'addBankAccount'])
+        ->middleware(RequirePermission::using('contacts.bank_accounts.edit'));
+    Route::put('customers/{customer}/bank-accounts/{bankAccount}', [CustomerController::class, 'updateBankAccount'])
+        ->middleware(RequirePermission::using('contacts.bank_accounts.edit'));
+    Route::delete('customers/{customer}/bank-accounts/{bankAccount}', [CustomerController::class, 'deleteBankAccount'])
+        ->middleware(RequirePermission::using('contacts.bank_accounts.edit'));
     // ADR-003A CT-VEN-028: atomic SetPrimaryContact.
     Route::post('customers/{customer}/contacts/{contact}/set-primary', [CustomerController::class, 'setPrimaryContact'])
         ->middleware(RequirePermission::using('customers.write'));

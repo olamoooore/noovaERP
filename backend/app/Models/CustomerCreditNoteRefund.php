@@ -21,6 +21,8 @@ class CustomerCreditNoteRefund extends Model
         'amount',
         'currency_code',
         'bank_account_id',
+        // #444: the customer's bank account (contact_bank_accounts) paid to.
+        'customer_bank_account_id',
         'journal_entry_id',
         'voided_at',
         'voided_by',
@@ -38,6 +40,12 @@ class CustomerCreditNoteRefund extends Model
     public function creditNote(): BelongsTo
     {
         return $this->belongsTo(CustomerCreditNote::class, 'credit_note_id');
+    }
+
+    /** #444: the customer bank account the refund was paid to (masked by viewer permission). */
+    public function customerBankAccount(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Contact\src\Models\ContactBankAccount::class, 'customer_bank_account_id')->withTrashed();
     }
 
     public function payment(): BelongsTo

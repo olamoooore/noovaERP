@@ -6,6 +6,16 @@ import { MemoryRouter } from 'react-router-dom'
 import { CreditNoteRefunds } from './CreditNoteRefunds'
 import type { CreditNoteRefund } from '@/types/creditNote'
 
+// #444: Radix Select needs these in jsdom (same polyfill as CustomerForm.test).
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {}
+}
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+}
+
 const { apiGet, apiPost } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn() }))
 
 vi.mock('@/lib/api', () => ({
@@ -97,6 +107,36 @@ describe('CreditNoteRefunds (#528)', () => {
 
     await waitFor(() =>
       expect(apiPost).toHaveBeenCalledWith('/accounting/customers/credit-notes/7/refunds/3/void'),
+    )
+  })
+
+  it('#444: pays the refund to a selected customer bank account', async () => {
+    apiGet.mockImplementation(async (url: string) =>
+      url === '/customers/9/bank-accounts'
+        ? {
+            data: {
+              data: [
+                { id: 'b1', contact_id: 'c1', bank_name: 'Maybank', account_name: 'Acme', account_number: '5***9', is_primary: true, is_active: true },
+                { id: 'b2', contact_id: 'c1', bank_name: 'Old Bank', account_name: 'Acme', account_number: '1***2', is_primary: false, is_active: false },
+              ],
+            },
+          }
+        : { data: { data: [] } },
+    )
+    renderPanel({ customerId: 9 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refund' }))
+    const payee = await screen.findByLabelText('Pay to customer bank account')
+    fireEvent.click(payee)
+    expect(screen.queryByText(/Old Bank/)).toBeNull()
+    fireEvent.click(await screen.findByRole('option', { name: /Maybank/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }))
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith(
+        '/accounting/customers/credit-notes/7/refunds',
+        expect.objectContaining({ customer_bank_account_id: 'b1' }),
+      ),
     )
   })
 

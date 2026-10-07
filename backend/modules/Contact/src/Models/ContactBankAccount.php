@@ -2,13 +2,14 @@
 
 namespace Modules\Contact\src\Models;
 
+use App\Platform\DataSecurity\MasksSensitiveFields;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ContactBankAccount extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, MasksSensitiveFields, SoftDeletes;
 
     protected $table = 'contact_bank_accounts';
 
@@ -36,6 +37,26 @@ class ContactBankAccount extends Model
         'swift_code' => 'encrypted',
         'iban' => 'encrypted',
     ];
+
+    /**
+     * Issue #444 (Decision on #919, as first applied by #567): the account
+     * number and IBAN are masked in every JSON rendering unless the viewer
+     * holds the seeded contacts.bank_accounts.view permission. Bank name,
+     * SWIFT/BIC and branch identify the bank, not the account, and stay
+     * readable so a masked account can still be recognised.
+     */
+    public function sensitiveFields(): array
+    {
+        return [
+            'account_number' => ['permission' => 'contacts.bank_accounts.view', 'mask' => 'default'],
+            'iban' => ['permission' => 'contacts.bank_accounts.view', 'mask' => 'default'],
+        ];
+    }
+
+    public function sensitiveReferenceType(): string
+    {
+        return 'contact_bank_account';
+    }
 
     public function contact()
     {

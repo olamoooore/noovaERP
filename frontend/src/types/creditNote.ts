@@ -1,3 +1,5 @@
+import type { CustomerBankAccount } from './customerBankAccount';
+
 export interface CustomerCreditNote {
   id: number;
   invoice_id: number;
@@ -32,6 +34,9 @@ export interface CreditNoteRefund {
   reversal_journal_entry_id: number | null;
   created_at: string;
   payment?: { id: number; payment_number: string; payment_date: string; method: string | null } | null;
+  /** #444: the customer bank account the refund was paid to. */
+  customer_bank_account_id?: string | null;
+  customer_bank_account?: CustomerBankAccount | null;
 }
 
 export type CreditNoteOutcomeState = 'applied' | 'partially_applied' | 'customer_credit' | 'voided';

@@ -315,6 +315,7 @@ export const CustomerCreditNoteDetail: React.FC = () => {
         <CreditNoteRefunds
           creditNoteId={creditNoteId}
           creditNoteNumber={creditNote.credit_note_number}
+          customerId={creditNote.customer_id}
           currencyCode={creditNote.currency_code}
           remainingCredit={Number((creditNote.outcome as CreditNoteOutcome | null)?.remaining_credit ?? 0)}
           refunds={creditNote.refunds ?? []}
