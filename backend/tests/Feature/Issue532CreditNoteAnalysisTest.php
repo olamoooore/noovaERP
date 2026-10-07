@@ -347,7 +347,7 @@ class Issue532CreditNoteAnalysisTest extends TenantTestCase
         $this->assertSame(400.0, round((float) $scoped->json('data.summary.total_invoiced'), 2));
     }
 
-    public function test_requires_reports_view_or_sales_view(): void
+    public function test_requires_reports_view(): void
     {
         $tenantId = (string) DB::table('user_company_access')
             ->where('user_id', DB::table('public.users')->where('email', $this->admin->email)->value('id'))
@@ -370,8 +370,10 @@ class Issue532CreditNoteAnalysisTest extends TenantTestCase
 
         // Cashier holds neither reports.view nor sales.view.
         $this->analysis('reason', [], $userWithRole('cashier'))->assertForbidden();
-        // Sales holds sales.view only; Accountant holds reports.view only.
-        $this->analysis('reason', [], $userWithRole('sales'))->assertOk();
+        // #356 decision (product owner, 2026-10-07: "revert, keep blocked"):
+        // sales analytics require reports.view, which Sales does not hold.
+        $this->analysis('reason', [], $userWithRole('sales'))->assertForbidden();
+        // Accountant holds reports.view.
         $this->analysis('reason', [], $userWithRole('accountant'))->assertOk();
     }
 
