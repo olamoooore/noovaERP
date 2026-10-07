@@ -8,6 +8,8 @@ import { ReportViewer } from '@/components/reports/ReportViewer';
 import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { StatCard } from '@/components/ui/stat-card';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
+import { Label } from '@/components/ui/label';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -96,8 +98,24 @@ export function InventoryReportsPage() {
   });
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
-    setFilters(newFilters);
+    // #1020: keep the product filter when the date bar emits its filters.
+    setFilters((current) => ({ ...current, ...newFilters, product_id: current.product_id }));
   };
+
+  /**
+   * #1020: product name + short description, used by every report table so a
+   * product field reads the same everywhere (matches the invoice picker).
+   */
+  const renderProductCell = (value: any, row: any, description?: string | null) => (
+    <div className="min-w-0">
+      {row?.product_id
+        ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
+        : value}
+      {description
+        ? <div className="text-xs text-muted-foreground">{description}</div>
+        : null}
+    </div>
+  );
 
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -108,10 +126,7 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.product_id
-          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => renderProductCell(value, row, row?.short_description ?? row?.product_short_description),
     },
     {
       key: 'sku',
@@ -166,10 +181,7 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.product_id
-          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => renderProductCell(value, row, row?.short_description ?? row?.product_short_description),
     },
     {
       key: 'sku',
@@ -240,10 +252,7 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.product_id
-          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => renderProductCell(value, row, row?.short_description ?? row?.product_short_description),
     },
     {
       key: 'sku',
@@ -313,10 +322,7 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.product_id
-          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => renderProductCell(value, row, row?.short_description ?? row?.product_short_description),
     },
     {
       key: 'sku',
@@ -391,10 +397,7 @@ export function InventoryReportsPage() {
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.product_id
-          ? <Link to={`/products/${row.product_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => renderProductCell(value, row, row?.short_description ?? row?.product_short_description),
     },
     {
       key: 'category',
@@ -453,12 +456,28 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
       </div>
 
       {/* Filters */}
-      <CompactReportFilters
-        plain
-        onFilterChange={handleFilterChange}
-        initialFilters={filters}
-        showDateRange
-      />
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="w-full max-w-xs space-y-1.5">
+          <Label htmlFor="inventory-product-filter">Product</Label>
+          {/* #1020: shared server-side product picker with "Show more" catalog. */}
+          <ProductSearchCombobox
+            value={filters.product_id ? String(filters.product_id) : ''}
+            onValueChange={(value) => setFilters((current) => ({
+              ...current,
+              product_id: value ? Number(value) : undefined,
+            }))}
+            placeholder="All products"
+          />
+        </div>
+        <div className="min-w-[280px] flex-1">
+          <CompactReportFilters
+            plain
+            onFilterChange={handleFilterChange}
+            initialFilters={filters}
+            showDateRange
+          />
+        </div>
+      </div>
 
       {/* Reports Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

@@ -4,6 +4,7 @@ import { Icon } from '@iconify/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type {
@@ -306,20 +307,32 @@ function ProductUsagePivot({
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         {USAGE_FILTERS.map(({ key, label, all }) => (
-          <select
-            key={key}
-            aria-label={`Filter by ${label.toLowerCase()}`}
-            value={usageFilters[key]}
-            onChange={(event) => setUsageFilters((current) => ({ ...current, [key]: event.target.value }))}
-            className="h-9 rounded-md border bg-background px-2 text-sm"
-          >
-            <option value="">{all}</option>
-            {filterOptions[key].map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          key === 'product' ? (
+            // #1020: the product filter is the shared server-side picker
+            // (custom input search + dropdown + "Show more" catalog).
+            <div key={key} className="[&>div]:h-9">
+              <ProductSearchCombobox
+                value={usageFilters[key]}
+                onValueChange={(value) => setUsageFilters((current) => ({ ...current, [key]: value }))}
+                placeholder={all}
+              />
+            </div>
+          ) : (
+            <select
+              key={key}
+              aria-label={`Filter by ${label.toLowerCase()}`}
+              value={usageFilters[key]}
+              onChange={(event) => setUsageFilters((current) => ({ ...current, [key]: event.target.value }))}
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="">{all}</option>
+              {filterOptions[key].map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )
         ))}
       </div>
 
@@ -618,7 +631,15 @@ export function ProductUsageView({ filters, periodLabel }: ProductUsageViewProps
                       <tbody>
                         {products.map((row) => (
                           <tr key={row.product_id ?? 'unknown'} className="border-b last:border-b-0">
-                            <td className="px-3 py-2">{row.product_name ?? 'Unknown product'}</td>
+                            <td className="px-3 py-2">
+                              <div className="min-w-0">
+                                <div>{row.product_name ?? 'Unknown product'}</div>
+                                {/* #1020: every product field renders name + short description. */}
+                                {row.short_description
+                                  ? <div className="text-xs text-muted-foreground">{row.short_description}</div>
+                                  : null}
+                              </div>
+                            </td>
                             <td className="px-3 py-2 text-muted-foreground">{row.sku ?? '—'}</td>
                             <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.quantity)}</td>
                           </tr>

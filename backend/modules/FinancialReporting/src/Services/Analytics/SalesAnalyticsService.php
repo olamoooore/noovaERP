@@ -200,6 +200,7 @@ class SalesAnalyticsService
                 ->select([
                     'p.id',
                     'p.name',
+                    'p.short_description',
                     'p.sku',
                     'p.cost',
                     'p.price',
@@ -223,7 +224,7 @@ class SalesAnalyticsService
                     $query->whereNull('li.line_type')
                         ->orWhereNotIn('li.line_type', self::NON_SALE_LINE_TYPES);
                 })
-                ->groupBy('p.id', 'p.name', 'p.sku', 'p.cost', 'p.price')
+                ->groupBy('p.id', 'p.name', 'p.short_description', 'p.sku', 'p.cost', 'p.price')
                 ->orderByDesc('total_revenue')
                 ->get();
         } catch (\Throwable $e) {
@@ -260,6 +261,7 @@ class SalesAnalyticsService
                 // Issue #360: product-less revenue is labelled, never "Unknown".
                 'name' => $item->id === null ? self::UNLINKED_PRODUCT_LABEL : $item->name,
                 'product_name' => $item->id === null ? self::UNLINKED_PRODUCT_LABEL : $item->name,
+                'short_description' => $item->id === null ? '' : ($item->short_description ?? ''),
                 'sku' => $item->sku,
                 'order_count' => (int) $item->order_count,
                 'total_quantity' => $this->roundQuantity($item->total_quantity),
@@ -1260,6 +1262,7 @@ class SalesAnalyticsService
                     'dol.id as delivery_order_line_id',
                     'dol.product_id',
                     'p.name as product_name',
+                    'p.short_description as product_short_description',
                     'p.sku',
                     'dol.quantity_ordered',
                     'dol.quantity_delivered',
@@ -1291,6 +1294,7 @@ class SalesAnalyticsService
             'customer_name' => $row->customer_name ?? 'Walk-in Customer',
             'product_id' => $row->product_id !== null ? (int) $row->product_id : null,
             'product_name' => $row->product_name ?? 'Unknown product',
+            'short_description' => $row->product_short_description ?? '',
             'sku' => $row->sku,
             'quantity_ordered' => $this->roundQuantity($row->quantity_ordered),
             'quantity_delivered' => $this->roundQuantity($row->quantity_delivered),

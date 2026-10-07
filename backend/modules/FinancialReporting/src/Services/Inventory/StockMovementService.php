@@ -42,6 +42,7 @@ class StockMovementService extends BaseReportService
                 'date' => $movement->created_at,
                 'product_id' => $movement->product_id,
                 'product_name' => $movement->product_name,
+                'product_short_description' => $movement->product_short_description,
                 'sku' => $movement->sku,
                 'type' => $movement->type,
                 'quantity' => $movement->quantity,
@@ -76,6 +77,7 @@ class StockMovementService extends BaseReportService
                     'id' => $product->id,
                     'sku' => $product->sku,
                     'name' => $product->name,
+                    'short_description' => $product->short_description,
                 ] : null,
                 'period' => [
                     'start_date' => $startDate?->format('Y-m-d'),
@@ -99,7 +101,7 @@ class StockMovementService extends BaseReportService
     {
         return DB::table('products')
             ->where('id', $productId)
-            ->select('id', 'sku', 'name', 'unit', 'stock_quantity')
+            ->select('id', 'sku', 'name', 'short_description', 'unit', 'stock_quantity')
             ->first();
     }
 
@@ -159,6 +161,7 @@ class StockMovementService extends BaseReportService
             'sm.product_id',
             'p.sku',
             'p.name as product_name',
+            'p.short_description as product_short_description',
             'p.unit',
             'sm.type',
             'sm.quantity',
@@ -308,7 +311,7 @@ class StockMovementService extends BaseReportService
      */
     protected function effectiveDeltaSql(string $alias = 'sm'): string
     {
-        return "CASE "
+        return 'CASE '
             ."WHEN {$alias}.type IN ('out', 'sale', 'transfer_out') THEN -ABS({$alias}.quantity) "
             ."WHEN {$alias}.type IN ('in', 'purchase', 'return', 'transfer_in') THEN ABS({$alias}.quantity) "
             ."WHEN {$alias}.type = 'adjustment' THEN (COALESCE({$alias}.balance_after, 0) - COALESCE({$alias}.old_quantity, 0)) "

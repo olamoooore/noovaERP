@@ -512,7 +512,24 @@ class ReportApiClient {
         '/reports/inventory/reorder',
         { params: filters }
       );
-      return response.data.data;
+      // The endpoint returns a ReportData envelope ({ data: rows }); map the
+      // service rows to the table shape (#1020 product name + short description).
+      const payload = response.data.data as unknown as { data?: any[]; items?: any[] };
+      const rows = Array.isArray(payload?.data) ? payload.data : (payload?.items ?? []);
+      return {
+        items: rows.map((row: any) => ({
+          product_id: row.product_id ?? row.id,
+          product_name: row.product_name ?? row.name,
+          short_description: row.short_description ?? null,
+          sku: row.sku,
+          current_stock: row.current_stock,
+          reorder_level: row.reorder_level,
+          effective_threshold: row.effective_threshold ?? null,
+          suggested_quantity: row.suggested_quantity ?? row.suggested_order_quantity,
+          supplier_name: row.supplier_name ?? row.last_supplier ?? undefined,
+          last_purchase_price: row.last_purchase_price,
+        })),
+      };
     } catch (error) {
       this.handleError(error, 'Failed to fetch Reorder report');
       throw error;

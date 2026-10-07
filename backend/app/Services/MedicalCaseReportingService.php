@@ -166,6 +166,7 @@ class MedicalCaseReportingService
                             : self::UNASSIGNED_DOCTOR,
                         'product_id' => $item->product_id,
                         'product_name' => $item->product?->name,
+                        'short_description' => $item->product?->short_description,
                         'sku' => $item->product?->sku,
                         'category_id' => $item->product?->category_id,
                         'category_name' => $item->product?->category?->name,
@@ -192,6 +193,7 @@ class MedicalCaseReportingService
                     $productMix[$productKey] = [
                         'product_id' => $item->product_id,
                         'product_name' => $item->product?->name,
+                        'short_description' => $item->product?->short_description,
                         'sku' => $item->product?->sku,
                         'quantity' => 0.0,
                     ];

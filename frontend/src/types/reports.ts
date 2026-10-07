@@ -289,6 +289,8 @@ export interface StockValuationData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string;
     category: string;
     quantity: number;
@@ -307,6 +309,8 @@ export interface StockMovementData {
     date: string;
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    product_short_description?: string | null;
     sku: string;
     type: string;
     quantity: number;
@@ -337,9 +341,12 @@ export interface ReorderData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string;
     current_stock: number;
     reorder_level: number;
+    effective_threshold?: number | null;
     suggested_quantity: number;
     supplier_name?: string;
     last_purchase_price?: number;
@@ -350,6 +357,8 @@ export interface InventoryAgingData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string;
     quantity: number;
     age_days: number;
@@ -370,6 +379,8 @@ export interface InventoryTurnoverData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     category: string;
     turnover_ratio: number;
     days_in_inventory: number;
@@ -385,6 +396,8 @@ export interface SalesByProductData {
     id: number | null;
     name: string | null;
     product_name?: string | null;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string | null;
     total_quantity: number;
     quantity_sold?: number;
@@ -512,6 +525,8 @@ export interface UnbilledDeliveryRow {
   customer_name: string | null;
   product_id: number | null;
   product_name: string | null;
+  /** #1020: shown under the product name in report tables. */
+  short_description?: string | null;
   sku: string | null;
   quantity_ordered: number;
   quantity_delivered: number;
@@ -601,6 +616,8 @@ export interface MedicalCasePerformanceDoctorRow extends MedicalCasePerformanceH
 export interface MedicalCasePerformanceProductRow {
   product_id: number | null;
   product_name: string | null;
+  /** #1020: shown under the product name in report tables. */
+  short_description?: string | null;
   sku: string | null;
   quantity: number;
 }
@@ -625,6 +642,8 @@ export interface MedicalCaseUsageRow {
   doctor_name: string;
   product_id: number | null;
   product_name: string | null;
+  /** #1020: shown under the product name in report tables. */
+  short_description?: string | null;
   sku: string | null;
   category_id: number | null;
   category_name: string | null;

@@ -560,18 +560,24 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       sortable: true,
       filterable: true,
       format: (value: any, row: any) => (
-        <DrillCell
-          label={String(value)}
-          recordHref={row?.id ? `/products/${row.id}` : undefined}
-          onDrill={() =>
-            setDrilldown({
-              dimension: 'product',
-              key: row?.id ? String(row.id) : 'none',
-              label: String(value),
-              rowValue: row?.total_revenue ?? 0,
-            })
-          }
-        />
+        <div className="min-w-0">
+          <DrillCell
+            label={String(value)}
+            recordHref={row?.id ? `/products/${row.id}` : undefined}
+            onDrill={() =>
+              setDrilldown({
+                dimension: 'product',
+                key: row?.id ? String(row.id) : 'none',
+                label: String(value),
+                rowValue: row?.total_revenue ?? 0,
+              })
+            }
+          />
+          {/* #1020: every product field renders name + short description. */}
+          {row?.short_description
+            ? <div className="text-xs text-muted-foreground">{row.short_description}</div>
+            : null}
+        </div>
       ),
     },
     { key: 'sku', label: 'SKU', sortable: true, filterable: true },

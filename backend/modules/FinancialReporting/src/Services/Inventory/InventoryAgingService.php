@@ -82,10 +82,16 @@ class InventoryAgingService extends BaseReportService
             $query->where('p.category_id', $filter->categoryId);
         }
 
+        // #1020: product filter uses the shared server-side product picker.
+        if ($filter->productId) {
+            $query->where('p.id', $filter->productId);
+        }
+
         $products = $query->select([
             'p.id',
             'p.sku',
             'p.name',
+            'p.short_description',
             'p.cost as unit_cost',
             'p.price as unit_price',
             $categorySelect,
@@ -135,6 +141,7 @@ class InventoryAgingService extends BaseReportService
                     'id' => $product->id,
                     'sku' => $product->sku,
                     'name' => $product->name,
+                    'short_description' => $product->short_description,
                     'category_name' => $product->category_name,
                     'stock_quantity' => $quantity,
                     'age_in_days' => $ageInDays,
