@@ -40,8 +40,11 @@ class AccountingDocumentPolicyService
         }
 
         // Total must be positive
+        // Issue #331: an invoice fully covered by its down payment may
+        // total zero; never below.
         $total = $this->computeLineTotal($data->lines);
-        if ($total <= 0) {
+        $deductsDownPayment = collect($data->lines)->contains(fn ($line) => $line->downPaymentInvoiceId !== null);
+        if ($deductsDownPayment ? round($total, 2) < 0 : $total <= 0) {
             throw new \InvalidArgumentException('Invoice total must be positive.');
         }
     }
@@ -115,12 +118,17 @@ class AccountingDocumentPolicyService
             throw new \InvalidArgumentException("Line {$index}: quantity must be greater than zero.");
         }
 
-        if ($line->unitPrice < 0) {
+        // Issue #331: a "Less: down payment" deduction is the one negative
+        // line allowed; its amount is re-checked against the down payment
+        // when the invoice posts (InvoiceService).
+        if ($line->unitPrice < 0 && ! ($docType === 'invoice' && $line->downPaymentInvoiceId !== null)) {
             throw new \InvalidArgumentException("Line {$index}: unit_price must not be negative.");
         }
 
         // Product lines must have a product_id
-        if ($line->lineType === 'product' && $line->productId === null) {
+        // (a down-payment deduction is shaped like the order → invoice one:
+        // a product-type line with no product).
+        if ($line->lineType === 'product' && $line->productId === null && $line->downPaymentInvoiceId === null) {
             throw new \InvalidArgumentException("Line {$index}: product lines must have a product_id.");
         }
 

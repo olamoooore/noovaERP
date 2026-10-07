@@ -2285,6 +2285,9 @@ class DeliveryOrderService
 
         $lines = [];
         $invoicedByLine = [];
+        // Issue #331: goods net billed per sales order — the cap for that
+        // order's down-payment deduction on this invoice.
+        $netBySalesOrder = [];
         foreach ($entries as $entry) {
             /** @var DeliveryOrderLine $line */
             $line = $entry['line'];
@@ -2297,6 +2300,7 @@ class DeliveryOrderService
             $soLine = $line->salesOrderLine;
 
             $taxRate = 0.0;
+            $inclusive = false;
             if ($line->product !== null) {
                 $resolved = $taxResolver->resolveTaxForProduct(
                     $line->product,
@@ -2306,8 +2310,10 @@ class DeliveryOrderService
                     $invoiceDate,
                 );
                 $taxRate = (float) ($resolved['rate'] ?? 0.0);
+                $inclusive = $taxResolver->isInclusiveForProduct($line->product, null, $invoiceDate);
             }
 
+            $discount = (float) ($soLine?->discount_amount ?? 0);
             $lines[] = new \App\Accounting\DTOs\AccountingDocumentLineData(
                 lineType: 'product',
                 description: $line->description ?: 'Delivered item',
@@ -2315,10 +2321,16 @@ class DeliveryOrderService
                 unitPrice: (float) $line->unit_price,
                 productId: $line->product_id,
                 taxRate: $taxRate,
-                discountAmount: (float) ($soLine?->discount_amount ?? 0),
+                discountAmount: $discount,
                 salesOrderLineId: $line->sales_order_line_id !== null ? (int) $line->sales_order_line_id : null,
             );
             $invoicedByLine[$line->id] = ($invoicedByLine[$line->id] ?? 0.0) + $quantity;
+
+            $salesOrderId = $line->deliveryOrder->sales_order_id;
+            if ($salesOrderId !== null) {
+                $net = \App\Services\TaxEngineService::calculate($quantity * (float) $line->unit_price, $taxRate, $inclusive, $discount)['net'];
+                $netBySalesOrder[(int) $salesOrderId] = ($netBySalesOrder[(int) $salesOrderId] ?? 0.0) + $net;
+            }
         }
 
         $termDays = $this->deliveryPaymentTermDays($primary);
@@ -2335,7 +2347,23 @@ class DeliveryOrderService
 
         $linesById = collect($entries)->mapWithKeys(fn (array $entry) => [$entry['line']->id => $entry['line']]);
 
-        return DB::transaction(function () use ($deliveryOrders, $primary, $lines, $invoicedByLine, $invoiceDate, $termDays, $salesOrderIds, $numbers, $originContext, $linesById) {
+        return DB::transaction(function () use ($deliveryOrders, $primary, $lines, $invoicedByLine, $invoiceDate, $termDays, $salesOrderIds, $numbers, $originContext, $linesById, $netBySalesOrder) {
+            // Issue #331: deduct each order's posted down payments with the
+            // same shared rule as order → invoice (capped at this invoice's
+            // goods net for that order; what any earlier invoice of either
+            // path deducted is never deducted again).
+            $salesOrderService = app(\Modules\Sales\Services\SalesOrderService::class);
+            foreach ($netBySalesOrder as $salesOrderId => $goodsNet) {
+                $order = SalesOrder::find($salesOrderId);
+                if ($order === null) {
+                    continue;
+                }
+
+                foreach ($salesOrderService->downPaymentDeductionLines($order, round($goodsNet, 2), count($lines)) as $deduction) {
+                    $lines[] = \App\Accounting\DTOs\AccountingDocumentLineData::fromDownPaymentDeduction($deduction);
+                }
+            }
+
             $invoice = app(\App\Services\AccountingOriginInvoiceService::class)->create(new \App\Accounting\DTOs\AccountingOriginInvoiceData(
                 customerId: (int) $primary->customer_id,
                 lines: $lines,

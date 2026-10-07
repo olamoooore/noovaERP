@@ -24,7 +24,37 @@ class AccountingDocumentLineData
         // Issue #456: stable link to the originating sales-order line so the
         // converted invoice keeps the same traceability as the SO→invoice path.
         public readonly ?int $salesOrderLineId = null,
+        // Issue #331: a "Less: down payment" deduction line — its negative
+        // price, the down payment's tax identity and the down-payment link.
+        public readonly ?int $taxRuleId = null,
+        public readonly ?string $taxCode = null,
+        public readonly ?string $taxTreatment = null,
+        public readonly ?bool $taxInclusive = null,
+        public readonly ?int $downPaymentInvoiceId = null,
     ) {}
+
+    /**
+     * Issue #331: a deduction line built by
+     * SalesOrderService::downPaymentDeductionLines().
+     *
+     * @param  array<string, mixed>  $line
+     */
+    public static function fromDownPaymentDeduction(array $line): self
+    {
+        return new self(
+            lineType: (string) $line['line_type'],
+            description: (string) $line['description'],
+            quantity: (float) $line['quantity'],
+            unitPrice: (float) $line['unit_price'],
+            taxRate: (float) ($line['tax_rate'] ?? 0),
+            discountAmount: (float) ($line['discount_amount'] ?? 0),
+            taxRuleId: isset($line['tax_rule_id']) ? (int) $line['tax_rule_id'] : null,
+            taxCode: $line['tax_code'] ?? null,
+            taxTreatment: $line['tax_treatment'] ?? null,
+            taxInclusive: (bool) ($line['tax_inclusive'] ?? false),
+            downPaymentInvoiceId: (int) $line['down_payment_invoice_id'],
+        );
+    }
 
     public function toArray(): array
     {
@@ -42,6 +72,10 @@ class AccountingDocumentLineData
             'department_id' => $this->departmentId,
             'branch_id' => $this->branchId,
             'sales_order_line_id' => $this->salesOrderLineId,
+            'tax_rule_id' => $this->taxRuleId,
+            'tax_code' => $this->taxCode,
+            'tax_treatment' => $this->taxTreatment,
+            'down_payment_invoice_id' => $this->downPaymentInvoiceId,
         ];
     }
 }

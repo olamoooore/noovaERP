@@ -1499,9 +1499,14 @@ class SalesOrderService
      * invoices already deducted is skipped; the total never exceeds the
      * invoice's own goods net ($capNet).
      *
+     * Shared by every invoicing path of an order — order → invoice here and
+     * delivery order → invoice (DeliveryOrderService) — so a deposit is
+     * consumed once whichever path bills the goods. Call inside the
+     * invoice-creating transaction (it locks the down payments).
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function downPaymentDeductionLines(SalesOrder $order, float $capNet, int $sequenceStart): array
+    public function downPaymentDeductionLines(SalesOrder $order, float $capNet, int $sequenceStart): array
     {
         if ($capNet <= 0) {
             return [];

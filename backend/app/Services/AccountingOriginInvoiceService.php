@@ -37,7 +37,7 @@ class AccountingOriginInvoiceService
             $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
 
             // Build line data with line_type and dimension fields
-            $lines = array_map(fn ($line) => [
+            $lines = array_map(fn ($line) => array_merge([
                 'line_type' => $line->lineType,
                 'product_id' => $line->productId,
                 'gl_account_id' => $line->glAccountId,
@@ -52,7 +52,13 @@ class AccountingOriginInvoiceService
                 'branch_id' => $line->branchId,
                 // Issue #456: preserve the originating sales-order line link.
                 'sales_order_line_id' => $line->salesOrderLineId,
-            ], $data->lines);
+                // Issue #331: a down-payment deduction keeps the down
+                // payment's tax identity and its link.
+                'tax_rule_id' => $line->taxRuleId,
+                'tax_code' => $line->taxCode,
+                'tax_treatment' => $line->taxTreatment,
+                'down_payment_invoice_id' => $line->downPaymentInvoiceId,
+            ], $line->taxInclusive !== null ? ['tax_inclusive' => $line->taxInclusive] : []), $data->lines);
 
             $invoiceData = [
                 'customer_id' => $data->customerId,
