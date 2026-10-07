@@ -31,6 +31,8 @@ import { useActionQueueParam } from '@/hooks/useActionQueueParam'
 import { InvoiceDeliveryChip } from '@/components/sales/DocumentProgressChip'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
+import { PaymentShortcutsDialog } from '@/components/payment/PaymentShortcutsDialog'
+import { isPlainKey, isTypingTarget } from '@/lib/keyboardShortcuts'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -173,6 +175,20 @@ export function InvoicesPage() {
   // #491: register a payment from the row, in place (existing dialog + POST /payments).
   const canRegisterPayment = useCanRegisterPayment()
   const [registerPaymentInvoiceId, setRegisterPaymentInvoiceId] = useState<number | null>(null)
+  // #508 (PY6): "?" shows the keyboard shortcuts — never while typing in a
+  // field, and not over the open payment dialog.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  useEffect(() => {
+    if (registerPaymentInvoiceId != null) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '?' || event.ctrlKey || event.metaKey || event.altKey) return
+      if (event.defaultPrevented || isTypingTarget(event.target)) return
+      event.preventDefault()
+      setShortcutsOpen(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [registerPaymentInvoiceId])
 
   const bulkPostMutation = useMutation({
     mutationFn: async (ids: number[]) => {
@@ -576,8 +592,18 @@ export function InvoicesPage() {
                   {sortedInvoices.map((invoice: any) => (
                     <TableRow
                       key={invoice.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      tabIndex={0}
                       onClick={() => navigate(`/invoices/${invoice.id}`)}
+                      onKeyDown={(event) => {
+                        // #508 (PY6): P on the focused row registers a payment
+                        // (same gate as the row's "Register payment" button).
+                        if (event.target !== event.currentTarget || !isPlainKey(event)) return
+                        if ((event.key === 'p' || event.key === 'P') && canRegisterPayment && isInvoicePayable(invoice)) {
+                          event.preventDefault()
+                          setRegisterPaymentInvoiceId(invoice.id)
+                        }
+                      }}
                     >
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={selectedIds.includes(invoice.id)} onChange={() => toggleSelect(invoice.id)} />
@@ -756,6 +782,8 @@ export function InvoicesPage() {
         invoiceId={registerPaymentInvoiceId}
         onOpenChange={(open) => !open && setRegisterPaymentInvoiceId(null)}
       />
+
+      <PaymentShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   )
 }

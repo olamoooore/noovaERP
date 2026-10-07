@@ -106,3 +106,48 @@ export function defaultDepositAccountId(
 
   return (preferred ?? options[0])?.id ?? null;
 }
+
+// #508 (PY6): the payment METHOD is remembered per user too, so a clerk
+// receipting a stack of cheques does not re-pick "Check" on every payment.
+const methodMemoryKey = (userId: number | string): string => `noovaerp:payment-method:${userId}`;
+const methodFallback = new Map<string, string>();
+
+export function readRememberedMethod(userId: number | string | null | undefined): string | null {
+  if (!userId) return null;
+  const key = methodMemoryKey(userId);
+  if (hasLocalStorage()) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) return raw;
+    } catch {
+      /* fall through to the in-process store */
+    }
+  }
+  return methodFallback.get(key) ?? null;
+}
+
+export function rememberMethod(userId: number | string | null | undefined, method: string): void {
+  if (!userId || !method) return;
+  const key = methodMemoryKey(userId);
+  methodFallback.set(key, method);
+  if (hasLocalStorage()) {
+    try {
+      localStorage.setItem(key, method);
+    } catch {
+      // quota/privacy errors: the in-process store above still holds it
+    }
+  }
+}
+
+/** Clear the remembered method (used by tests/teardown). */
+export function clearMethodMemory(userId: number | string): void {
+  const key = methodMemoryKey(userId);
+  if (hasLocalStorage()) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }
+  methodFallback.delete(key);
+}

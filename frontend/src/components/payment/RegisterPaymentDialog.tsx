@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { todayDateOnly } from '@/lib/dateOnly'; // #484
 import DepositAccountSelect from '@/components/payment/DepositAccountSelect';
-import { defaultDepositAccountId, readDepositMemory, rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount';
+import {
+  defaultDepositAccountId,
+  readDepositMemory,
+  readRememberedMethod,
+  rememberDeposit,
+  rememberMethod,
+  type DepositAccountOption,
+} from '@/lib/paymentDepositAccount';
 import { buildMethodOptions, type PaymentMethodRow } from '@/lib/paymentMethods'; // #486
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -33,6 +40,17 @@ export interface PaymentFxPreview {
 
 /** #489: posting a customer receipt is a GL post (route: accounting.post). */
 const RECEIPT_PERMISSION = 'accounting.post';
+/** #508: "Save & post" / Ctrl+Enter hits POST /payments/{id}/post — accounting.post (#480). */
+const POST_PAYMENT_PERMISSION = 'accounting.post';
+/** Fallback method when nothing is remembered (the pre-#508 default). */
+const DEFAULT_METHOD = 'bank_transfer';
+
+/** What a RecordPaymentForm submit did (#508: a payment may be saved AND posted). */
+export interface RecordPaymentResult {
+  posted: boolean;
+  /** The draft was saved but posting it failed (already reported to the user). */
+  postFailed?: boolean;
+}
 
 /** A draft payment as the edit path receives it (#487: same dialog edits drafts). */
 export interface EditablePayment {
@@ -147,12 +165,18 @@ export const RegisterPaymentDialog: React.FC<{
             unpaidInvoices={unpaidInvoices}
             initialInvoiceId={invoiceId != null ? String(invoiceId) : undefined}
             payment={payment}
-            onSuccess={() => {
+            onSuccess={(result) => {
               onOpenChange(false);
               refresh();
-              toast(isEdit
-                ? { title: 'Draft payment updated' }
-                : { title: 'Draft payment recorded', description: 'Post it from the Payments page to update the ledger.' });
+              if (result?.posted) {
+                // #508: saved and posted — the ledger and balances moved.
+                queryClient.invalidateQueries({ queryKey: ['payments'] });
+                toast({ title: 'Payment posted', description: 'The payment was saved and posted to the ledger.' });
+              } else if (!result?.postFailed) {
+                toast(isEdit
+                  ? { title: 'Draft payment updated' }
+                  : { title: 'Draft payment recorded', description: 'Post it from the Payments page to update the ledger.' });
+              }
               onSuccess?.();
             }}
           />
@@ -167,9 +191,14 @@ export const RecordPaymentForm: React.FC<{
   initialInvoiceId?: string;
   /** #487: edit this draft (PUT) instead of recording a new payment (POST). */
   payment?: EditablePayment | null;
-  onSuccess: () => void;
+  onSuccess: (result?: RecordPaymentResult) => void;
 }> = ({ unpaidInvoices = [], initialInvoiceId, payment = null, onSuccess }) => {
   const isEdit = payment != null;
+  const { user: authUser } = useAuthStore();
+  // #508: Save & post (button and Ctrl/⌘+Enter) — same gate as the Post button.
+  const canPostPayment = useAuthStore((state) => state.hasPermission(POST_PAYMENT_PERMISSION));
+  // #508: a new payment starts on the method this user last saved with.
+  const [rememberedMethod] = useState(() => (isEdit ? null : readRememberedMethod(authUser?.id)));
   // Pin the deep-link id on mount: the parent strips ?invoice_id right after
   // opening the dialog, and reading the live prop made the preselect query
   // switch keys (and cancel) before its data arrived — leaving Amount blank
@@ -194,7 +223,7 @@ export const RecordPaymentForm: React.FC<{
         invoice_id: pinnedInvoiceId,
         amount: '',
         payment_date: todayDateOnly(), // #484: local business date, never UTC
-        method: 'bank_transfer',
+        method: rememberedMethod ?? DEFAULT_METHOD,
         reference: '',
         notes: '',
         bank_account_id: '',
@@ -202,7 +231,6 @@ export const RecordPaymentForm: React.FC<{
   // #487: optional fields (reference, notes) sit behind "More".
   const [showMore, setShowMore] = useState(false);
 
-  const { user: authUser } = useAuthStore();
   const { data: depositOptions, isLoading: depositLoading } = useQuery<DepositAccountOption[]>({
     queryKey: ['bank-accounts'],
     queryFn: async () => {
@@ -218,6 +246,15 @@ export const RecordPaymentForm: React.FC<{
     },
   });
   const methodOptions = buildMethodOptions(methodRows);
+
+  // #508: a remembered method the tenant no longer offers falls back to the default.
+  useEffect(() => {
+    if (!rememberedMethod || !methodRows) return;
+    if (formData.method === rememberedMethod && !methodOptions.some((option) => option.value === rememberedMethod)) {
+      setFormData((prev) => ({ ...prev, method: DEFAULT_METHOD, bank_account_id: '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-check only when the master loads
+  }, [methodRows, rememberedMethod]);
 
   // #485: default the deposit account per method, remembered per user
   // (new payments only — editing a draft never re-targets it silently).
@@ -259,6 +296,9 @@ export const RecordPaymentForm: React.FC<{
       customer_id: String(source.customer_id || ''),
       amount: String(source.balance ?? source.total ?? ''),
     }));
+    // customer_id is a one-shot guard, not a trigger: re-running when the user
+    // clears the invoice would silently re-fill the deep-linked one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pinnedInvoiceId, preselectedInvoice, unpaidInvoices]);
 
   const { toast } = useToast();
@@ -302,14 +342,34 @@ export const RecordPaymentForm: React.FC<{
   const [writeOffLabel, setWriteOffLabel] = useState('');
 
   const recordPaymentMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
+    mutationFn: async ({ data, post }: { data: Record<string, unknown>; post: boolean }): Promise<RecordPaymentResult> => {
       const response = payment
         ? await api.put(`/payments/${payment.id}`, data)
         : await api.post('/payments', data);
-      return response.data;
+      if (!post) return { posted: false };
+      // #508: Save & post — the draft is saved first, then posted through the
+      // same endpoint as the Payments page Post button (accounting.post, #480).
+      const savedId = payment?.id ?? response.data?.id ?? response.data?.data?.id;
+      try {
+        await api.post(`/payments/${savedId}/post`);
+      } catch (error) {
+        throw Object.assign(new Error('post failed'), { draftSaved: true, cause: error });
+      }
+      return { posted: true };
     },
-    onSuccess: () => onSuccess(),
+    onSuccess: (result) => onSuccess(result),
     onError: (error: any) => {
+      if (error?.draftSaved) {
+        // The draft exists — close and refresh (no duplicate on retry), and
+        // say plainly that it was NOT posted.
+        toast({
+          variant: 'destructive',
+          title: 'Saved as draft — posting failed',
+          description: error.cause?.response?.data?.message || 'Post it from the Payments page.',
+        });
+        onSuccess({ posted: false, postFailed: true });
+        return;
+      }
       toast({
         variant: 'destructive',
         title: isEdit ? 'Failed to update payment' : 'Failed to record payment',
@@ -335,17 +395,40 @@ export const RecordPaymentForm: React.FC<{
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // #508: the "Save & post" button (or Ctrl/⌘+Enter, which submits through
+    // it) asks to post; never for users without accounting.post.
+    const submitter = (e.nativeEvent as SubmitEvent).submitter;
+    const post = canPostPayment && submitter?.getAttribute('data-intent') === 'post';
     if (authUser && formData.bank_account_id) {
       rememberDeposit(authUser.id, formData.method, Number(formData.bank_account_id));
     }
-    recordPaymentMutation.mutate(buildPaymentPayload(formData, {
-      // #490: an edited rate (the bank's actual one) is sent as exchange_rate;
-      // otherwise the backend snapshots the payment-date rate itself.
-      exchangeRate: !isEdit && editedRate != null && fxPreview?.foreign ? editedRate : null,
-      writeOff: writeOffSelected ? { reason: writeOffReason, label: writeOffLabel } : null,
-    }));
+    if (authUser && !isEdit) rememberMethod(authUser.id, formData.method);
+    recordPaymentMutation.mutate({
+      data: buildPaymentPayload(formData, {
+        // #490: an edited rate (the bank's actual one) is sent as exchange_rate;
+        // otherwise the backend snapshots the payment-date rate itself.
+        exchangeRate: !isEdit && editedRate != null && fxPreview?.foreign ? editedRate : null,
+        writeOff: writeOffSelected ? { reason: writeOffReason, label: writeOffLabel } : null,
+      }),
+      post,
+    });
+  };
+
+  const postButtonRef = React.useRef<HTMLButtonElement>(null);
+  // #508: Ctrl/⌘+Enter = Save & post (through the button, so native field
+  // validation still runs). Without accounting.post it only saves the draft.
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    e.preventDefault();
+    if (recordPaymentMutation.isPending) return;
+    const form = e.currentTarget;
+    if (canPostPayment && postButtonRef.current && !postButtonRef.current.disabled) {
+      form.requestSubmit(postButtonRef.current);
+    } else if (!canPostPayment) {
+      form.requestSubmit();
+    }
   };
 
   const handleInvoiceChange = (value: string, invoice?: InvoiceSearchItem) => {
@@ -398,6 +481,9 @@ export const RecordPaymentForm: React.FC<{
   // it is shown up front instead of behind "More".
   const referenceRequired = methodOptions.find((o) => o.value === formData.method)?.requiresReference || false;
 
+  const submitDisabled = recordPaymentMutation.isPending
+    || (showDifference && writeOffAvailable && differenceMode === 'write_off' && writeOffReason === '');
+
   const referenceField = (
     <div className="space-y-2" data-payment-field="reference">
       <Label htmlFor="reference">Reference Number</Label>
@@ -412,7 +498,7 @@ export const RecordPaymentForm: React.FC<{
   );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2" data-payment-field="invoice">
           <Label htmlFor="invoice_id">Invoice</Label>
@@ -636,16 +722,31 @@ export const RecordPaymentForm: React.FC<{
         </div>
       )}
 
-      <div className="flex justify-end gap-2 pt-4">
-        <Button
-          type="submit"
-          disabled={recordPaymentMutation.isPending
-            || (showDifference && writeOffAvailable && differenceMode === 'write_off' && writeOffReason === '')}
-        >
+      <div className="flex items-center justify-end gap-2 pt-4">
+        {/* #508: keyboard hint — the full list is in the "?" overlay. */}
+        <p className="mr-auto text-xs text-muted-foreground">
+          <kbd className="font-mono">Enter</kbd> save
+          {canPostPayment && <> · <kbd className="font-mono">Ctrl/⌘+Enter</kbd> save &amp; post</>}
+        </p>
+        {/* First submit button in tree order = the default button Enter clicks:
+            Enter must save a draft, never post (#508). `order-last` keeps it
+            visually rightmost. */}
+        <Button type="submit" className="order-last" disabled={submitDisabled}>
           {isEdit
             ? (recordPaymentMutation.isPending ? 'Saving...' : 'Save Changes')
             : (recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment')}
         </Button>
+        {canPostPayment && (
+          <Button
+            ref={postButtonRef}
+            type="submit"
+            variant="outline"
+            data-intent="post"
+            disabled={submitDisabled}
+          >
+            Save &amp; post
+          </Button>
+        )}
       </div>
     </form>
   );
