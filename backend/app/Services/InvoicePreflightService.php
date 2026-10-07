@@ -2,8 +2,14 @@
 
 namespace App\Services;
 
+use App\Accounting\Services\ComplianceService;
+use App\Models\CompanySettings;
+use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\InvoiceLine;
+use App\Models\Product;
 use App\Models\Warehouse;
+use Illuminate\Support\Collection;
 use Modules\Inventory\Models\InventorySettings;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Sales\Services\CreditCheckService;
@@ -15,6 +21,10 @@ use Modules\Sales\Services\CreditCheckService;
  * plus two data-quality checks (possible duplicate, customer TIN) that only
  * surface here, and reports pass/warn/fail without blocking anything by
  * itself (posting keeps its own hard gates).
+ *
+ * Issue #344: a `fail` is a hard gate — InvoiceController refuses post (and
+ * the legacy /send) with the failures from blockingFailures(); draft() builds
+ * the unsaved invoice the create/edit form checks while it is being typed.
  */
 class InvoicePreflightService
 {
@@ -26,7 +36,13 @@ class InvoicePreflightService
         private InvoiceDuplicateCheck $duplicateCheck,
     ) {}
 
-    public function run(Invoice $invoice): array
+    /** Check keys whose `fail` is enforced by posting's own goods issue, not by the pre-flight gate. */
+    public const ENFORCED_BY_POSTING = ['stock'];
+
+    /**
+     * @param  array{warehouse_id?: int|null}  $context  warehouse picked on the form (dry run)
+     */
+    public function run(Invoice $invoice, array $context = []): array
     {
         $productLines = $invoice->lines
             ->filter(fn ($line) => ($line->line_type ?? 'product') === 'product');
@@ -41,8 +57,8 @@ class InvoicePreflightService
             $this->periodCheck($invoice),
             $this->creditCheck($invoice),
             $this->duplicateCheck($invoice),
-            $this->tinCheck($invoice),
-            $this->stockCheck($invoice, $productLines),
+            $this->eInvoiceCheck($invoice),
+            $this->stockCheck($invoice, $productLines, $context['warehouse_id'] ?? null),
         ];
 
         $passed = count(array_filter($checks, fn ($check) => $check['status'] === 'pass'));
@@ -54,6 +70,84 @@ class InvoicePreflightService
             'total' => count($checks),
             'checks' => $checks,
         ];
+    }
+
+    /**
+     * Issue #344: the failed checks that refuse posting. Stock is left to the
+     * posting's goods issue (InventoryService refuses a shortage inside the
+     * posting transaction, with the warehouse posting itself resolves).
+     *
+     * @return list<array<string, string>>
+     */
+    public function blockingFailures(Invoice $invoice): array
+    {
+        $invoice->loadMissing(['customer', 'lines.product', 'salesOrder']);
+
+        return array_values(array_filter(
+            $this->run($invoice)['checks'],
+            fn (array $check) => $check['status'] === 'fail' && ! in_array($check['key'], self::ENFORCED_BY_POSTING, true),
+        ));
+    }
+
+    /**
+     * Issue #344: an UNSAVED invoice built from the create/edit form payload —
+     * on a copy of the saved invoice when editing (so approval state, the
+     * duplicate self-exclusion and the "confirmed duplicate" flag are its
+     * own). Nothing is persisted: the lines are in-memory models and the
+     * totals use the same arithmetic as saving (Invoice::computeTotals).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function draft(array $payload, ?Invoice $existing = null): Invoice
+    {
+        $invoice = $existing ? clone $existing : new Invoice([
+            'status' => 'draft',
+            'paid_amount' => 0,
+            'requires_approval' => false,
+            'base_currency_code' => CompanySettings::current()?->base_currency,
+        ]);
+        $invoice->status = 'draft';
+
+        foreach (['customer_id', 'invoice_date', 'po_number', 'customer_reference', 'tax_registration_number', 'discount_amount'] as $field) {
+            if (array_key_exists($field, $payload)) {
+                $invoice->{$field} = $payload[$field];
+            }
+        }
+
+        $invoice->invoice_date ??= now()->toDateString();
+
+        if (! empty($payload['currency_code']) && strtoupper((string) $payload['currency_code']) !== strtoupper((string) $invoice->currency_code)) {
+            $invoice->currency_code = strtoupper((string) $payload['currency_code']);
+            $invoice->exchange_rate = null;
+        }
+
+        $products = Product::query()
+            ->whereIn('id', collect($payload['lines'] ?? [])->pluck('product_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy('id');
+
+        $lines = collect($payload['lines'] ?? [])->map(function (array $row) use ($products) {
+            $line = new InvoiceLine([
+                'line_type' => $row['line_type'] ?? 'product',
+                'product_id' => $row['product_id'] ?? null,
+                'description' => $row['description'] ?? null,
+                'quantity' => $row['quantity'] ?? 0,
+                'unit_price' => $row['unit_price'] ?? 0,
+                'tax_rate' => $row['tax_rate'] ?? 0,
+                'tax_inclusive' => (bool) ($row['tax_inclusive'] ?? false),
+                'discount_amount' => $row['discount_amount'] ?? 0,
+            ]);
+            $line->calculateTotals();
+            $line->setRelation('product', $line->product_id ? $products->get((int) $line->product_id) : null);
+
+            return $line;
+        });
+
+        $invoice->setRelation('lines', $lines);
+        $invoice->setRelation('customer', $invoice->customer_id ? Customer::find($invoice->customer_id) : null);
+        $invoice->computeTotals();
+
+        return $invoice;
     }
 
     private function approvalCheck(Invoice $invoice): array
@@ -157,6 +251,41 @@ class InvoicePreflightService
         return $this->warn('duplicate', 'Possible duplicate', "{$matches} already exists for this customer — check before posting.");
     }
 
+    /**
+     * Issue #344: when an e-invoicing country pack applies, the row is the
+     * #671 readiness dry run (ComplianceService::invoiceReadiness) — the
+     * pack's own rules, not just "a tax number exists". Its gaps block the
+     * e-invoice submission, not the posting, so they warn. Without an
+     * applicable pack the generic customer-TIN check stays.
+     */
+    private function eInvoiceCheck(Invoice $invoice): array
+    {
+        $readiness = $invoice->customer_id
+            ? app(ComplianceService::class)->invoiceReadiness($invoice)
+            : ['applicable' => false];
+
+        if (! $readiness['applicable']) {
+            return $this->tinCheck($invoice);
+        }
+
+        $label = 'E-invoice readiness ('.implode(', ', $readiness['countries']).')';
+
+        if ($readiness['issues'] === []) {
+            return $this->pass('e_invoice', $label, 'Ready for e-invoice submission.');
+        }
+
+        $detail = implode('; ', array_map(
+            fn (array $issue) => ($issue['severity'] === 'blocking' ? 'Blocking: ' : '').$issue['message'],
+            $readiness['issues'],
+        ));
+
+        if ($readiness['summary']['blocking'] > 0) {
+            $detail .= ' — the e-invoice submission will be refused until fixed.';
+        }
+
+        return $this->warn('e_invoice', $label, $detail);
+    }
+
     private function tinCheck(Invoice $invoice): array
     {
         $tin = trim((string) ($invoice->tax_registration_number ?? '')) ?: trim((string) ($invoice->customer?->tax_number ?? ''));
@@ -166,7 +295,14 @@ class InvoicePreflightService
             : $this->warn('e_invoice', 'Customer TIN', 'Customer TIN is missing — required for e-invoice (MyInvois).');
     }
 
-    private function stockCheck(Invoice $invoice, $productLines): array
+    /**
+     * Issue #344: the same arithmetic posting's goods issue applies — only
+     * the quantity no document has issued yet (GoodsIssueLedger, so a line a
+     * delivery order already shipped is not re-checked), summed per product,
+     * against on hand minus reservations held by OTHER documents
+     * (InventoryService::stockAvailability, #465/#686).
+     */
+    private function stockCheck(Invoice $invoice, Collection $productLines, ?int $warehouseOverride = null): array
     {
         $tracked = $productLines->filter(fn ($line) => $line->product && $line->product->track_inventory);
 
@@ -174,20 +310,39 @@ class InvoicePreflightService
             return $this->pass('stock', 'Stock availability', 'No tracked products on this invoice.');
         }
 
-        $warehouseId = $invoice->salesOrder?->warehouse_id ?? Warehouse::getDefault()?->id;
+        $warehouseId = $warehouseOverride ?? $invoice->salesOrder?->warehouse_id ?? Warehouse::getDefault()?->id;
 
         if (! $warehouseId) {
             return $this->warn('stock', 'Stock availability', 'No warehouse context — stock cannot be checked.');
         }
 
+        [$sourceType, $sourceId] = match (true) {
+            (bool) $invoice->sales_order_id => ['SalesOrder', (int) $invoice->sales_order_id],
+            $invoice->exists => ['Invoice', (int) $invoice->id],
+            default => [null, null],
+        };
+
+        $ledger = app(GoodsIssueLedger::class);
+        $demand = [];
+
+        foreach ($tracked as $line) {
+            $quantity = (float) $line->quantity;
+            $toIssue = $line->exists ? $ledger->remainingForInvoiceLine($line, $quantity) : $quantity;
+
+            if ($toIssue > 0) {
+                $demand[(int) $line->product_id] = ($demand[(int) $line->product_id] ?? 0.0) + $toIssue;
+            }
+        }
+
         $inventory = app(InventoryService::class);
         $shortages = [];
 
-        foreach ($tracked as $line) {
-            $result = $inventory->checkAvailability((int) $line->product_id, (float) $line->quantity, (int) $warehouseId);
+        foreach ($demand as $productId => $quantity) {
+            $available = (float) $inventory->stockAvailability($productId, (int) $warehouseId, $sourceType, $sourceId)['available'];
 
-            if (! ($result['is_available'] ?? true)) {
-                $shortages[] = sprintf('%s: short by %s', $line->product->name, number_format((float) ($result['shortage'] ?? 0), 2));
+            if ($quantity > $available + 0.0000001) {
+                $product = $tracked->first(fn ($line) => (int) $line->product_id === $productId)->product;
+                $shortages[] = sprintf('%s: short by %s', $product->name, number_format($quantity - $available, 2));
             }
         }
 

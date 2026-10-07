@@ -43,6 +43,8 @@ import {
   type InvoiceDeliveryProgress,
 } from '@/components/sales/DocumentProgressChip'
 import { creditWarning } from '@/lib/creditCheck'
+import { PreflightBlockedNotice, PreflightCheckIcon } from '@/components/sales/InvoicePreflight'
+import { failingChecks, type PreflightReport } from '@/lib/invoicePreflight'
 
 interface Invoice {
   id: number
@@ -274,16 +276,13 @@ export function InvoiceDetailPage() {
   })
 
   // D7: pre-flight checklist for the Post badge (drafts only).
-  const { data: preflight } = useQuery<{
-    ready: boolean
-    passed: number
-    total: number
-    checks: Array<{ key: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }>
-  }>({
+  const { data: preflight } = useQuery<PreflightReport>({
     queryKey: ['invoice-preflight', id],
     queryFn: async () => (await api.get(`/invoices/${id}/preflight`)).data,
     enabled: !!id && invoice?.status === 'draft',
   })
+  // Issue #344: a failing check blocks Post — the server refuses it too.
+  const preflightBlocksPost = failingChecks(preflight).length > 0
 
   // Document-currency primary; base equivalent at the snapshot rate (FR-5.4).
   const docCurrency = invoice?.currency_code || undefined
@@ -734,7 +733,12 @@ export function InvoiceDetailPage() {
                 icon="solar:check-circle-bold-duotone"
                 loading={postMutation.isPending}
                 onClick={() => postMutation.mutate()}
-                disabled={postMutation.isPending}
+                disabled={postMutation.isPending || preflightBlocksPost}
+                title={
+                  preflightBlocksPost
+                    ? failingChecks(preflight).map((check) => `${check.label}: ${check.detail}`).join('\n')
+                    : undefined
+                }
               >
                 Post Invoice
               </HeaderActionButton>
@@ -770,23 +774,7 @@ export function InvoiceDetailPage() {
                   <ul className="max-h-72 overflow-y-auto p-1.5 text-xs">
                     {preflight.checks.map((check) => (
                       <li key={check.key} className="flex gap-2 rounded-md p-2 hover:bg-muted/50">
-                        <Icon
-                          icon={
-                            check.status === 'pass'
-                              ? 'solar:check-circle-bold'
-                              : check.status === 'warn'
-                                ? 'solar:danger-triangle-bold'
-                                : 'solar:close-circle-bold'
-                          }
-                          className={cn(
-                            'mt-0.5 h-4 w-4 shrink-0',
-                            check.status === 'pass'
-                              ? 'text-emerald-600'
-                              : check.status === 'warn'
-                                ? 'text-amber-600'
-                                : 'text-red-600',
-                          )}
-                        />
+                        <PreflightCheckIcon status={check.status} />
                         <div className="min-w-0">
                           <div className="font-medium">{check.label}</div>
                           <div className="text-muted-foreground">{check.detail}</div>
@@ -903,6 +891,10 @@ export function InvoiceDetailPage() {
             )}
           </>}
         />
+        {/* Issue #344: why Post is disabled — the failing pre-flight checks. */}
+        {invoice.status === 'draft' && canPost && (
+          <PreflightBlockedNotice report={preflight} className="mt-2" />
+        )}
         {/* Issue #696 (INV-D3): stock & COGS reconciliation badge. */}
         <StockCogsBadge
           documentType="invoice"

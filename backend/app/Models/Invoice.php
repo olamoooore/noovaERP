@@ -621,6 +621,17 @@ class Invoice extends Model implements WorkflowSubject
 
     public function calculateTotals(): void
     {
+        $this->computeTotals();
+        $this->save();
+    }
+
+    /**
+     * The header totals from the loaded lines, without saving — the arithmetic
+     * calculateTotals() persists. Issue #344: the pre-flight dry run computes
+     * an unsaved draft's totals with it.
+     */
+    public function computeTotals(): void
+    {
         $this->subtotal = $this->lines->sum(function ($line) {
             return $line->line_total - $line->tax_amount;
         });
@@ -651,7 +662,6 @@ class Invoice extends Model implements WorkflowSubject
         $this->total = round($gross + (float) $this->rounding_amount, 2);
 
         $this->balance = $this->total - $this->paid_amount;
-        $this->save();
     }
 
     public function scopeActiveVersion($query)

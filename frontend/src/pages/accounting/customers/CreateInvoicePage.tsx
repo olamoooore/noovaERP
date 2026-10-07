@@ -57,6 +57,8 @@ import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
 import { creditWarning } from '@/lib/creditCheck';
 import { duplicateWarning, likelyDuplicateFromError, type DuplicateCheckResult } from '@/lib/duplicateCheck';
+import { PreflightBlockedNotice, PreflightChecklist } from '@/components/sales/InvoicePreflight';
+import { failingChecks, type PreflightReport } from '@/lib/invoicePreflight';
 import { DuplicateInvoiceDialog } from '@/components/sales/DuplicateInvoiceDialog';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
@@ -1738,6 +1740,49 @@ export const CreateInvoicePage: React.FC = () => {
   // (subtotal − discount) / subtotal, rounded to 2dp.
   const { subtotal, lineDiscounts, documentDiscountAmount, taxTotal, total } =
     computeDocumentTotals(lines, { mode: discountMode, amount: discountAmount });
+
+  // Issue #344 (D7): the pre-flight checklist while editing — a dry run of
+  // the server checklist on the UNSAVED form (POST /invoices/preflight writes
+  // nothing). A failing check blocks Save & Send, which posts.
+  const preflightPayload = React.useMemo(() => {
+    if (isQuoteMode || !customerId || (isEditMode && !invoiceLoaded)) return null;
+    return {
+      ...(isEditMode && id ? { invoice_id: Number(id) } : {}),
+      customer_id: Number(customerId),
+      invoice_date: invoiceDate || undefined,
+      po_number: poNumber || undefined,
+      customer_reference: documentSnapshot.customer_reference || undefined,
+      ...(currencyCode ? { currency_code: currencyCode } : {}),
+      ...(warehouseId ? { warehouse_id: Number(warehouseId) } : {}),
+      discount_amount: documentDiscountAmount || 0,
+      lines: lines
+        .filter((line) => !isBlankPlaceholderLine(line) && Boolean(line.description || line.product_id))
+        .map((line) => ({
+          line_type: line.line_type || 'product',
+          product_id: line.product_id ? parseInt(line.product_id, 10) : null,
+          description: line.description || 'Item',
+          quantity: line.quantity === '' ? 0 : (Number(normalizeQuantity(line.quantity)) || 0),
+          unit_price: line.unit_price === '' ? 0 : Number(line.unit_price),
+          tax_rate: line.tax_rate === '' ? 0 : Number(line.tax_rate),
+          discount_amount: line.discount_amount === '' ? 0 : Number(line.discount_amount),
+        })),
+    };
+  }, [isQuoteMode, customerId, isEditMode, invoiceLoaded, id, invoiceDate, poNumber, documentSnapshot.customer_reference, currencyCode, warehouseId, documentDiscountAmount, lines]);
+
+  const preflightKey = preflightPayload ? JSON.stringify(preflightPayload) : null;
+  const [debouncedPreflightKey, setDebouncedPreflightKey] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedPreflightKey(preflightKey), 400);
+    return () => window.clearTimeout(timer);
+  }, [preflightKey]);
+
+  const { data: draftPreflight } = useQuery<PreflightReport>({
+    queryKey: ['invoice-draft-preflight', debouncedPreflightKey],
+    queryFn: async () => (await api.post('/invoices/preflight', JSON.parse(debouncedPreflightKey as string))).data,
+    enabled: debouncedPreflightKey !== null,
+    placeholderData: (previous) => previous,
+  });
+  const preflightBlocksSend = Boolean(preflightPayload) && failingChecks(draftPreflight).length > 0;
 
   const handleCustomerFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -3474,6 +3519,14 @@ export const CreateInvoicePage: React.FC = () => {
             </CardContent>
           </Card>
 
+          {/* Issue #344: the D7 pre-flight checklist, run on the unsaved form. */}
+          {!isQuoteMode && preflightPayload && Array.isArray(draftPreflight?.checks) && draftPreflight && (
+            <div className="space-y-2">
+              <PreflightBlockedNotice report={draftPreflight} action="Posting (Save & Send)" />
+              <PreflightChecklist report={draftPreflight} />
+            </div>
+          )}
+
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={() => draftGuard.guard(() => navigate(backPath))}>
               Cancel
@@ -3498,7 +3551,8 @@ export const CreateInvoicePage: React.FC = () => {
                 type="submit"
                 variant="outline"
                 onClick={() => setSendAfterSave(true)}
-                disabled={saveMutation.isPending || isInvoiceLoading}
+                disabled={saveMutation.isPending || isInvoiceLoading || preflightBlocksSend}
+                title={preflightBlocksSend ? 'Save & Send posts the invoice — fix the failing pre-flight checks first.' : undefined}
                 className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
               >
                 {saveMutation.isPending && sendAfterSave ? (

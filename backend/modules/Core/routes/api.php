@@ -401,6 +401,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('accounting.view'));
         Route::post('/invoices', [InvoiceController::class, 'store'])
             ->middleware(RequirePermission::using('invoices.write'));
+        // Issue #344: D7 pre-flight checklist on the unsaved create/edit form
+        // payload (dry run, writes nothing) — same grant as creating it.
+        Route::post('/invoices/preflight', [InvoiceController::class, 'preflightDraft'])
+            ->middleware(RequirePermission::using('invoices.write'));
         Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])
             ->middleware(RequirePermission::using('invoices.view'));
         Route::put('/invoices/{invoice}', [InvoiceController::class, 'update'])

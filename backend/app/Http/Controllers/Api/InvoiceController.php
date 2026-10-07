@@ -2018,6 +2018,11 @@ class InvoiceController extends Controller
             return $this->creditLimitExceededResponse($creditCheck);
         }
 
+        // Issue #344: /send posts, so the pre-flight gate applies too.
+        if ($preflightRefusal = $this->preflightRefusal($invoice)) {
+            return $preflightRefusal;
+        }
+
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
@@ -2470,7 +2475,7 @@ class InvoiceController extends Controller
     /**
      * D7 (Oct-2026 invoice review): pre-flight checklist behind the badge on
      * Post — approval, evidence, period lock, credit, duplicate, TIN, stock.
-     * Advisory only; posting keeps its own hard gates.
+     * Issue #344: a `fail` also refuses posting (preflightRefusal).
      */
     public function preflight($id): JsonResponse
     {
@@ -2483,6 +2488,81 @@ class InvoiceController extends Controller
         return response()->json(
             app(\App\Services\InvoicePreflightService::class)->run($invoice)
         );
+    }
+
+    /**
+     * Issue #344: the checklist on the create/edit form — the same checks on
+     * the UNSAVED payload (on a copy of the saved invoice when `invoice_id`
+     * is given). Writes nothing: the draft is built in memory and the run is
+     * wrapped in a transaction that is always rolled back.
+     */
+    public function preflightDraft(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'invoice_id' => 'nullable|integer|exists:invoices,id',
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'invoice_date' => 'nullable|date',
+            'po_number' => 'nullable|string|max:100',
+            'customer_reference' => 'nullable|string|max:100',
+            'tax_registration_number' => 'nullable|string|max:100',
+            'currency_code' => 'nullable|string|size:3',
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'lines' => 'present|array',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
+            'lines.*.product_id' => 'nullable|integer|exists:products,id',
+            'lines.*.description' => 'nullable|string',
+            'lines.*.quantity' => 'nullable|numeric|min:0',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.tax_inclusive' => 'nullable|boolean',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        $existing = isset($validated['invoice_id'])
+            ? Invoice::with(['customer', 'lines.product', 'salesOrder'])->find($validated['invoice_id'])
+            : null;
+
+        if ($existing && $existing->status !== 'draft') {
+            return response()->json(['message' => 'Only draft invoices can be checked before posting.'], 422);
+        }
+
+        $service = app(\App\Services\InvoicePreflightService::class);
+
+        DB::beginTransaction();
+
+        try {
+            $report = $service->run(
+                $service->draft($validated, $existing),
+                ['warehouse_id' => $validated['warehouse_id'] ?? null],
+            );
+        } finally {
+            DB::rollBack();
+        }
+
+        return response()->json($report);
+    }
+
+    /**
+     * Issue #344: the pre-flight `fail` checks refuse posting (422) with the
+     * same reasons the checklist shows; null when nothing fails.
+     */
+    private function preflightRefusal(Invoice $invoice): ?JsonResponse
+    {
+        $failed = app(\App\Services\InvoicePreflightService::class)->blockingFailures($invoice);
+
+        if ($failed === []) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'The pre-flight checklist failed: '.implode('; ', array_map(
+                fn (array $check) => "{$check['label']}: {$check['detail']}",
+                $failed,
+            )),
+            'code' => 'PREFLIGHT_FAILED',
+            'failed_checks' => $failed,
+        ], 422);
     }
 
     /**
@@ -2751,6 +2831,12 @@ class InvoiceController extends Controller
         $creditCheck = $this->invoiceCreditVerdict($invoice);
         if ($creditCheck !== null && $creditCheck['blocked']) {
             return $this->creditLimitExceededResponse($creditCheck);
+        }
+
+        // Issue #344: a failing pre-flight check refuses the post — the
+        // checklist's `fail` is the same gate the UI shows.
+        if ($preflightRefusal = $this->preflightRefusal($invoice)) {
+            return $preflightRefusal;
         }
 
         try {

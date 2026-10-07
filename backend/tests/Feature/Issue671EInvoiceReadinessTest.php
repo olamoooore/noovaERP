@@ -267,7 +267,45 @@ class Issue671EInvoiceReadinessTest extends TenantTestCase
         $this->assertSame([], $response->json('issues'));
     }
 
+    /**
+     * Issue #344: the pre-flight checklist's e-invoice row reuses this
+     * country-pack readiness check instead of a generic "customer has a
+     * tax_number" test — a readiness gap surfaces there (as a warning: it
+     * blocks e-invoice submission, not posting), complete data passes.
+     */
+    public function test_the_invoice_preflight_e_invoice_row_uses_the_country_pack_readiness(): void
+    {
+        $this->enableMyInvois();
+
+        // A TIN on the customer but no buyer state: the generic TIN check
+        // passed this; the pack's readiness does not.
+        $gappy = $this->draftInvoice($this->businessCustomer([], null), [$this->product('022')]);
+        $row = $this->preflightRow($gappy);
+        $this->assertSame('warn', $row['status'], json_encode($row));
+        $this->assertStringContainsString('E-invoice', $row['label']);
+        $this->assertStringContainsString($this->issue($this->readiness($gappy), 'buyer_state_missing')['message'], $row['detail']);
+
+        $blocking = $this->draftInvoice($this->businessCustomer(['tax_number' => null]), [$this->product('022')]);
+        $blockingRow = $this->preflightRow($blocking);
+        $this->assertSame('warn', $blockingRow['status']);
+        $this->assertStringContainsString($this->issue($this->readiness($blocking), 'buyer_tin_missing')['message'], $blockingRow['detail']);
+
+        $readyRow = $this->preflightRow($this->draftInvoice($this->businessCustomer(), [$this->product('022')]));
+        $this->assertSame('pass', $readyRow['status'], json_encode($readyRow));
+
+        $this->assertSame(0, ComplianceDocument::query()->count());
+        $this->assertSame([], $this->lhdn->submitCalls);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /** @return array<string, mixed> */
+    private function preflightRow(Invoice $invoice): array
+    {
+        $checks = $this->actingAs($this->admin)->getJson("/api/v1/invoices/{$invoice->id}/preflight")->assertOk()->json('checks');
+
+        return collect($checks)->firstWhere('key', 'e_invoice');
+    }
 
     private function readiness(Invoice $invoice): TestResponse
     {
