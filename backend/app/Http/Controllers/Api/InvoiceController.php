@@ -522,6 +522,9 @@ class InvoiceController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) chosen on the line overrides the
+            // engine; without it the server resolves the line's tax.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             // #309 (X9): a per-line exemption reason travels with an exempt
             // line (the customer profile supplies the default).
@@ -617,6 +620,9 @@ class InvoiceController extends Controller
                 'data' => $invoice->fresh(['approvalRequest', 'customer']),
             ], 201);
 
+        } catch (ValidationException $e) {
+            // #302: an explicit tax rule that cannot apply is a 422, not a 500.
+            throw $e;
         } catch (\App\Exceptions\PricingException $e) {
             // MRD pricelist-multicurrency FR-1.1/FR-1.3/FR-6.3: unknown or
             // unsellable currency, missing FX rate, or a below-floor override
@@ -796,6 +802,10 @@ class InvoiceController extends Controller
                 ? \App\Support\CustomerTaxProfileResolver::exemptionReason($draftCustomerId, $draftDate)
                 : null;
 
+            // #302 (X1): line tax is resolved on the server through the tax
+            // engine at the draft's date — the sent % is not booked as final.
+            $data['lines'] = app(\App\Services\SalesLineTaxResolver::class)->applyToLines($data['lines'], $draftDate, $draftCustomerId);
+
             foreach ($data['lines'] as $line) {
                 $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                     ? \App\Models\Product::find($line['product_id'])
@@ -848,6 +858,11 @@ class InvoiceController extends Controller
                         ? (bool) $line['tax_inclusive']
                         : ($lineProduct !== null
                             && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['invoice_date'] ?? null)),
+                    // #302: the resolved tax identity persists with the line;
+                    // a customer exemption outranks the rule (#309).
+                    'tax_rule_id' => $draftCustomerExempt ? null : ($line['tax_rule_id'] ?? null),
+                    'tax_code' => $draftCustomerExempt ? null : ($line['tax_code'] ?? null),
+                    'tax_treatment' => $draftCustomerExempt ? 'exempt' : ($line['tax_treatment'] ?? null),
                     'discount_amount' => $line['discount_amount'] ?? 0,
                     'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $draftExemptionReason,
                 ], array_filter($priced, fn ($v) => $v !== null)));
@@ -870,6 +885,17 @@ class InvoiceController extends Controller
         // price the SalesOrder internals use (the invoice re-expresses it in
         // the sales UoM again when created from the order).
         $uomConverter = app(\App\Services\ProductUomConverter::class);
+
+        // #302 (X1): resolve every line's tax on the server through the tax
+        // engine at the invoice date (explicit tax rule override honoured);
+        // the backing order and the invoice carry the resolved identity.
+        $data['lines'] = app(\App\Services\SalesLineTaxResolver::class)
+            ->applyToLines(
+                $data['lines'],
+                $data['invoice_date'] ?? null,
+                isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+            );
+
         $salesLines = [];
         foreach ($data['lines'] as $line) {
             $lineType = $line['line_type'] ?? 'product';
@@ -911,6 +937,10 @@ class InvoiceController extends Controller
                 // #303 (X3): null when the screen did not send it — the Sales Order
                 // then resolves it through the engine (product override included).
                 'tax_inclusive' => $line['tax_inclusive'] ?? null,
+                // #302: the server-resolved tax identity travels with the line.
+                'tax_rule_id' => $line['tax_rule_id'] ?? null,
+                'tax_code' => $line['tax_code'] ?? null,
+                'tax_treatment' => $line['tax_treatment'] ?? null,
                 'discount_amount' => $line['discount_amount'] ?? 0,
                 // Issue #882 (SA9): the service period travels with the line
                 // so the invoice can carry it (the Sales Order has no service
@@ -1381,6 +1411,9 @@ class InvoiceController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) chosen on the line overrides the
+            // engine; without it the server resolves the line's tax.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             // #309 (X9): a per-line exemption reason travels with an exempt
             // line (the customer profile supplies the default).
@@ -1509,6 +1542,17 @@ class InvoiceController extends Controller
                         ? \App\Support\CustomerTaxProfileResolver::exemptionReason($editCustomerId, $editDate)
                         : null;
 
+                    // #302 (X1): an edited draft re-resolves line tax through
+                    // the tax engine at the invoice date (explicit rule wins).
+                    $lines = app(\App\Services\SalesLineTaxResolver::class)->applyToLines(
+                        $lines,
+                        $editDate,
+                        $editCustomerId,
+                        $invoice->sales_order_id
+                            ? (\Modules\Sales\Models\SalesOrder::query()->whereKey($invoice->sales_order_id)->value('legal_entity_id') ?: null)
+                            : null,
+                    );
+
                     $invoice->lines()->delete();
                     foreach ($lines as $line) {
                         $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
@@ -1553,6 +1597,10 @@ class InvoiceController extends Controller
                                 ? (bool) $line['tax_inclusive']
                                 : ($lineProduct !== null
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
+                            // #302: resolved tax identity; an exemption outranks it (#309).
+                            'tax_rule_id' => $editCustomerExempt ? null : ($line['tax_rule_id'] ?? null),
+                            'tax_code' => $editCustomerExempt ? null : ($line['tax_code'] ?? null),
+                            'tax_treatment' => $editCustomerExempt ? 'exempt' : ($line['tax_treatment'] ?? null),
                             'discount_amount' => $line['discount_amount'] ?? 0,
                             'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $editExemptionReason,
                             'is_deferred' => $deferredFields['is_deferred'],

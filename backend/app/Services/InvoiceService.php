@@ -242,6 +242,12 @@ class InvoiceService
                     'pricing_trace' => $lineData['pricing_trace'] ?? null,
                     'tax_rate' => $customerExempt ? 0 : ($lineData['tax_rate'] ?? 0),
                     'tax_inclusive' => $lineTaxInclusive,
+                    // #302: the tax identity resolved upstream (order line,
+                    // conversion or the line tax resolver) persists on the
+                    // invoice line; a customer exemption outranks it (#309).
+                    'tax_rule_id' => $customerExempt ? null : ($lineData['tax_rule_id'] ?? null),
+                    'tax_code' => $customerExempt ? null : ($lineData['tax_code'] ?? null),
+                    'tax_treatment' => $customerExempt ? 'exempt' : ($lineData['tax_treatment'] ?? null),
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                     // #309 (X9): the line records its exemption reason so the
                     // MyInvois E line carries it; an explicit line reason wins.

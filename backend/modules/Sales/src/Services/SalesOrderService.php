@@ -308,6 +308,11 @@ class SalesOrderService
                 : ($lineProduct !== null
                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $orderDate)),
             'tax_amount' => $lineData['tax_amount'] ?? 0,
+            // #302: tax identity resolved at the HTTP save path (or carried
+            // by a conversion); NULL for callers that never resolved one.
+            'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+            'tax_code' => $lineData['tax_code'] ?? null,
+            'tax_treatment' => $lineData['tax_treatment'] ?? null,
             'income_account_id' => $lineData['income_account_id'] ?? null,
             // Issue #884 (UX2): the line's analytic dimensions travel
             // quotation → order → invoice alongside the income account.
@@ -681,6 +686,7 @@ class SalesOrderService
             'product_notes', 'sku', 'model_number', 'quantity', 'unit', 'uom_id',
             'unit_price', 'discount_type', 'discount_value', 'discount_amount',
             'tax_rate', 'tax_inclusive', 'income_account_id', 'invoicing_policy',
+            'tax_rule_id', 'tax_code', 'tax_treatment',
         ]));
 
         if ($updates === []) {
@@ -739,6 +745,10 @@ class SalesOrderService
             'income_account_id' => $lineData['income_account_id'] ?? null,
             'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
             'backorder_quantity' => 0,
+            // #302: resolved tax identity (see SalesOrderController).
+            'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+            'tax_code' => $lineData['tax_code'] ?? null,
+            'tax_treatment' => $lineData['tax_treatment'] ?? null,
         ];
     }
 
@@ -1076,6 +1086,10 @@ class SalesOrderService
                     // #303 (X3): the order line's inclusive mode is part of the
                     // carried price — the invoice must book the same gross.
                     'tax_inclusive' => (bool) $line->tax_inclusive,
+                    // #302: the order line's tax identity travels with its rate.
+                    'tax_rule_id' => $line->tax_rule_id,
+                    'tax_code' => $line->tax_code,
+                    'tax_treatment' => $line->tax_treatment,
                     'discount_amount' => $line->discount_amount,
                     // Issue #884 (UX2): the order line's income account and
                     // analytic dimensions land on the invoice line, so the

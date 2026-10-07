@@ -331,6 +331,8 @@ class QuotationController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) overrides the engine.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // FR-5.2: header currency + explicit price list selection.
@@ -367,6 +369,12 @@ class QuotationController extends Controller
                 ? 'legacy'
                 : 'auto';
         };
+
+        // #302 (X1): line tax is resolved on the server through the tax engine
+        // at the quotation date (an explicit tax rule override is honoured);
+        // a rule that cannot apply is a 422 before anything is written.
+        $validated['lines'] = app(\App\Services\SalesLineTaxResolver::class)
+            ->applyToLines($validated['lines'], $validated['quotation_date'] ?? null, (int) $validated['customer_id']);
 
         try {
             $pricing = app(\App\Services\PricingService::class);
@@ -482,6 +490,10 @@ class QuotationController extends Controller
                             ? (bool) $lineData['tax_inclusive']
                             : ($lineProduct !== null
                                 && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $validated['quotation_date'] ?? null)),
+                        // #302: the resolved tax identity persists with the line.
+                        'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+                        'tax_code' => $lineData['tax_code'] ?? null,
+                        'tax_treatment' => $lineData['tax_treatment'] ?? null,
                         'discount_amount' => $lineData['discount_amount'] ?? 0,
                     ], $priced));
                 }
@@ -702,6 +714,8 @@ class QuotationController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) overrides the engine.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
@@ -742,8 +756,16 @@ class QuotationController extends Controller
                         'base_currency_code' => $quotation->base_currency_code,
                     ]);
 
+                    // #302 (X1): edited lines re-resolve tax through the tax
+                    // engine at the quotation's (possibly updated) date.
+                    $editedLines = app(\App\Services\SalesLineTaxResolver::class)->applyToLines(
+                        array_map(fn ($line) => (array) $line, (array) $request->lines),
+                        $quotation->quotation_date?->toDateString(),
+                        $quotation->customer_id !== null ? (int) $quotation->customer_id : null,
+                    );
+
                     $quotation->lines()->delete();
-                    foreach ($request->lines as $lineIndex => $lineData) {
+                    foreach ($editedLines as $lineIndex => $lineData) {
                         $lineData = (array) $lineData;
                         $lineType = $lineData['line_type'] ?? 'product';
 
@@ -787,6 +809,10 @@ class QuotationController extends Controller
                                 ? (bool) $lineData['tax_inclusive']
                                 : ($lineProduct !== null
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $quotation->quotation_date?->toDateString())),
+                            // #302: the resolved tax identity persists with the line.
+                            'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+                            'tax_code' => $lineData['tax_code'] ?? null,
+                            'tax_treatment' => $lineData['tax_treatment'] ?? null,
                             'discount_amount' => $lineData['discount_amount'] ?? 0,
                         ], $priced));
                     }
@@ -1716,6 +1742,10 @@ class QuotationController extends Controller
                 $createData['base_currency_code'] = $importContext['base_currency'];
 
                 $quotation = Quotation::create($createData);
+
+                // #302 (X1): imported line tax resolves through the tax engine
+                // at the quotation date, exactly like the interactive create.
+                $lines = app(\App\Services\SalesLineTaxResolver::class)->applyToLines($lines, $quotationDate, (int) $customer->id);
 
                 foreach ($lines as $line) {
                     $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])

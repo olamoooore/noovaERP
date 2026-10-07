@@ -132,6 +132,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // settings payload above stays OWNER/ADMIN-only.
     Route::get('/settings/sales/defaults', [CompanySettingsController::class, 'getSalesDocumentDefaults'])
         ->middleware(RequirePermission::using('sales.view|invoices.write'));
+    // #302 (X1/X2): read-only line tax preview + output tax-code options for
+    // the sales line editor — the same resolver the save path books with.
+    // Same audience and gate as the document defaults above.
+    Route::get('/sales/tax-preview', [\App\Http\Controllers\Api\SalesTaxPreviewController::class, 'show'])
+        ->middleware(RequirePermission::using('sales.view|invoices.write'));
     Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings'])
         ->middleware(RequirePermission::using('settings.view'));
     Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings'])

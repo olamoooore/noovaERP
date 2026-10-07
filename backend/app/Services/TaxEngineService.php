@@ -325,7 +325,66 @@ class TaxEngineService
             'tax_id' => null, 'tax_name' => 'No Tax', 'jurisdiction' => $jurisdiction,
             'regime' => $this->packs()->regime($jurisdiction),
             'scope' => 'both', 'treatment' => $treatment, 'source' => 'none', 'reason' => $reason,
+            // #302: true only when no rule, product setting or tenant default
+            // classified the line — distinct from a deliberate no-tax answer
+            // (tax disabled, tax_mode='none').
+            'unconfigured' => $useTenantDefaultTreatment,
         ];
+    }
+
+    /**
+     * #302: the identity of an explicitly chosen rule (a tax code picked on a
+     * sales line), in the same shape the resolution ladder returns — so an
+     * override and an engine answer carry identical fields.
+     */
+    public function ruleIdentity(Tax $tax, string $direction = 'output'): array
+    {
+        $direction = $direction === 'input' ? 'input' : 'output';
+
+        return $this->fromTax($tax, $this->tenantJurisdiction(), $direction, 'explicit_rule');
+    }
+
+    /**
+     * #302: whether a rule may be applied to a document of this direction on
+     * this date — active, in force, and scoped to the direction. The same
+     * checks the ladder applies to a product-linked rule.
+     */
+    public function ruleApplies(Tax $tax, string $date, string $direction = 'output'): bool
+    {
+        $direction = $direction === 'input' ? 'input' : 'output';
+
+        return (bool) $tax->is_active
+            && strtoupper((string) ($tax->lifecycle_state ?? 'ACTIVE')) === 'ACTIVE'
+            && $this->isValidOn($tax, $date)
+            && $this->scopeMatches($tax, $direction);
+    }
+
+    /**
+     * #302: the tax codes a sales-line picker may offer for a document date
+     * — every active rule in force on that date whose scope admits the
+     * direction. Order: default first, then code.
+     *
+     * @return \Illuminate\Support\Collection<int, Tax>
+     */
+    public function selectableRules(string $date, string $direction = 'output'): \Illuminate\Support\Collection
+    {
+        $direction = $direction === 'input' ? 'input' : 'output';
+
+        return Tax::query()
+            ->where('is_active', true)->where('lifecycle_state', 'ACTIVE')
+            ->where(function ($query) use ($direction) {
+                $query->where('scope', $direction)->orWhere('scope', 'both')->orWhereNull('scope');
+            })
+            ->where(function ($query) use ($date) {
+                $query->whereNull('effective_from')->orWhere('effective_from', '<=', $date);
+            })
+            ->where(function ($query) use ($date) {
+                $query->whereNull('effective_to')->orWhere('effective_to', '>=', $date);
+            })
+            ->orderByDesc('is_default')
+            ->orderBy('code')
+            ->orderBy('id')
+            ->get();
     }
 
     private function isEnabled(): bool

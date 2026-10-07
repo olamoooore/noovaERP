@@ -43,6 +43,10 @@ class SalesOrderLine extends Model
         'discount_amount',
         'tax_rate',
         'tax_inclusive',
+        // #302: persisted tax identity resolved at save.
+        'tax_rule_id',
+        'tax_code',
+        'tax_treatment',
         'tax_amount',
         'line_total',
         'income_account_id',

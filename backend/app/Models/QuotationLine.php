@@ -28,6 +28,10 @@ class QuotationLine extends Model
         'pricing_trace',
         'tax_rate',
         'tax_inclusive',
+        // #302: persisted tax identity resolved at save.
+        'tax_rule_id',
+        'tax_code',
+        'tax_treatment',
         'tax_amount',
         'discount_amount',
         'line_total',
