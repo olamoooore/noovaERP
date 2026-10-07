@@ -18,7 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity, NON_WHOLE_QUANTITY_KEYS, toWholeQuantity } from '@/lib/utils';
 import api from '@/lib/api'
 import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
 import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
@@ -3272,22 +3272,21 @@ export const CreateInvoicePage: React.FC = () => {
                               <input
                                 type="number"
                                 min="0"
-                                // #1024: arrows step by 1; decimals stay typeable.
+                                // #1024: quantities are whole numbers; arrows step by 1.
                                 step="1"
-                                inputMode="decimal"
+                                inputMode="numeric"
                                 value={line.quantity}
                                 onChange={(event) => {
                                   const raw = event.target.value;
                                   if (raw === '') { updateLine(index, 'quantity', ''); return; }
-                                  const parsed = Number(raw);
-                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
-                                }}
-                                onBlur={() => {
-                                  if (line.quantity !== '') {
-                                    updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number);
-                                  }
+                                  const whole = toWholeQuantity(raw);
+                                  if (whole !== '') updateLine(index, 'quantity', whole);
                                 }}
                                 onKeyDown={(event) => {
+                                  if (NON_WHOLE_QUANTITY_KEYS.has(event.key)) {
+                                    event.preventDefault();
+                                    return;
+                                  }
                                   // D6(e): Enter on the last row starts a new line.
                                   if (event.key === 'Enter') {
                                     event.preventDefault();

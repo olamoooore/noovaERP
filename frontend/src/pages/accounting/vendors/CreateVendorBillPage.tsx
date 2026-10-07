@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { accountingApi } from '@/lib/api';
-import { formatCurrency, normalizeQuantity } from '@/lib/utils';
+import { formatCurrency, NON_WHOLE_QUANTITY_KEYS, toWholeQuantity } from '@/lib/utils';
 import { ProductSearchCombobox, getProductLineDescription } from '@/components/inventory/ProductSearchCombobox';
 import { VendorSearchCombobox } from '@/components/ui/VendorSearchCombobox';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
@@ -778,23 +778,20 @@ export const CreateVendorBillPage: React.FC = () => {
                             <input
                               type="number"
                               min="0"
-                              // #1024: arrows step by 1; decimals stay typeable.
+                              // #1024: quantities are whole numbers; arrows step by 1.
                               step="1"
-                              inputMode="decimal"
+                              inputMode="numeric"
                               value={line.quantity}
+                              onKeyDown={(event) => {
+                                if (NON_WHOLE_QUANTITY_KEYS.has(event.key)) event.preventDefault();
+                              }}
                               onChange={(event) => {
                                 const raw = event.target.value;
+                                const whole = toWholeQuantity(raw);
+                                if (raw !== '' && whole === '') return;
                                 const updated = [...lines];
-                                updated[index] = { ...updated[index], quantity: raw === '' ? '' : Number(raw) };
+                                updated[index] = { ...updated[index], quantity: whole };
                                 setLines(updated);
-                              }}
-                              onBlur={() => {
-                                // Strip floating-point noise the spinner used to create.
-                                if (line.quantity !== '') {
-                                  const updated = [...lines];
-                                  updated[index] = { ...updated[index], quantity: normalizeQuantity(line.quantity) as number };
-                                  setLines(updated);
-                                }
                               }}
                               className={LINE_INPUT_NUMERIC}
                             />
