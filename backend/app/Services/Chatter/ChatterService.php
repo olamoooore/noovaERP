@@ -236,6 +236,9 @@ class ChatterService
 
         $activity->update([
             'due_date' => $dueDate,
+            // Issue #410: a re-dated activity is reminded again when its new
+            // due date is reached.
+            'reminded_at' => null,
         ]);
 
         $this->logEvent($subjectType, $normalizedId, 'activity_snoozed', 'Activity snoozed', [

@@ -11,7 +11,8 @@ use App\Models\Quotation;
 use App\Models\User;
 use App\Services\ApprovalService;
 use App\Services\ApprovalVisibilityService;
-use App\Services\EntityAccessService;
+use App\Services\Chatter\AssignedActivityService;
+use App\Services\SalesDocumentEntityScope;
 use App\Services\SalesDocumentProgress;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -96,10 +97,11 @@ class SalesActionQueueService
     ];
 
     public function __construct(
-        private readonly EntityAccessService $entityAccess,
+        private readonly SalesDocumentEntityScope $entityScope,
         private readonly SalesDocumentProgress $progress,
         private readonly ApprovalService $approvals,
         private readonly ApprovalVisibilityService $approvalVisibility,
+        private readonly AssignedActivityService $activities,
     ) {}
 
     /**
@@ -143,6 +145,15 @@ class SalesActionQueueService
             'mine' => $mine,
             'expiring_window_days' => self::EXPIRING_WINDOW_DAYS,
             'queues' => $queues,
+            // Issue #410: the caller's own scheduled activities that are due
+            // (overdue or due today), on documents they may open. Kept beside
+            // `queues` because it is always the caller's own work (`mine` does
+            // not apply) and it opens "My activities", not a document list.
+            'activities' => $this->activities->dueSummary(
+                $user,
+                fn (string $permission) => RequirePermission::allows($request, $permission),
+                $limit,
+            ),
         ];
     }
 
@@ -249,37 +260,12 @@ class SalesActionQueueService
     /**
      * Orders and deliveries carry their own legal entity; quotations only
      * through their customer; invoices by their own entity (#875), falling
-     * back to the customer's for rows not yet stamped.
+     * back to the customer's for rows not yet stamped. The rule lives in
+     * SalesDocumentEntityScope (#410) so the activity surfaces share it.
      */
     private function scopeEntities(Builder $query, ?User $user): void
     {
-        if ($user === null) {
-            return;
-        }
-
-        $entityIds = $this->entityAccess->accessibleEntityIds((int) $user->id);
-
-        if ($entityIds === []) {
-            return;
-        }
-
-        $model = $query->getModel();
-        $table = $model->getTable();
-        $customerInScope = fn ($customers) => $customers->select('id')->from('customers')
-            ->where(fn ($q) => $q->whereIn('legal_entity_id', $entityIds)->orWhereNull('legal_entity_id'));
-
-        if ($model instanceof SalesOrder || $model instanceof DeliveryOrder) {
-            $query->whereIn("{$table}.legal_entity_id", $entityIds);
-        } elseif ($model instanceof Invoice) {
-            $query->where(function (Builder $scope) use ($table, $entityIds, $customerInScope) {
-                $scope->whereIn("{$table}.legal_entity_id", $entityIds)
-                    ->orWhere(fn (Builder $unstamped) => $unstamped
-                        ->whereNull("{$table}.legal_entity_id")
-                        ->whereIn("{$table}.customer_id", $customerInScope));
-            });
-        } else {
-            $query->whereIn("{$table}.customer_id", $customerInScope);
-        }
+        $this->entityScope->apply($query, $user);
     }
 
     private function orderForUrgency(string $key, Builder $query): Builder
