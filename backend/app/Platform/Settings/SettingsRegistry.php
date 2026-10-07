@@ -167,7 +167,7 @@ class SettingsRegistry implements SettingsRegistryContract
             CashRoundingService::class.'::accountId',
             CashRoundingService::class.'::accountIdOrFail',
         ];
-        $roundingReaders = [Invoice::class.'::calculateTotals', InvoiceService::class.'::buildPostingDraft'];
+        $roundingReaders = [Invoice::class.'::computeTotals', InvoiceService::class.'::buildPostingDraft'];
 
         $declarations = [
             'cash_rounding.enabled' => ['key' => CashRoundingService::SETTING_KEY, 'path' => 'enabled', 'type' => 'bool', 'via' => $roundingVia, 'readers' => $roundingReaders],
