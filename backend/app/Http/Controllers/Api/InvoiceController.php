@@ -2089,6 +2089,13 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => $e->getMessage(),
             ], 422);
+        } catch (\RuntimeException $e) {
+            // Issue #1030: a channel that could not send (e.g. no WhatsApp
+            // provider configured) is a visible failure; the attempt is
+            // already recorded as a failed delivery.
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
         }
     }
 
