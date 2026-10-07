@@ -84,6 +84,30 @@ class SalesSettings
 
     public const INVOICING_POLICIES = ['ordered_qty', 'delivered_qty'];
 
+    /** Issue #328: the daily job sends follow-up reminders automatically. */
+    public const FOLLOWUP_AUTO_SEND = 'sales.followup.auto_send_enabled';
+
+    /** Issue #328: follow-up levels (days overdue -> template, action). */
+    public const FOLLOWUP_LEVELS = 'sales.followup.levels';
+
+    public const FOLLOWUP_ACTION_SEND = 'send';
+
+    public const FOLLOWUP_ACTION_MANUAL = 'manual';
+
+    public const FOLLOWUP_ACTIONS = [self::FOLLOWUP_ACTION_SEND, self::FOLLOWUP_ACTION_MANUAL];
+
+    /** The Communication module's system overdue-invoice template (SystemTemplateSeeder). */
+    public const DEFAULT_FOLLOWUP_TEMPLATE = 'invoice.overdue';
+
+    /**
+     * Issue #328: levels used until the tenant saves its own — one emailed
+     * reminder once an invoice is a day overdue (the follow-up report's
+     * overdue set starts there), with the system overdue template.
+     */
+    public const DEFAULT_FOLLOWUP_LEVELS = [
+        ['days' => 1, 'action' => self::FOLLOWUP_ACTION_SEND, 'template' => self::DEFAULT_FOLLOWUP_TEMPLATE],
+    ];
+
     /**
      * The quotation form has always pre-filled "valid until" 30 days out
      * (DEFAULT_QUOTE_VALIDITY_DAYS in the frontend), so that stays the
@@ -165,6 +189,9 @@ class SalesSettings
             ],
             'pricelist' => [
                 'display' => self::DEFAULT_PRICELIST_DISPLAY,
+            ],
+            'followup' => [
+                'auto_send_enabled' => false,
             ],
         ];
     }
@@ -351,6 +378,53 @@ class SalesSettings
         $value = Setting::getValue(self::DOCUMENT_TYPE_ON_SEND);
 
         return is_string($value) && in_array($value, self::SENDABLE_DOCUMENT_TYPES, true) ? $value : null;
+    }
+
+    /**
+     * Issue #328: automatic follow-up reminders. Off by default so no tenant
+     * starts emailing customers without choosing to.
+     */
+    public function followupAutoSendEnabled(): bool
+    {
+        return $this->bool(self::FOLLOWUP_AUTO_SEND, false);
+    }
+
+    /**
+     * Issue #328: the follow-up levels, ascending by days overdue. Invalid
+     * rows are dropped; a tenant with no valid level gets the default one.
+     *
+     * @return list<array{days: int, action: string, template: string}>
+     */
+    public function followupLevels(): array
+    {
+        $raw = Setting::getValue(self::FOLLOWUP_LEVELS);
+        $levels = [];
+
+        foreach (is_array($raw) ? $raw : [] as $level) {
+            if (! is_array($level) || ! is_numeric($level['days'] ?? null) || (int) $level['days'] < 1) {
+                continue;
+            }
+
+            $action = $level['action'] ?? self::FOLLOWUP_ACTION_SEND;
+            $template = is_string($level['template'] ?? null) && trim($level['template']) !== ''
+                ? trim($level['template'])
+                : self::DEFAULT_FOLLOWUP_TEMPLATE;
+
+            // One level per day threshold; the last one saved wins.
+            $levels[(int) $level['days']] = [
+                'days' => (int) $level['days'],
+                'action' => in_array($action, self::FOLLOWUP_ACTIONS, true) ? $action : self::FOLLOWUP_ACTION_SEND,
+                'template' => $template,
+            ];
+        }
+
+        if ($levels === []) {
+            return self::DEFAULT_FOLLOWUP_LEVELS;
+        }
+
+        ksort($levels);
+
+        return array_values($levels);
     }
 
     private function bool(string $key, bool $default): bool

@@ -53,6 +53,12 @@ class InvoiceActivityLog extends Model
 
     public const EVENT_RESET_TO_DRAFT = 'reset_to_draft';
 
+    // Issue #328: follow-up reminders. A sent reminder is EVENT_SENT with
+    // document_type = reminder; these record the follow-ups that sent nothing.
+    public const EVENT_FOLLOWUP_SKIPPED = 'followup_skipped';
+
+    public const EVENT_FOLLOWUP_ACTION_DUE = 'followup_action_due';
+
     public const ACTOR_USER = 'user';
 
     public const ACTOR_SYSTEM = 'system';

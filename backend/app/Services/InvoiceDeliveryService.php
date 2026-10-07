@@ -57,7 +57,14 @@ class InvoiceDeliveryService
         return $override ?? $invoice->contact_email ?? $invoice->customer?->email;
     }
 
-    public function deliver(Invoice $invoice, string $channel, User $user, array $options = []): InvoiceDelivery
+    /**
+     * Issue #328: $user is null for a send made by the scheduler (automatic
+     * follow-up reminders); the delivery then has no sender and the activity
+     * is logged as a system action. $options['message_subject'] /
+     * $options['message_body'] carry an already-rendered reminder text and
+     * $options['metadata'] extra history fields (follow-up level, mode).
+     */
+    public function deliver(Invoice $invoice, string $channel, ?User $user, array $options = []): InvoiceDelivery
     {
         if (! $this->isDeliverable($invoice)) {
             throw new \InvalidArgumentException(self::NOT_DELIVERABLE_MESSAGE);
@@ -98,13 +105,22 @@ class InvoiceDeliveryService
                 $metadata['payment_url'] = $options['payment_url'];
             }
 
+            // Issue #328: a follow-up reminder keeps the text it was sent
+            // with and its level on the delivery row (the reminder history).
+            foreach (['message_subject', 'message_body'] as $key) {
+                if (! empty($options[$key])) {
+                    $metadata[$key] = $options[$key];
+                }
+            }
+            $metadata = array_merge($metadata, $options['metadata'] ?? []);
+
             $delivery = InvoiceDelivery::create([
                 'invoice_id' => $invoice->id,
                 'channel' => $channel,
                 'document_type' => $documentType,
                 'recipient' => $recipient,
                 'status' => InvoiceDelivery::STATUS_QUEUED,
-                'sent_by' => $user->id,
+                'sent_by' => $user?->id,
                 'metadata' => $metadata,
             ]);
 
@@ -124,12 +140,12 @@ class InvoiceDeliveryService
                 'channel' => $channel,
                 'recipient' => $recipient,
                 'document_type' => $documentType,
-                'delivered_by' => $user->id,
-            ],
+                'delivered_by' => $user?->id,
+            ] + array_intersect_key($options['metadata'] ?? [], array_flip(['followup_level', 'followup_mode', 'days_overdue'])),
             $invoice->getOriginal('delivery_status') ?? Invoice::DELIVERY_NOT_SENT,
             $invoice->fresh()->delivery_status,
-            InvoiceActivityLog::ACTOR_USER,
-            $user->id,
+            $user ? InvoiceActivityLog::ACTOR_USER : InvoiceActivityLog::ACTOR_SYSTEM,
+            $user?->id,
         );
 
         Log::info('Invoice delivered', [
@@ -149,8 +165,8 @@ class InvoiceDeliveryService
             event: 'invoice.delivered',
             subject: "Invoice {$invoice->invoice_number} delivered",
             body: "Invoice {$invoice->invoice_number} was delivered to {$recipient} via {$channel}.",
-            authorId: $user->id,
-            authorType: 'user',
+            authorId: $user?->id,
+            authorType: $user ? 'user' : 'system',
             tenantId: $invoice->tenant_id ?? (function () {
                 try {
                     return tenant()?->id;
@@ -216,7 +232,10 @@ class InvoiceDeliveryService
             $attachments = $salesSettings->attachPdf()
                 ? [[
                     'name' => "Invoice-{$invoice->invoice_number}.pdf",
-                    'data' => $this->generatePdfData($invoice, $delivery->document_type),
+                    // Issue #328: a reminder carries the invoice itself.
+                    'data' => $this->generatePdfData($invoice, $delivery->document_type === InvoiceDelivery::DOCUMENT_REMINDER
+                        ? InvoiceDelivery::DOCUMENT_FINAL_INVOICE
+                        : $delivery->document_type),
                     'mime' => 'application/pdf',
                 ]]
                 : [];
@@ -227,8 +246,9 @@ class InvoiceDeliveryService
             }
 
             $mailer->send(new CustomerEmail(
-                emailSubject: $this->getEmailSubject($invoice, $delivery->document_type),
-                emailBody: $this->getEmailBody(
+                emailSubject: $delivery->metadata['message_subject']
+                    ?? $this->getEmailSubject($invoice, $delivery->document_type),
+                emailBody: $delivery->metadata['message_body'] ?? $this->getEmailBody(
                     $invoice,
                     $delivery->document_type,
                     $delivery->metadata['portal_url'] ?? null,
@@ -254,7 +274,7 @@ class InvoiceDeliveryService
     private function sendWhatsApp(InvoiceDelivery $delivery, Invoice $invoice): void
     {
         try {
-            $message = $this->getWhatsAppMessage($invoice, $delivery->document_type);
+            $message = $delivery->metadata['message_body'] ?? $this->getWhatsAppMessage($invoice, $delivery->document_type);
 
             app(\Modules\WhatsApp\src\Services\WhatsAppService::class)
                 ->send($invoice->customer_id, $message, [

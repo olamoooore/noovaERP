@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Platform\Settings\Contracts\SettingsRegistryContract;
 use App\Services\CashRoundingService;
+use App\Services\CustomerFollowupService;
 use App\Services\CustomerReceiptService;
 use App\Services\InvoiceApprovalService;
 use App\Services\InvoiceDeliveryService;
@@ -218,6 +219,9 @@ class SettingsRegistry implements SettingsRegistryContract
             'sales_order.default_invoicing_policy' => ['key' => SalesSettings::DEFAULT_INVOICING_POLICY, 'type' => 'enum', 'default' => 'ordered_qty', 'via' => [SalesSettings::class.'::defaultInvoicingPolicy'], 'readers' => [SalesOrderController::class.'::applyDefaultInvoicingPolicy']],
             // Issue #551: pro-forma invoice toggle (render routes + UI action).
             'sales_order.proforma_enabled' => ['key' => SalesSettings::PROFORMA_ENABLED, 'type' => 'bool', 'default' => true, 'via' => [SalesSettings::class.'::proformaInvoiceEnabled', DocumentRenderController::class.'::proformaDisabled'], 'readers' => [DocumentRenderController::class.'::proformaInvoicePdf', DocumentRenderController::class.'::proformaInvoiceHtml', DocumentRenderController::class.'::regenerate', CompanySettingsController::class.'::getSalesDocumentDefaults']],
+            // Issue #328: customer follow-up reminders.
+            'followup.auto_send_enabled' => ['key' => SalesSettings::FOLLOWUP_AUTO_SEND, 'type' => 'bool', 'via' => [SalesSettings::class.'::followupAutoSendEnabled'], 'readers' => [CustomerFollowupService::class.'::runAutomatic']],
+            'followup.levels' => ['key' => SalesSettings::FOLLOWUP_LEVELS, 'type' => 'list', 'default' => SalesSettings::DEFAULT_FOLLOWUP_LEVELS, 'via' => [SalesSettings::class.'::followupLevels'], 'readers' => [CustomerFollowupService::class.'::runAutomatic', CustomerFollowupService::class.'::sendForCustomer', CustomerFollowupService::class.'::sendForInvoice'], 'note' => 'Each level: days overdue, action (send = reminder on the customer\'s preferred channel, manual = log a manual follow-up), Communication template key.'],
         ];
 
         // Issue #645: one reviewer pool per request type, all resolved by

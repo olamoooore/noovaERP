@@ -26,6 +26,7 @@ import {
   TaxPricingSettings,
   CashRoundingSettings,
   DeliverySettings,
+  FollowupSettings,
 } from './SalesSettingsSections'
 import { buildSalesSettingsExport, searchSalesSettings, type NumberingFormatsPayload } from './salesSettingsTools'
 
@@ -121,6 +122,13 @@ const SECTIONS: SettingsSectionDef[] = [
     description: 'Attachments, CC addresses and document type',
     icon: 'solar:plain-2-bold-duotone',
     component: DeliverySettings,
+  },
+  {
+    key: 'followups',
+    title: 'Payment Follow-ups',
+    description: 'Overdue reminders, levels and automation',
+    icon: 'solar:bell-bing-bold-duotone',
+    component: FollowupSettings,
   },
 ]
 

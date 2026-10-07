@@ -1014,6 +1014,12 @@ class CompanySettingsController extends Controller
                 'pricelist' => [
                     'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', \App\Services\SalesSettings::DEFAULT_PRICELIST_DISPLAY),
                 ],
+                // Issue #328: customer follow-up reminders.
+                'followup' => [
+                    'auto_send_enabled' => app(\App\Services\SalesSettings::class)->followupAutoSendEnabled(),
+                    'levels' => app(\App\Services\SalesSettings::class)->followupLevels(),
+                    'actions' => \App\Services\SalesSettings::FOLLOWUP_ACTIONS,
+                ],
                 // Issue #549: read-only defaults for the "changed from default"
                 // markers. Not accepted by updateSalesSettings; a reset is a
                 // normal PUT of the default value.
@@ -1094,7 +1100,24 @@ class CompanySettingsController extends Controller
             'sales_order.proforma_enabled' => 'nullable|boolean',
             // Issue #326: invoice credit-limit policy.
             'invoice.credit_limit_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::CREDIT_LIMIT_POLICIES)],
+            // Issue #328: customer follow-up reminders.
+            'followup.auto_send_enabled' => 'nullable|boolean',
+            'followup.levels' => 'nullable|array|min:1|max:10',
+            'followup.levels.*.days' => 'required|integer|min:1|max:365|distinct',
+            'followup.levels.*.action' => ['required', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::FOLLOWUP_ACTIONS)],
+            'followup.levels.*.template' => 'nullable|string|max:191',
         ]);
+
+        // Issue #328: levels are stored ascending by days overdue.
+        if (isset($validated['followup']['levels']) && is_array($validated['followup']['levels'])) {
+            $levels = array_map(fn (array $level) => [
+                'days' => (int) $level['days'],
+                'action' => $level['action'],
+                'template' => trim((string) ($level['template'] ?? '')) ?: \App\Services\SalesSettings::DEFAULT_FOLLOWUP_TEMPLATE,
+            ], $validated['followup']['levels']);
+            usort($levels, fn (array $a, array $b) => $a['days'] <=> $b['days']);
+            $validated['followup']['levels'] = $levels;
+        }
 
         // Issue #921 (SS5): the field => store-key map comes from the
         // platform settings registry, so the screen can only persist a

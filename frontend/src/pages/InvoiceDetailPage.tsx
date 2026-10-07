@@ -227,6 +227,21 @@ function formatAddress(address: string | null | undefined): string {
   }
 }
 
+/**
+ * Issue #328: whether the invoice has an overdue open balance — the invoice
+ * due date, or (instalment terms) any open instalment's due date, is past.
+ * The server re-checks with the follow-up report's overdue set.
+ */
+function isInvoiceOverdue(
+  invoice: Pick<Invoice, 'status' | 'balance' | 'due_date' | 'instalments'>,
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (!['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) || !(Number(invoice.balance) > 0)) return false
+  const open = (invoice.instalments ?? []).filter((row) => Number(row.outstanding) > 0)
+  if (open.length > 1) return open.some((row) => !!row.due_date && row.due_date.slice(0, 10) < today)
+  return !!invoice.due_date && invoice.due_date.slice(0, 10) < today
+}
+
 export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -458,6 +473,32 @@ export function InvoiceDetailPage() {
       toast({
         variant: 'destructive',
         title: channel === 'whatsapp' ? 'Failed to send via WhatsApp' : 'Failed to email invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  // Issue #328: manual follow-up reminder for an overdue invoice. The
+  // server picks the follow-up level/template and honours the customer's
+  // communication preferences (a skip comes back with its reason).
+  const reminderMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/followup-reminder`)
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      const sent = data?.data?.outcome === 'sent'
+      toast({
+        variant: sent ? 'default' : 'destructive',
+        title: sent ? 'Payment reminder sent' : 'Reminder not sent',
+        description: sent ? undefined : data?.data?.reason ?? data?.message,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Reminder not sent',
         description: error.response?.data?.message || 'An error occurred',
       })
     },
@@ -801,6 +842,18 @@ export function InvoiceDetailPage() {
                 onClick={() => setWriteOffDialogOpen(true)}
               >
                 Write off
+              </HeaderActionButton>
+            )}
+            {/* Issue #328: follow-up reminder once the invoice is overdue. */}
+            {hasPermission('invoices.send') && isInvoiceOverdue(invoice) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:bell-bing-bold-duotone"
+                loading={reminderMutation.isPending}
+                disabled={reminderMutation.isPending}
+                onClick={() => reminderMutation.mutate()}
+              >
+                Send reminder
               </HeaderActionButton>
             )}
             {/* #618: one print/send menu shared with every sales document. */}

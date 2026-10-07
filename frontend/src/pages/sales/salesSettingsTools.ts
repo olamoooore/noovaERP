@@ -103,6 +103,12 @@ export const SALES_SETTINGS_INDEX: SalesSettingSearchEntry[] = [
       ['CC internal email', 'copy address'],
     ] as const
   ).map(([title, keywords]) => ({ section: 'delivery', sectionTitle: 'Delivery & Sending', title, keywords })),
+  ...(
+    [
+      ['Send follow-ups automatically', 'reminder overdue dunning payment automatic daily'],
+      ['Follow-up levels', 'reminder overdue days template manual call'],
+    ] as const
+  ).map(([title, keywords]) => ({ section: 'followups', sectionTitle: 'Payment Follow-ups', title, keywords })),
 ]
 
 /** Settings whose title, section or keywords contain every word of the query. */
@@ -137,6 +143,7 @@ export function isChangedFromDefault(value: unknown, defaultValue: unknown): boo
 const NON_SETTING_FIELDS: Record<string, string[]> = {
   cash_rounding: ['methods'],
   invoice: ['available_reviewers', 'approval_enforcement'],
+  followup: ['actions'],
 }
 
 export interface NumberingFormatsPayload {
@@ -185,4 +192,20 @@ export function buildSalesSettingsExport(
     sales_settings: salesSettings,
     document_numbering: numbering,
   }
+}
+
+/** Issue #328: one follow-up level — days overdue -> action + template. */
+export interface FollowupLevel {
+  days: number
+  action: 'send' | 'manual'
+  template: string
+}
+
+/** Issue #328: levels are valid when every row has a distinct day count of 1–365. */
+export function followupLevelsError(levels: FollowupLevel[]): string | null {
+  if (levels.length === 0) return 'Add at least one follow-up level.'
+  const days = levels.map((level) => level.days)
+  if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 365)) return 'Days overdue must be a whole number from 1 to 365.'
+  if (new Set(days).size !== days.length) return 'Each level needs a different number of days overdue.'
+  return null
 }

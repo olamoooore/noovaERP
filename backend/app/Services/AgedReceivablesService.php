@@ -271,6 +271,59 @@ class AgedReceivablesService
     }
 
     /**
+     * Issue #328: the overdue set the follow-up report shows — the same open
+     * invoices as the aging report (same statuses, live balance, not
+     * superseded), aged by the same portions — with each invoice's days
+     * overdue (its oldest overdue portion) and overdue amount.
+     *
+     * @return list<array{invoice: Invoice, days_overdue: int, overdue_amount: float}>
+     */
+    public function overdueInvoices(?int $customerId = null, ?int $invoiceId = null): array
+    {
+        $query = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
+            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+            ->where('balance', '>', 0)
+            ->notSuperseded()
+            ->orderBy('due_date')
+            ->orderBy('id');
+
+        if ($customerId !== null) {
+            $query->where('customer_id', $customerId);
+        }
+
+        if ($invoiceId !== null) {
+            $query->whereKey($invoiceId);
+        }
+
+        $now = Carbon::now();
+        $overdue = [];
+
+        foreach ($query->get() as $invoice) {
+            $days = 0;
+            $amount = 0.0;
+
+            foreach ($this->agingPortions($invoice) as $portion) {
+                if ($portion['bucket'] === 'current') {
+                    continue;
+                }
+
+                $days = max($days, (int) abs($now->diffInDays($portion['due_date'], false)));
+                $amount += $portion['amount'];
+            }
+
+            if ($amount > 0 && $days > 0) {
+                $overdue[] = [
+                    'invoice' => $invoice,
+                    'days_overdue' => $days,
+                    'overdue_amount' => round($amount, 2),
+                ];
+            }
+        }
+
+        return $overdue;
+    }
+
+    /**
      * Issue #324: the invoice's open balance split into ageing portions — one
      * per outstanding instalment (a single portion on the invoice due date
      * when the invoice has no instalment schedule).

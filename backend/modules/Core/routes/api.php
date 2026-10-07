@@ -453,6 +453,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/send-bundle', [InvoiceController::class, 'sendBundle'])
             ->middleware(RequirePermission::using('invoices.send'));
 
+        // Issue #328: follow-up reminders for overdue invoices — from the
+        // follow-up report (per customer) and the invoice detail page. A
+        // reminder is an invoice send, so both reuse the invoices.send grant.
+        Route::post('/customers/{customer}/followup-reminders', [\App\Http\Controllers\Api\CustomerFollowupController::class, 'sendForCustomer'])
+            ->whereNumber('customer')
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::post('/invoices/{invoice}/followup-reminder', [\App\Http\Controllers\Api\CustomerFollowupController::class, 'sendForInvoice'])
+            ->whereNumber('invoice')
+            ->middleware(RequirePermission::using('invoices.send'));
+
         // E-sign envelope (Phase E — external provider abstraction)
         Route::post('/invoices/{invoice}/send-for-esign', [InvoiceController::class, 'sendForEsign'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));

@@ -21,7 +21,7 @@ import {
   SettingsSectionHeader,
   type SettingsDefaultMarkerProps,
 } from '@/components/settings/settings-ui'
-import { isChangedFromDefault } from './salesSettingsTools'
+import { followupLevelsError, isChangedFromDefault, type FollowupLevel } from './salesSettingsTools'
 
 export interface ReviewerConfig {
   reviewer_user_ids?: number[]
@@ -106,12 +106,20 @@ export interface SalesSettings {
   pricelist: {
     display: 'show_discount' | 'net_price'
   }
+  // Issue #328: customer follow-up reminders for overdue invoices.
+  followup?: {
+    auto_send_enabled: boolean
+    levels: FollowupLevel[]
+    actions?: string[]
+  }
   // Issue #549: read-only server defaults (group => field => default) for the
   // "changed from default" markers. Never sent back.
   default_values?: Partial<Record<DefaultGroup, Record<string, unknown>>>
 }
 
-type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist'
+type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist' | 'followup'
+
+const DEFAULT_FOLLOWUP_TEMPLATE = 'invoice.overdue'
 
 export const emptySalesSettings: SalesSettings = {
   cash_rounding: {
@@ -177,6 +185,10 @@ export const emptySalesSettings: SalesSettings = {
   },
   pricelist: {
     display: 'show_discount',
+  },
+  followup: {
+    auto_send_enabled: false,
+    levels: [{ days: 1, action: 'send', template: DEFAULT_FOLLOWUP_TEMPLATE }],
   },
 }
 
@@ -1720,6 +1732,135 @@ export function DeliverySettings() {
         onSave={() => mutation.mutate(local)}
         onCancel={() => setLocal({})}
         label="Save delivery settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Payment Follow-ups (Issue #328) ────────────────────────────────────────
+
+export function FollowupSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [autoSend, setAutoSend] = useState<boolean | undefined>(undefined)
+  const [levels, setLevels] = useState<FollowupLevel[] | undefined>(undefined)
+  const reset = () => {
+    setAutoSend(undefined)
+    setLevels(undefined)
+  }
+  const mutation = useSalesSettingsMutation('followup', 'Follow-up settings saved', reset)
+  const marker = useDefaultMarkers(data, 'followup', () => setAutoSend(undefined))
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const saved = data.followup ?? emptySalesSettings.followup!
+  const currentAuto = autoSend ?? saved.auto_send_enabled
+  const currentLevels = levels ?? saved.levels
+  const levelsError = levels ? followupLevelsError(levels) : null
+
+  const updateLevel = (index: number, patch: Partial<FollowupLevel>) =>
+    setLevels(currentLevels.map((level, i) => (i === index ? { ...level, ...patch } : level)))
+
+  const patch: Record<string, unknown> = {}
+  if (autoSend !== undefined) patch.auto_send_enabled = autoSend
+  if (levels !== undefined) patch.levels = levels
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:bell-bing-bold-duotone"
+        title="Payment Follow-ups"
+        description="Remind customers about overdue invoices, by hand from the follow-up report or automatically every day."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Send follow-ups automatically"
+          description="Once a day, each overdue invoice that reaches a level gets that level's action — once per level. Customers who prefer phone or SMS, or who turned the channel off, are skipped and the skip is logged on the invoice."
+          {...marker('auto_send_enabled')}
+        >
+          <Switch
+            aria-label="Send follow-ups automatically"
+            checked={currentAuto}
+            onCheckedChange={(v) => setAutoSend(v)}
+          />
+        </SettingsRow>
+
+        <div className="space-y-3 py-4">
+          <div>
+            <p className="text-sm font-medium">Follow-up levels</p>
+            <p className="text-xs text-muted-foreground">
+              Days overdue at which a level applies. "Send reminder" emails (or WhatsApps) the customer using the
+              communication template; "Manual follow-up" only logs that someone should call.
+            </p>
+          </div>
+          {currentLevels.map((level, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2" data-testid="followup-level">
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                className="w-24"
+                aria-label={`Level ${index + 1} days overdue`}
+                value={Number.isFinite(level.days) ? level.days : ''}
+                onChange={(e) => updateLevel(index, { days: parseInt(e.target.value, 10) })}
+              />
+              <span className="text-xs text-muted-foreground">days overdue</span>
+              <Select
+                value={level.action}
+                onValueChange={(v) => updateLevel(index, { action: v as FollowupLevel['action'] })}
+              >
+                <SelectTrigger className="w-44" aria-label={`Level ${index + 1} action`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="send">Send reminder</SelectItem>
+                  <SelectItem value="manual">Manual follow-up</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                className="w-56"
+                aria-label={`Level ${index + 1} template`}
+                placeholder={DEFAULT_FOLLOWUP_TEMPLATE}
+                value={level.template}
+                maxLength={191}
+                onChange={(e) => updateLevel(index, { template: e.target.value })}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={`Remove level ${index + 1}`}
+                disabled={currentLevels.length <= 1}
+                onClick={() => setLevels(currentLevels.filter((_, i) => i !== index))}
+              >
+                <Icon icon="solar:trash-bin-minimalistic-bold-duotone" className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={currentLevels.length >= 10}
+            onClick={() => {
+              const last = currentLevels[currentLevels.length - 1]?.days ?? 0
+              setLevels([...currentLevels, { days: Math.min(last + 15, 365), action: 'send', template: DEFAULT_FOLLOWUP_TEMPLATE }])
+            }}
+          >
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1 h-4 w-4" />
+            Add level
+          </Button>
+          {levelsError && <p className="text-xs text-destructive">{levelsError}</p>}
+        </div>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(patch).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => {
+          if (levelsError) return
+          mutation.mutate(patch)
+        }}
+        onCancel={reset}
+        label="Save follow-up settings"
       />
     </Card>
   )
