@@ -541,7 +541,61 @@ class QuotationController extends Controller
         // "Someone else is editing" banner. Null when nobody holds the lock.
         $quotation->setAttribute('active_lock', $this->versionGuard->activeLockInfo('quotation', (int) $quotation->id));
 
+        // Issue #336 (Q12): the revisions created by reject / new revision
+        // (#178/#179) share one correction group — list them all so the
+        // detail page can show v1, v2 … and how the totals moved.
+        $quotation->setAttribute('version_history', $this->versionHistory($quotation));
+
         return response()->json($quotation);
+    }
+
+    /**
+     * Issue #336 (Q12): every version in the quotation's correction group, in
+     * version order, with the change in total against the previous version.
+     * A quotation that was never revised has no group and an empty history.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function versionHistory(Quotation $quotation): array
+    {
+        if (! $quotation->correction_group_id) {
+            return [];
+        }
+
+        $versions = Quotation::query()
+            ->where('correction_group_id', $quotation->correction_group_id)
+            ->orderBy('version_number')
+            ->orderBy('id')
+            ->get([
+                'id', 'quotation_number', 'version_number', 'status', 'is_active_version',
+                'subtotal', 'tax_amount', 'discount_amount', 'total',
+                'correction_reason_code', 'correction_reason_text', 'superseded_at', 'created_at',
+            ]);
+
+        $previousTotal = null;
+
+        return $versions->map(function (Quotation $version) use (&$previousTotal) {
+            $total = round((float) $version->total, 2);
+            $change = $previousTotal === null ? null : round($total - $previousTotal, 2);
+            $previousTotal = $total;
+
+            return [
+                'id' => (int) $version->id,
+                'quotation_number' => $version->quotation_number,
+                'version_number' => (int) ($version->version_number ?? 1),
+                'status' => $version->status,
+                'is_active_version' => (bool) $version->is_active_version,
+                'subtotal' => round((float) $version->subtotal, 2),
+                'tax_amount' => round((float) $version->tax_amount, 2),
+                'discount_amount' => round((float) $version->discount_amount, 2),
+                'total' => $total,
+                'total_change' => $change,
+                'correction_reason_code' => $version->correction_reason_code,
+                'correction_reason_text' => $version->correction_reason_text,
+                'superseded_at' => $version->superseded_at,
+                'created_at' => $version->created_at,
+            ];
+        })->values()->all();
     }
 
     /**

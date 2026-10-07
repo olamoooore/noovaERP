@@ -28,6 +28,8 @@ import { Label } from '@/components/ui/label'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
+import { QuotationRevisionDialog, type QuotationRevisionMode } from '@/components/sales/QuotationRevisionDialog'
+import { QuotationVersionHistory, type QuotationVersionEntry } from '@/components/sales/QuotationVersionHistory'
 
 const QUOTATION_LINE_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
@@ -336,6 +338,36 @@ export function QuotationDetailPage() {
     },
   })
 
+  // Issue #336 (Q12): Reject / New revision both void this version through
+  // `POST /quotations/{id}/reject` (#178/#179) and open the auto-versioned
+  // replacement draft the server creates.
+  const [revisionMode, setRevisionMode] = useState<QuotationRevisionMode | null>(null)
+  const revisionMutation = useMutation({
+    mutationFn: async (payload: { reason_code: string; reason_text: string }) => {
+      const response = await api.post(`/quotations/${id}/reject`, payload)
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      const mode = revisionMode
+      setRevisionMode(null)
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] })
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      const next = data?.quotation
+      toast({
+        title: mode === 'revision' ? 'New revision created' : 'Quotation rejected',
+        description: next?.quotation_number ? `${next.quotation_number} is open as a new draft version.` : undefined,
+      })
+      if (next?.id) navigate(`/quotations/${next.id}`)
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: revisionMode === 'revision' ? 'Failed to create revision' : 'Failed to reject quotation',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
   const handleDelete = () => {
     setConfirmAction('delete')
     return
@@ -557,6 +589,34 @@ export function QuotationDetailPage() {
               Cancel
             </HeaderActionButton>
           )}
+          {/* Issue #336 (Q12): reject / revise an issued quotation into a new
+              version. Not offered on confirmed quotations: rejecting one today
+              leaves its Sales Order live (open decision, see #336). */}
+          {['sent', 'expired'].includes(quotation.status) &&
+            quotation.is_active_version !== false &&
+            canManageQuotation && (
+              <>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:copy-bold-duotone"
+                  loading={revisionMutation.isPending && revisionMode === 'revision'}
+                  onClick={() => setRevisionMode('revision')}
+                  disabled={revisionMutation.isPending}
+                >
+                  New Revision
+                </HeaderActionButton>
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:close-square-bold-duotone"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  loading={revisionMutation.isPending && revisionMode === 'reject'}
+                  onClick={() => setRevisionMode('reject')}
+                  disabled={revisionMutation.isPending}
+                >
+                  Reject
+                </HeaderActionButton>
+              </>
+            )}
           {/* #618: one print/send menu shared with every sales document. */}
           {/* #334: the Email channel sends the PDF + public acceptance link. */}
           <PrintSendMenu
@@ -1083,6 +1143,13 @@ export function QuotationDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Issue #336 (Q12): v1, v2 … with the change in total between versions. */}
+      <QuotationVersionHistory
+        versions={(quotation.version_history ?? []) as QuotationVersionEntry[]}
+        currentId={Number(quotation.id)}
+        money={money}
+      />
+
       {(quotation.notes || quotation.terms) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {quotation.notes && (
@@ -1153,6 +1220,17 @@ export function QuotationDetailPage() {
           resetToDraftMutation.mutate()
         }}
       />
+
+      {revisionMode && (
+        <QuotationRevisionDialog
+          mode={revisionMode}
+          quotationNumber={quotation.quotation_number}
+          open
+          pending={revisionMutation.isPending}
+          onOpenChange={(open) => !open && setRevisionMode(null)}
+          onSubmit={(payload) => revisionMutation.mutate(payload)}
+        />
+      )}
 
       <StockShortageDialog
         open={shortageLines !== null}
