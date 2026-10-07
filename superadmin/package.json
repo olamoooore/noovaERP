@@ -8,8 +8,12 @@
     "build": "vite build",
     "build:check": "tsc && vite build",
     "typecheck": "tsc --noEmit",
+    "typecheck:ci": "node ../scripts/ci/ts-lint-ratchet.mjs tsc",
+    "typecheck:baseline": "node ../scripts/ci/ts-lint-ratchet.mjs tsc --update",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:ci": "node ../scripts/ci/ts-lint-ratchet.mjs eslint",
+    "lint:baseline": "node ../scripts/ci/ts-lint-ratchet.mjs eslint --update"
   },
   "dependencies": {
     "@iconify/react": "^4.1.1",
