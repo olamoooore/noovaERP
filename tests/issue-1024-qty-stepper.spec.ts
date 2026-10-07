@@ -40,6 +40,10 @@ async function assertQtyStepper(page: Page) {
   await expect(qty).toHaveValue('1.5');
   await qty.blur();
   await expect(qty).toHaveValue('1.5');
+  // step="1" marks 1.5 as a stepMismatch; native validation must not block the submit.
+  expect(
+    await qty.evaluate((el: HTMLInputElement) => !el.form || el.form.noValidate || el.validity.valid),
+  ).toBe(true);
 
   // ArrowUp on a fraction snaps to the next whole step (browser step grid).
   await qty.press('ArrowUp');

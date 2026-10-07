@@ -377,6 +377,11 @@ export const CreateVendorBillPage: React.FC = () => {
       return;
     }
 
+    if (!billDate) {
+      toast({ variant: 'destructive', title: 'Please enter the bill date' });
+      return;
+    }
+
     const validLines = lines.filter((line) => line.line_type === 'product'
       ? Boolean(line.product_id) && Number(line.quantity || 0) > 0 && line.unit_price !== ''
       : line.description.trim() !== '');
@@ -431,7 +436,7 @@ export const CreateVendorBillPage: React.FC = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
+        <form noValidate onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Bill Details</CardTitle>
