@@ -959,7 +959,7 @@ class InvoiceController extends Controller
                     'product_batch_id' => $line['product_batch_id'] ?? null,
                     'product_serial_id' => $line['product_serial_id'] ?? null,
                     'expiry_date' => $line['expiry_date'] ?? null,
-                    'quantity' => $line['quantity'],
+                    'quantity' => $line['quantity'] ?? 0,
                     'uom_id' => $lineUom?->id,
                     'unit' => $lineUom?->abbreviation,
                     'unit_price' => $line['unit_price'] ?? 0,
@@ -1047,7 +1047,7 @@ class InvoiceController extends Controller
                 // #1004: sanitized rich-text description.
                 'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                 'product_notes' => $line['product_notes'] ?? null,
-                'quantity' => $line['quantity'],
+                'quantity' => $line['quantity'] ?? 0,
                 'uom_id' => $lineUom?->id,
                 'unit_price' => $unitPrice,
                 // MRD FR-4/FR-6: the editor's pricing intent travels with the
@@ -1772,7 +1772,7 @@ class InvoiceController extends Controller
                             'product_batch_id' => $line['product_batch_id'] ?? null,
                             'product_serial_id' => $line['product_serial_id'] ?? null,
                             'expiry_date' => $line['expiry_date'] ?? null,
-                            'quantity' => $line['quantity'],
+                            'quantity' => $line['quantity'] ?? 0,
                             'unit_price' => $line['unit_price'] ?? 0,
                             'tax_rate' => $editCustomerExempt ? 0 : ($line['tax_rate'] ?? 0),
                             'tax_inclusive' => array_key_exists('tax_inclusive', $line)

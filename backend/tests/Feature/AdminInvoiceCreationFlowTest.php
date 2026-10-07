@@ -275,4 +275,31 @@ class AdminInvoiceCreationFlowTest extends TenantTestCase
         $this->assertStringContainsString('<strong>Consumables</strong>', (string) ($section['description_html'] ?? ''));
         $this->assertStringContainsString('<strong>Delivered</strong>', (string) ($note['description_html'] ?? ''));
     }
+
+    /** #1005: a note/section row posted without quantity/unit_price is saved as a zero-value row, not a 500. */
+    public function test_note_and_section_rows_without_quantity_or_price_are_accepted(): void
+    {
+        [$user, $customer, $product] = $this->bootTextRowTenant('66666666-6666-6666-6666-666666666602', 'admin-text-noqty@test.local');
+
+        $response = $this->actingAs($user)->postJson('/api/v1/invoices', [
+            'customer_id' => $customer->id,
+            'invoice_date' => '2026-04-19',
+            'lines' => [
+                ['line_type' => 'section', 'description' => 'Equipment'],
+                ['product_id' => $product->id, 'description' => 'Item', 'quantity' => 2, 'unit_price' => 25, 'tax_rate' => 0],
+                ['line_type' => 'note', 'description' => 'Handle with care'],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $invoiceId = $response->json('id');
+
+        $note = \App\Models\InvoiceLine::where('invoice_id', $invoiceId)->where('line_type', 'note')->firstOrFail();
+        $this->assertSame('Handle with care', $note->description);
+        $this->assertEquals(0, (float) $note->line_total);
+
+        $section = \App\Models\InvoiceLine::where('invoice_id', $invoiceId)->where('line_type', 'section')->firstOrFail();
+        $this->assertSame('Equipment', $section->description);
+        $this->assertEquals(0, (float) $section->line_total);
+    }
 }
