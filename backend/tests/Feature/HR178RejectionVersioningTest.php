@@ -183,10 +183,11 @@ class HR178RejectionVersioningTest extends TenantTestCase
     {
         $original = $this->quotation();
 
-        $this->actingAs($this->user)->postJson('/api/v1/quotations/'.$original->id.'/reject')->assertStatus(201);
+        // Issue #336 (Decision 7 Oct 2026): the reason code is required.
+        $this->actingAs($this->user)->postJson('/api/v1/quotations/'.$original->id.'/reject', ['reason_code' => 'other'])->assertStatus(201);
 
         $this->actingAs($this->user)
-            ->postJson('/api/v1/quotations/'.$original->id.'/reject')
+            ->postJson('/api/v1/quotations/'.$original->id.'/reject', ['reason_code' => 'other'])
             ->assertStatus(422);
     }
 }

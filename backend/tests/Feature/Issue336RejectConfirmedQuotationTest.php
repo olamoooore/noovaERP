@@ -194,6 +194,38 @@ class Issue336RejectConfirmedQuotationTest extends TenantTestCase
         $this->assertSame(1, $this->liveSalesOrderCount(), 'Exactly one live sales order must exist.');
     }
 
+    /** Decision (7 Oct 2026): the reason code is required for Reject. */
+    public function test_reject_without_a_reason_code_is_refused_and_changes_nothing(): void
+    {
+        $quotation = $this->quotation('sent');
+        $quotationCount = Quotation::count();
+
+        foreach ([[], ['reason_code' => ''], ['reason_text' => 'Customer said no']] as $payload) {
+            $response = $this->actingAs($this->admin)->postJson("/api/v1/quotations/{$quotation->id}/reject", $payload);
+
+            $response->assertStatus(422)->assertJsonValidationErrors(['reason_code']);
+        }
+
+        $quotation->refresh();
+        $this->assertSame('sent', $quotation->status, 'A refused reject must not cancel the quotation.');
+        $this->assertTrue((bool) $quotation->is_active_version);
+        $this->assertSame($quotationCount, Quotation::count(), 'No replacement draft may be created.');
+    }
+
+    public function test_reject_with_a_reason_code_records_that_code(): void
+    {
+        $quotation = $this->quotation('sent');
+
+        $response = $this->actingAs($this->admin)->postJson("/api/v1/quotations/{$quotation->id}/reject", [
+            'reason_code' => 'price_too_high',
+        ]);
+
+        $response->assertStatus(201);
+        $replacement = Quotation::findOrFail($response->json('quotation.id'));
+        $this->assertSame('draft', $replacement->status);
+        $this->assertSame('price_too_high', $replacement->correction_reason_code, 'The chosen code is recorded, not a default.');
+    }
+
     private function entitleSales(): void
     {
         $mock = \Mockery::mock(FeatureGateService::class);

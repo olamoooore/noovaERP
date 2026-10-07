@@ -2304,8 +2304,11 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Quotation is already cancelled/rejected'], 422);
         }
 
+        // Issue #336 (Decision 7 Oct 2026): the reason code is required for
+        // Reject (and New revision, which sends the fixed `revision` code);
+        // the reason text stays optional.
         $validated = $request->validate([
-            'reason_code' => 'nullable|string|max:50',
+            'reason_code' => 'required|string|max:50',
             'reason_text' => 'nullable|string|max:500',
         ]);
 
@@ -2315,7 +2318,7 @@ class QuotationController extends Controller
             $replacement = app(\App\Services\ReplacementDraftService::class)->createQuotationReplacementDraft(
                 $quotation,
                 \App\Services\CorrectionRequest::fromRequest([
-                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_code' => $validated['reason_code'],
                     'reason_text' => $validated['reason_text'] ?? 'Quotation rejected',
                     'user_id' => \Illuminate\Support\Facades\Auth::id(),
                 ])
@@ -2330,7 +2333,7 @@ class QuotationController extends Controller
                 ['status' => $superseded?->status, 'is_active_version' => false],
                 [
                     'quotation_number' => $quotation->quotation_number,
-                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_code' => $validated['reason_code'],
                     'reason_text' => $validated['reason_text'] ?? 'Quotation rejected',
                     'replacement_quotation_id' => (int) $replacement->id,
                     'replacement_quotation_number' => $replacement->quotation_number,
