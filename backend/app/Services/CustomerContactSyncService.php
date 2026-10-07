@@ -139,6 +139,10 @@ class CustomerContactSyncService
             if (array_key_exists('department_name', $canonical)) {
                 $updates['department_name'] = $canonical['department_name'];
             }
+            if (array_key_exists('site_address_id', $canonical)) {
+                // ADR-003B R1 is enforced by ContactMasterService.
+                $updates['site_address_id'] = $canonical['site_address_id'];
+            }
             if ($updates) {
                 $this->contacts->updateRelationship($relationship->id, $tenantId, $updates);
             }
@@ -191,11 +195,13 @@ class CustomerContactSyncService
         $phone = $this->normalizePhone($phone);
         $name = $this->normalizeName($name);
 
-        // Tier 1 — strong: normalized email OR mobile match.
+        // Tier 1 — strong: normalized email OR mobile match. Only when the
+        // contact HAS an email or mobile: with neither, the condition group
+        // below would be empty and match any person in the tenant.
         $query = CoreContact::where('tenant_id', $tenantId)
             ->where('contact_type', 'individual')
             ->where('is_duplicate', false);
-        $tier1 = (clone $query)->where(function ($q) use ($email, $mobile) {
+        $tier1 = ($email === null && $mobile === null) ? null : (clone $query)->where(function ($q) use ($email, $mobile) {
             if ($email !== null) {
                 $q->orWhereRaw('LOWER(email) = ?', [$email]);
             }
@@ -215,8 +221,10 @@ class CustomerContactSyncService
 
             if ($personIdsInOrg->isNotEmpty()) {
                 // Tier 2 — strong contextual: same parent organisation +
-                // normalized email/mobile/phone combination.
-                $tier2 = CoreContact::where('tenant_id', $tenantId)
+                // normalized email/mobile/phone combination. Skipped when the
+                // contact has none of them (an empty condition group would
+                // match any person in the organisation).
+                $tier2 = ($email === null && $mobile === null && $phone === null) ? null : CoreContact::where('tenant_id', $tenantId)
                     ->whereIn('id', $personIdsInOrg)
                     ->where(function ($q) use ($email, $mobile, $phone) {
                         if ($email !== null) {

@@ -42,6 +42,7 @@ import {
   SALES_TEXT_SIZE,
 } from '@/components/sales/salesDesignTokens'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
+import { resolvedCustomerAddress } from '@/lib/customerAddresses'
 import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
 import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
 import { openAppPathInNewTab } from '@/lib/openInNewTab'
@@ -483,8 +484,14 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       setPaymentTermId(matchingTerm ? String(matchingTerm.id) : '')
     })
 
-    const nextBilling = toAddressForm(pickCustomerAddress(customerDetail, 'billing'))
-    const nextShipping = toAddressForm(pickCustomerAddress(customerDetail, 'shipping'))
+    // ADR-003B R4: prefer the backend resolver's bill-to/ship-to, then the
+    // saved addresses; autofill never overwrites what the user typed.
+    const pick = (type: 'billing' | 'shipping') => {
+      const resolved = resolvedCustomerAddress(customerDetail, type)
+      return resolved !== undefined ? resolved : pickCustomerAddress(customerDetail, type)
+    }
+    const nextBilling = toAddressForm(pick('billing'))
+    const nextShipping = toAddressForm(pick('shipping'))
     autofillField('billingAddress', billingAddress, nextBilling, setBillingAddress, serializeAddressForm)
     autofillField('shippingAddress', shippingAddress, nextShipping, setShippingAddress, serializeAddressForm)
     setBillingContactId('')

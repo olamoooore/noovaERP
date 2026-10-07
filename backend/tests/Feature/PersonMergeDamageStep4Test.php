@@ -1,0 +1,508 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\Invoice;
+use App\Models\Setting;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Modules\Contact\src\Services\ContactMasterService;
+use Modules\Contact\src\Support\ContactTaxonomyRegistry;
+use Tests\TenantTestCase;
+
+/**
+ * ADR-003B W6 step 4 (merge repair plan): what the person merge damage
+ * report must show before any repair can be planned. Until fix 9e389eb the
+ * matcher linked a contact with no email/mobile to an arbitrary person.
+ *
+ *  A. damage on a person linked from ONE contact only (the person was made
+ *     elsewhere — Contact Master, import) — the report only looked at people
+ *     linked from several contacts;
+ *  B. a link sharing an email/mobile/phone with the person but under another
+ *     name is normal tier-1 matching (#1012), not this bug: reported as
+ *     `shared_identifier_different_name`, apart from bug damage;
+ *  C. per link: the organisation, and whether a correct (`ok`) link at the
+ *     SAME organisation shares the org-person relationship — then category,
+ *     roles and site cannot be split mechanically;
+ *  D. documents that point at the damaged person (invoice doctor, requestor,
+ *     buyer, billing and shipping contact; quotation billing/shipping) by
+ *     customer, issued vs draft — invoices print these names LIVE;
+ *  E. person classifications not explained by any correct link.
+ *
+ * The report must write nothing.
+ */
+class PersonMergeDamageStep4Test extends TenantTestCase
+{
+    private string $tenantId;
+
+    private string $reportPath;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->bindTenantContextWithPermissions((string) Str::uuid());
+        $this->tenantId = $this->boundTestTenant->getTenantKey();
+
+        DB::table('public.tenants')->insertOrIgnore([
+            'id' => $this->tenantId,
+            'name' => 'Merge Repair Tenant',
+            'email' => $this->tenantId.'@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $admin = User::factory()->create();
+        $admin->assignRole('Admin');
+        DB::table('public.user_company_access')->insert([
+            'user_id' => $admin->id,
+            'tenant_id' => $this->tenantId,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->actingAs($admin, 'sanctum');
+
+        Setting::setValue(ContactTaxonomyRegistry::HEALTHCARE_SETTING_KEY, true);
+
+        $this->reportPath = tempnam(sys_get_temp_dir(), 'merge-repair-');
+    }
+
+    protected function tearDown(): void
+    {
+        @unlink($this->reportPath);
+        parent::tearDown();
+    }
+
+    public function test_report_shows_what_a_repair_needs_and_writes_nothing(): void
+    {
+        [$hospital, $hospitalOrg] = $this->createCustomer('Acme Hospital');
+        [$clinic, $clinicOrg] = $this->createCustomer('Bayu Clinic');
+
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+
+        // Wrongly merged at another company (own relationship) and at the
+        // same company (the relationship is Siti's).
+        $ali = $this->wronglyMerged($clinic, $clinicOrg, 'Ali', $sitiPerson);
+        $lim = $this->wronglyMerged($hospital, null, 'Nurse Lim', $sitiPerson, ['contact_type' => 'Nurse']);
+        // Nurse Lim's save gave Siti's person a NURSE classification.
+        app(ContactMasterService::class)->assignClassification($sitiPerson, 'NURSE', $this->tenantId);
+
+        // Normal tier-1 matching on a shared mailbox (#1012), not this bug.
+        $sharedBox = $this->wronglyMerged($clinic, null, 'Ali Bin Abu', $sitiPerson, ['email' => 'SITI@acme.test']);
+
+        // A: a person made in the Contact Master, linked from ONE wrong contact.
+        $whoContact = app(ContactMasterService::class)->create(['contact_type' => 'individual', 'display_name' => 'Dr Who', 'email' => 'who@example.test', 'source' => 'manual'], $this->tenantId);
+        $whoId = (string) $whoContact->id;
+        $zara = $this->wronglyMerged($clinic, $clinicOrg, 'Zara', $whoId);
+
+        // D: documents pointing at Siti's person.
+        Invoice::factory()->create(['customer_id' => $clinic, 'status' => 'posted', 'doctor_contact_id' => $sitiPerson]);
+        Invoice::factory()->create(['customer_id' => $hospital, 'status' => 'draft', 'requestor_contact_id' => $sitiPerson]);
+
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])
+            ->expectsOutputToContain('REPORT ONLY')
+            ->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+
+        $report = json_decode((string) file_get_contents($this->reportPath), true)[0];
+        $people = collect($report['people'])->keyBy('person_id');
+
+        // A
+        $this->assertArrayHasKey($whoId, $people->all(), 'Damage on a person with a single link is reported.');
+        $this->assertSame('suspect', $people[$whoId]['severity']);
+        $this->assertNull($people[$whoId]['created_from_customer_contact_id']);
+        $this->assertSame('suspect', collect($people[$whoId]['links'])->firstWhere('customer_contact_id', $zara)['status']);
+
+        $damaged = $people[$sitiPerson];
+        $links = collect($damaged['links'])->keyBy('customer_contact_id');
+
+        // B
+        $this->assertSame('shared_identifier_different_name', $links[$sharedBox]['status']);
+        $this->assertSame('suspect', $damaged['severity'], 'Bug damage outranks a shared identifier.');
+
+        // C
+        $this->assertSame($clinicOrg, $links[$ali]['organisation_id']);
+        $this->assertFalse($links[$ali]['shares_relationship_with_ok_link']);
+        $this->assertSame($hospitalOrg, $links[$lim]['organisation_id']);
+        $this->assertTrue($links[$lim]['shares_relationship_with_ok_link'], "Nurse Lim's relationship is Siti's.");
+
+        // D
+        $documents = collect($damaged['documents']);
+        $issued = $documents->first(fn ($d) => $d['table'] === 'invoices' && $d['column'] === 'doctor_contact_id' && $d['customer_id'] === $clinic);
+        $this->assertSame([1, 0, false], [$issued['issued'], $issued['draft'], $issued['customer_has_ok_link']]);
+        $draft = $documents->first(fn ($d) => $d['column'] === 'requestor_contact_id' && $d['customer_id'] === $hospital);
+        $this->assertSame([0, 1, true], [$draft['issued'], $draft['draft'], $draft['customer_has_ok_link']]);
+
+        // E
+        $this->assertSame(['NURSE'], $damaged['classifications']);
+        $this->assertSame(['NURSE'], $damaged['classifications_not_explained_by_ok_links']);
+
+        // F: a fingerprint per person, so a review decision is refused once
+        // the person, a link or a relationship changed.
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $damaged['fingerprint']);
+        DB::table('customer_contacts')->where('id', $ali)->update(['name' => 'Ali Renamed']);
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $again = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id');
+        $this->assertNotSame($damaged['fingerprint'], $again[$sitiPerson]['fingerprint']);
+        $this->assertSame($people[$whoId]['fingerprint'], $again[$whoId]['fingerprint']);
+
+        $this->assertSame(2, $report['summary']['people_with_suspect_links']);
+        $this->assertSame(1, $report['summary']['shared_identifier_links']);
+        $this->assertSame(1, $report['summary']['issued_documents']);
+    }
+
+    /**
+     * Second hostile review of the repair plan (2026-10-06): the report must
+     * also show
+     *  G. data the person OWNS (identifiers, methods, addresses, profiles…)
+     *     — users may have added a wrongly merged contact's data to it;
+     *  H. doctors referenced inside an invoice's `case_information` JSON;
+     *  I. each company relationship's current values next to what each link
+     *     at that company implies (category, roles, department);
+     *  J. soft-deleted damaged people (step 3 L3 may restore them);
+     *  K. a fingerprint that covers relationships and roles (owned data and
+     *     documents are listed, not fingerprinted — third review);
+     *  L. a size flag for people with very many links (one transaction each).
+     */
+    public function test_report_covers_owned_data_case_documents_relationship_values_and_deleted_people(): void
+    {
+        [$hospital, $hospitalOrg] = $this->createCustomer('Acme Hospital');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test', 'contact_type' => 'Billing']);
+        $sitiPerson = $siti['core_contact_uuid'];
+        $lim = $this->wronglyMerged($hospital, null, 'Nurse Lim', $sitiPerson, ['contact_type' => 'Nurse', 'department_name' => 'Ward 3']);
+
+        $master = app(ContactMasterService::class);
+        // G: someone added an identifier to "Siti" in the Contact Master.
+        $master->addIdentifier($sitiPerson, 'staff_no', 'S-001', $this->tenantId);
+
+        // H: a doctor reference inside the case information of an issued invoice.
+        Invoice::factory()->create(['customer_id' => $hospital, 'status' => 'posted', 'case_information' => [['case_number' => 'C-1', 'doctor_contact_id' => $sitiPerson]]]);
+
+        // J: a damaged person that was later soft-deleted.
+        $gone = $master->create(['contact_type' => 'individual', 'display_name' => 'Gone Doc', 'source' => 'manual'], $this->tenantId);
+        $goneId = (string) $gone->id;
+        $this->wronglyMerged($hospital, null, 'Porter Ravi', $goneId);
+        $gone->delete();
+
+        // L: a person carrying very many wrong links (an import of
+        // identifier-less contacts).
+        $bulk = $master->create(['contact_type' => 'individual', 'display_name' => 'Bulk Target', 'source' => 'manual'], $this->tenantId);
+        $bulkId = (string) $bulk->id;
+        for ($i = 1; $i <= 51; $i++) {
+            $this->wronglyMerged($hospital, null, 'Imported '.$i, $bulkId);
+        }
+
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+        $report = json_decode((string) file_get_contents($this->reportPath), true)[0];
+        $people = collect($report['people'])->keyBy('person_id');
+        $damaged = $people[$sitiPerson];
+
+        // G
+        $this->assertSame(1, $damaged['owned_data']['contact_identifiers']);
+        $this->assertSame(0, $damaged['owned_data']['pos_loyalty_profiles']);
+
+        // H
+        $case = collect($damaged['documents'])->first(fn ($d) => $d['column'] === 'case_information');
+        $this->assertNotNull($case, 'Person references inside case_information are documents too.');
+        $this->assertSame(1, $case['issued']);
+
+        // I
+        $relationship = collect($damaged['relationships'])->firstWhere('organisation_id', $hospitalOrg);
+        $this->assertNotNull($relationship);
+        $this->assertArrayHasKey('functional_category_code', $relationship);
+        $this->assertArrayHasKey('roles', $relationship);
+        $this->assertArrayHasKey('site_address_id', $relationship);
+        $limLink = collect($damaged['links'])->firstWhere('customer_contact_id', $lim);
+        $this->assertSame('NURSE', $limLink['implied_classification']);
+        $this->assertSame('Ward 3', $limLink['department_name']);
+        $this->assertArrayHasKey('implied_functional_category', $limLink);
+        $this->assertArrayHasKey('implied_roles', $limLink);
+
+        // J
+        $this->assertArrayHasKey($goneId, $people->all(), 'A soft-deleted damaged person is reported.');
+        $this->assertTrue($people[$goneId]['person_deleted']);
+
+        // K
+        $print = $damaged['fingerprint'];
+        $master->addIdentifier($sitiPerson, 'staff_no', 'S-002', $this->tenantId);
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $again = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id');
+        // Revised by the third review of the repair plan: owned data and
+        // documents change with normal use, so they are listed, not
+        // fingerprinted (otherwise busy people could never be reviewed).
+        $this->assertSame($print, $again[$sitiPerson]['fingerprint'], 'Owned data is listed, not fingerprinted.');
+
+        // L
+        $this->assertTrue($people[$bulkId]['oversized']);
+        $this->assertSame(51, $people[$bulkId]['link_count']);
+        $this->assertFalse($damaged['oversized']);
+    }
+
+    /**
+     * Third hostile review of the repair plan (2026-10-06):
+     *  M. the fingerprint covers what a repair decision depends on (links,
+     *     relationships with roles, classifications) and NOT documents or
+     *     owned data, which change with normal daily use;
+     *  N. owned data is a flag (`has_owned_data`); points typed into the
+     *     Contact Master loyalty profile are listed as `manual_loyalty_points`
+     *     (fourth review: they are entered by hand, not a POS ledger, and
+     *     the accounting profile "balance" is never maintained — not shown) —
+     *     moving it needs finance sign-off;
+     *  O. a company relationship with no linked contact at that company is
+     *     marked (`has_linked_contact` false): it stays with the person.
+     */
+    public function test_fingerprint_scope_financial_owned_data_and_relationships_without_contacts(): void
+    {
+        [$hospital, $hospitalOrg] = $this->createCustomer('Acme Hospital');
+        [, $otherOrg] = $this->createCustomer('Unlinked Clinic');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+        $this->wronglyMerged($hospital, null, 'Nurse Lim', $sitiPerson);
+
+        // O: a relationship at a company where no contact links the person.
+        DB::table('contact_relationships')->insert([
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenantId, 'contact_id' => $otherOrg,
+            'related_contact_id' => $sitiPerson, 'relationship_type' => 'org_person', 'is_primary' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // N: loyalty points on the (shared) person.
+        \Modules\Contact\src\Models\PosLoyaltyProfile::create([
+            'id' => (string) Str::uuid(), 'tenant_id' => $this->tenantId, 'contact_id' => $sitiPerson,
+            'loyalty_points' => 120, 'lifetime_points' => 300,
+        ]);
+
+        $first = $this->report()[$sitiPerson];
+
+        // N
+        $this->assertTrue($first['has_owned_data']);
+        // Revised by the fourth review of the repair plan: the accounting
+        // profile's current_balance is only ever written as 0, so no
+        // "balance" is reported; loyalty points are manual entries.
+        $this->assertSame(120, $first['manual_loyalty_points']);
+        $this->assertArrayNotHasKey('financial_owned_data', $first);
+
+        // O
+        $relationships = collect($first['relationships'])->keyBy('organisation_id');
+        $this->assertTrue($relationships[$hospitalOrg]['has_linked_contact']);
+        $this->assertFalse($relationships[$otherOrg]['has_linked_contact']);
+
+        // M: a new document for the person does not change the fingerprint…
+        Invoice::factory()->create(['customer_id' => $hospital, 'status' => 'draft', 'doctor_contact_id' => $sitiPerson]);
+        $this->assertSame($first['fingerprint'], $this->report()[$sitiPerson]['fingerprint'], 'Documents are listed, not fingerprinted.');
+
+        // …but a role on one of its relationships does.
+        app(ContactMasterService::class)->setRelationshipRoles($relationships[$hospitalOrg]['relationship_id'], ['BILLING_CONTACT'], $this->tenantId);
+        $this->assertNotSame($first['fingerprint'], $this->report()[$sitiPerson]['fingerprint'], 'Relationship roles are part of the fingerprint.');
+    }
+
+    /**
+     * Fourth hostile review of the repair plan (2026-10-07):
+     *  P. the bug only fired for a contact with NO email and NO mobile when
+     *     it was linked. A `suspect` link whose contact has an email or mobile
+     *     today may be a correct match whose details changed later, so only
+     *     links with the bug's signature are `auto_split_eligible`;
+     *  Q. roles held directly on the person (no relationship) are reported
+     *     and part of the fingerprint;
+     *  R. `--review-sheet=<csv>` writes one row per link with the person's
+     *     fingerprint, a proposed decision and empty decision columns.
+     */
+    public function test_bug_signature_person_roles_and_review_sheet(): void
+    {
+        [$hospital] = $this->createCustomer('Acme Hospital');
+        [$clinic, $clinicOrg] = $this->createCustomer('Bayu Clinic');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+
+        // The bug's signature: no email, no mobile.
+        $ali = $this->wronglyMerged($clinic, $clinicOrg, 'Ali', $sitiPerson);
+        // Different name, no shared identifier, but HAS an email today:
+        // possibly a correct match whose details drifted — review only.
+        $drift = $this->wronglyMerged($clinic, null, 'Tan Ah Kow', $sitiPerson, ['email' => 'tak@bayu.test']);
+
+        // Q: a role held directly on the person.
+        app(ContactMasterService::class)->addRole($sitiPerson, 'customer', $this->tenantId);
+
+        $sheet = tempnam(sys_get_temp_dir(), 'review-sheet-');
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath, '--review-sheet' => $sheet])->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+
+        $person = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id')[$sitiPerson];
+        $links = collect($person['links'])->keyBy('customer_contact_id');
+
+        // P
+        $this->assertTrue($links[$ali]['bug_signature']);
+        $this->assertTrue($links[$ali]['auto_split_eligible']);
+        $this->assertSame('suspect', $links[$drift]['status']);
+        $this->assertFalse($links[$drift]['bug_signature']);
+        $this->assertFalse($links[$drift]['auto_split_eligible'], 'A suspect link with identifiers today goes to review, not an automatic split.');
+        $this->assertFalse($links[$siti['id']]['auto_split_eligible']);
+
+        // Q
+        $this->assertSame(['customer'], $person['person_roles']);
+        $print = $person['fingerprint'];
+        app(ContactMasterService::class)->addRole($sitiPerson, 'vendor', $this->tenantId);
+        $this->assertNotSame($print, $this->report()[$sitiPerson]['fingerprint'], 'Person-level roles are part of the fingerprint.');
+
+        // R
+        $rows = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
+        $header = array_shift($rows);
+        // Revised by the fifth review: decisions are checked per link
+        // (link_fingerprint) plus the person's identity, not against the
+        // whole person, which changes whenever any of its links changes.
+        $this->assertSame(['tenant_id', 'person_id', 'person_identity_fingerprint', 'customer_contact_id', 'link_fingerprint', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note'], $header);
+        $byContact = collect($rows)->map(fn ($r) => array_combine($header, $r))->keyBy('customer_contact_id');
+        $this->assertSame($person['identity_fingerprint'], $byContact[(string) $ali]['person_identity_fingerprint']);
+        $this->assertSame($links[$ali]['link_fingerprint'], $byContact[(string) $ali]['link_fingerprint']);
+        $this->assertSame('split', $byContact[(string) $ali]['proposed_decision']);
+        $this->assertSame('review', $byContact[(string) $drift]['proposed_decision']);
+        $this->assertSame('keep', $byContact[(string) $siti['id']]['proposed_decision']);
+        $this->assertSame('', $byContact[(string) $ali]['decision']);
+        $this->assertSame('Ali', $byContact[(string) $ali]['contact_name']);
+
+        // --redact blanks names in the sheet too.
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--review-sheet' => $sheet, '--redact' => true])->assertExitCode(0);
+        $redacted = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
+        array_shift($redacted);
+        $this->assertNotContains('Ali', array_merge(...$redacted));
+        $this->assertNotContains('Siti', array_merge(...$redacted));
+        @unlink($sheet);
+    }
+
+    /**
+     * Fifth hostile review of the repair plan (2026-10-07). Reproduced on
+     * `main`: every contact without email and mobile, across companies,
+     * lands on the SAME person (`first()` without ORDER BY) — the damage
+     * concentrates on a few "victim" people with very many links. So:
+     *  S. decisions are checked per link: `link_fingerprint` changes only
+     *     with that link (and its company relationship) or the person's
+     *     identity — not when another link of the person changes;
+     *  T. the review sheet escapes spreadsheet formulas in names;
+     *  U. documents are also summed per customer (`documents_by_customer`).
+     */
+    public function test_link_fingerprints_formula_escaping_and_documents_by_customer(): void
+    {
+        [$hospital] = $this->createCustomer('Acme Hospital');
+        [$clinic, $clinicOrg] = $this->createCustomer('Bayu Clinic');
+        [$lab] = $this->createCustomer('Delima Lab');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+
+        $ali = $this->wronglyMerged($clinic, $clinicOrg, 'Ali', $sitiPerson);
+        $evil = $this->wronglyMerged($lab, null, '=HYPERLINK("http://evil.test","x")', $sitiPerson);
+
+        Invoice::factory()->create(['customer_id' => $clinic, 'status' => 'posted', 'doctor_contact_id' => $sitiPerson]);
+        Invoice::factory()->create(['customer_id' => $clinic, 'status' => 'posted', 'requestor_contact_id' => $sitiPerson]);
+        Invoice::factory()->create(['customer_id' => $lab, 'status' => 'draft', 'doctor_contact_id' => $sitiPerson]);
+
+        $sheet = tempnam(sys_get_temp_dir(), 'review-sheet-');
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath, '--review-sheet' => $sheet])->assertExitCode(0);
+        $person = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id')[$sitiPerson];
+        $aliPrint = collect($person['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'];
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $aliPrint);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $person['identity_fingerprint']);
+
+        // T
+        $rows = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
+        $header = array_shift($rows);
+        $evilRow = collect($rows)->map(fn ($r) => array_combine($header, $r))->firstWhere('customer_contact_id', (string) $evil);
+        $this->assertSame("'=HYPERLINK(\"http://evil.test\",\"x\")", $evilRow['contact_name'], 'A formula-looking name is escaped.');
+        @unlink($sheet);
+
+        // U
+        $byCustomer = collect($person['documents_by_customer'])->keyBy('customer_id');
+        $this->assertSame([2, 0], [$byCustomer[$clinic]['issued'], $byCustomer[$clinic]['draft']]);
+        $this->assertSame([0, 1], [$byCustomer[$lab]['issued'], $byCustomer[$lab]['draft']]);
+
+        // S: another link of the person changing does not invalidate Ali's…
+        $this->wronglyMerged($lab, null, 'New Porter', $sitiPerson);
+        DB::table('customer_contacts')->where('id', $evil)->update(['name' => 'Renamed']);
+        $again = $this->report()[$sitiPerson];
+        $this->assertSame($aliPrint, collect($again['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint']);
+        $this->assertNotSame($person['fingerprint'], $again['fingerprint'], 'The whole-person fingerprint does change.');
+
+        // …but Ali's own row, Ali's company relationship, or the person's identity does.
+        app(ContactMasterService::class)->setRelationshipRoles(collect($again['relationships'])->firstWhere('organisation_id', $clinicOrg)['relationship_id'], ['BILLING_CONTACT'], $this->tenantId);
+        $afterRole = $this->report()[$sitiPerson];
+        $this->assertNotSame($aliPrint, collect($afterRole['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'], 'Its company relationship is part of the link fingerprint.');
+
+        DB::table('core_contacts')->where('id', $sitiPerson)->update(['email' => 'siti.new@acme.test']);
+        $afterIdentity = $this->report()[$sitiPerson];
+        $this->assertNotSame($afterRole['identity_fingerprint'], $afterIdentity['identity_fingerprint']);
+        $this->assertNotSame(collect($afterRole['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'], collect($afterIdentity['links'])->firstWhere('customer_contact_id', $ali)['link_fingerprint'], 'The person identity is part of every link fingerprint.');
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function report(): array
+    {
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath])->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+
+        return collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id')->all();
+    }
+
+    /** @return array{0: int, 1: string} */
+    private function createCustomer(string $name): array
+    {
+        $created = $this->postJson('/api/v1/customers', ['name' => $name, 'type' => 'company'])->assertCreated();
+
+        return [(int) $created->json('id'), $created->json('core_contact_uuid')];
+    }
+
+    private function addContact(int $customerId, array $payload): array
+    {
+        $json = $this->postJson("/api/v1/customers/{$customerId}/contacts", $payload)->assertCreated()->json();
+
+        return ['id' => (int) $json['id'], 'core_contact_uuid' => $json['core_contact_uuid']];
+    }
+
+    /** What the bug left behind: a contact on someone else's person (+ the relationship the sync made). */
+    private function wronglyMerged(int $customerId, ?string $orgId, string $name, string $personId, array $attributes = []): int
+    {
+        $id = (int) DB::table('customer_contacts')->insertGetId(array_merge([
+            'customer_id' => $customerId,
+            'name' => $name,
+            'core_contact_uuid' => $personId,
+            'is_primary' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], $attributes));
+
+        if ($orgId) {
+            DB::table('contact_relationships')->insert([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $this->tenantId,
+                'contact_id' => $orgId,
+                'related_contact_id' => $personId,
+                'relationship_type' => 'org_person',
+                'is_primary' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return $id;
+    }
+
+    /** @return array<string, int> */
+    private function tableCounts(): array
+    {
+        $counts = [];
+        foreach (['customer_contacts', 'core_contacts', 'contact_relationships', 'contact_roles', 'contact_group_members', 'invoices'] as $table) {
+            $counts[$table] = DB::table($table)->count();
+        }
+
+        return $counts;
+    }
+}
