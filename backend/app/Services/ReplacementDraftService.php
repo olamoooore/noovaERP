@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Exceptions\QuotationHasLiveSalesOrderException;
 use App\Models\Bill;
 use App\Models\BillLine;
 use App\Models\Invoice;
@@ -10,11 +11,12 @@ use App\Models\InvoiceLine;
 use App\Models\JournalEntry;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
-use Modules\Sales\Models\DeliveryOrder;
-use Modules\Sales\Models\DeliveryOrderLine;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Sales\Models\DeliveryOrder;
+use Modules\Sales\Models\DeliveryOrderLine;
+use Modules\Sales\Models\SalesOrder;
 
 class ReplacementDraftService
 {
@@ -118,6 +120,16 @@ class ReplacementDraftService
                 throw new \RuntimeException('This quotation has already been rejected or superseded.');
             }
 
+            // Issue #336 (Decision 7 Oct 2026): a quotation with a live
+            // (non-cancelled) sales order cannot be rejected/revised — the
+            // sales order must be cancelled first.
+            if ($locked->sales_order_id !== null) {
+                $salesOrder = SalesOrder::whereKey($locked->sales_order_id)->lockForUpdate()->first();
+                if ($salesOrder && ! $salesOrder->isCancelled()) {
+                    throw new QuotationHasLiveSalesOrderException;
+                }
+            }
+
             return $this->doCreateQuotationReplacementDraft($locked, $request);
         });
     }
@@ -179,7 +191,8 @@ class ReplacementDraftService
             'company_code' => $original->company_code,
             'billing_address_snapshot' => $original->billing_address_snapshot,
             'shipping_address_snapshot' => $original->shipping_address_snapshot,
-            'sales_order_id' => $original->sales_order_id,
+            // Issue #336: the replacement draft never inherits the original's sales order.
+            'sales_order_id' => null,
             'created_by' => $request->userId ?? Auth::id(),
             'correction_group_id' => $correctionGroupId,
             'original_document_id' => $original->id,

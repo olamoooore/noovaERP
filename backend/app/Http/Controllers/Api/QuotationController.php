@@ -2102,6 +2102,12 @@ class QuotationController extends Controller
                 'quotation' => $replacement->load('lines.product'),
                 'superseded_quotation_id' => $quotation->id,
             ], 201);
+        } catch (\App\Exceptions\QuotationHasLiveSalesOrderException $e) {
+            // Issue #336 (Decision 7 Oct 2026): cancel the sales order first.
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to reject quotation',
