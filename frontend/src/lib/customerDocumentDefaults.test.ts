@@ -1,8 +1,33 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildContactAddress,
   buildContactBillingAddress,
+  getCustomerContactForRole,
+  pickContactMasterAddress,
   pickContactMasterBillingAddress,
 } from './customerDocumentDefaults'
+
+describe('customerDocumentDefaults — contact role + address resolution', () => {
+  it('picks the billing-category contact for billing and shipping-category for shipping', () => {
+    const customer = {
+      customer_contacts: [
+        { id: 1, name: 'Doc', contact_category: 'doctor' },
+        { id: 2, name: 'Primary', is_primary: true },
+        { id: 3, name: 'Bill', contact_category: 'billing' },
+        { id: 4, name: 'Ship', contact_category: 'shipping' },
+      ],
+    }
+
+    expect(getCustomerContactForRole(customer, 'billing')?.id).toBe(3)
+    expect(getCustomerContactForRole(customer, 'shipping')?.id).toBe(4)
+  })
+
+  it('falls back to the primary contact, then the first one', () => {
+    const noCategories = { customer_contacts: [{ id: 1, name: 'First' }, { id: 2, name: 'Second', is_primary: true }] }
+    expect(getCustomerContactForRole(noCategories, 'shipping')?.id).toBe(2)
+    expect(getCustomerContactForRole({ customer_contacts: [{ id: 9, name: 'Only' }] }, 'billing')?.id).toBe(9)
+  })
+})
 
 describe('customerDocumentDefaults — contact billing address', () => {
   const masterAddresses = [
@@ -29,6 +54,18 @@ describe('customerDocumentDefaults — contact billing address', () => {
   it('prefers the Contact Master default billing address', () => {
     const picked = pickContactMasterBillingAddress(masterAddresses)
     expect(picked?.line_1).toBe('10 Contact Bill Rd')
+    expect(pickContactMasterAddress(masterAddresses, 'billing')?.line_1).toBe('10 Contact Bill Rd')
+  })
+
+  it('prefers the default shipping address for the shipping role', () => {
+    const addresses = [
+      { address_type: 'shipping', line_1: '1 Ship A', is_default_shipping: false },
+      { address_type: 'shipping', line_1: '2 Ship B', is_default_shipping: true },
+    ]
+    expect(pickContactMasterAddress(addresses, 'shipping')?.line_1).toBe('2 Ship B')
+    expect(
+      buildContactAddress({ id: 14, name: 'Shipping Sue' }, addresses, 'shipping')?.street,
+    ).toBe('2 Ship B')
   })
 
   it('maps a Contact Master address onto the document address form', () => {

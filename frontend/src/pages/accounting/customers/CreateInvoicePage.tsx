@@ -20,7 +20,7 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api'
-import { buildContactBillingAddress, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
+import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
 import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
 import { resolveLineTaxRate } from '@/lib/lineTax';
 import { computeDocumentTotals } from '@/lib/documentTotals';
@@ -431,9 +431,9 @@ export const CreateInvoicePage: React.FC = () => {
   // #317: customer id of a restored local draft — its header values are the
   // user's own, so the customer-default effects must not overwrite them.
   const restoredCustomerRef = useRef<string | null>(null);
-  // Guards the async Contact-Master address lookup: a stale response must not
-  // overwrite the address of a contact picked later.
-  const billingContactAddressRequestRef = useRef(0);
+  // Guards the async Contact-Master address lookups per section: a stale
+  // response must not overwrite the address of a contact picked later.
+  const contactAddressRequestRef = useRef<{ billing: number; shipping: number }>({ billing: 0, shipping: 0 });
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
   const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
   const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
@@ -601,6 +601,7 @@ export const CreateInvoicePage: React.FC = () => {
     }
 
     const primaryContact = getPrimaryCustomerContact(selectedCustomer);
+    const shippingContact = getCustomerContactForRole(selectedCustomer, 'shipping');
     const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
     const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
     setDocumentSnapshot({
@@ -616,11 +617,12 @@ export const CreateInvoicePage: React.FC = () => {
     });
 
     setBillingContactId(primaryContact?.id != null ? String(primaryContact.id) : '');
-    setShippingContactId('');
+    setShippingContactId(shippingContact?.id != null ? String(shippingContact.id) : '');
     setDoctorContactId('');
     setRequestorContactId('');
-    // Invalidate any in-flight contact-address lookup from the previous pick.
-    billingContactAddressRequestRef.current += 1;
+    // Invalidate any in-flight contact-address lookups from the previous pick.
+    contactAddressRequestRef.current.billing += 1;
+    contactAddressRequestRef.current.shipping += 1;
 
     // WRK-A / HR71-04: Use the customer's authoritative payment terms to
     // populate a DEFAULT only when the user has NOT intentionally overridden
@@ -835,8 +837,22 @@ export const CreateInvoicePage: React.FC = () => {
       ? contacts.find((contact) => contact.name?.trim().toLowerCase() === requestorName)
       : undefined;
 
-    setBillingContactId(billingMatch?.id != null ? String(billingMatch.id) : '');
-    setShippingContactId(shippingMatch?.id != null ? String(shippingMatch.id) : '');
+    // Invoices raised before contact defaults were stored show no contact;
+    // render the customer's default billing/shipping contact instead of blank,
+    // without touching the invoice's saved snapshots or addresses.
+    const billingDefault = getCustomerContactForRole(selectedCustomerDetail, 'billing');
+    const shippingDefault = getCustomerContactForRole(selectedCustomerDetail, 'shipping');
+
+    setBillingContactId(
+      billingMatch?.id != null
+        ? String(billingMatch.id)
+        : (billingDefault?.id != null ? String(billingDefault.id) : ''),
+    );
+    setShippingContactId(
+      shippingMatch?.id != null
+        ? String(shippingMatch.id)
+        : (shippingDefault?.id != null ? String(shippingDefault.id) : ''),
+    );
     setDoctorContactId(doctorMatch?.id != null ? String(doctorMatch.id) : '');
     setRequestorContactId(requestorMatch?.id != null ? String(requestorMatch.id) : '');
   }, [existingInvoice, isEditMode, selectedCustomerDetail]);
@@ -1155,12 +1171,12 @@ export const CreateInvoicePage: React.FC = () => {
     });
   };
 
-  // Selecting a related contact person renders their default billing address:
-  // the Contact Master default billing address when the contact is linked,
-  // else the customer-contact record's inline address. Falls back silently to
-  // the customer's default billing address when the contact has none.
-  const applyContactBillingAddress = async (contact: CustomerContact) => {
-    const requestId = ++billingContactAddressRequestRef.current;
+  // Selecting a related contact person renders their default address for that
+  // section: the Contact Master default billing/shipping address when the
+  // contact is linked, else the customer-contact record's inline address.
+  // Falls back silently to the customer's default when the contact has none.
+  const applyContactAddress = async (role: 'billing' | 'shipping', contact: CustomerContact) => {
+    const requestId = ++contactAddressRequestRef.current[role];
     let masterAddresses: ContactMasterAddress[] | null = null;
 
     if (contact.core_contact_uuid) {
@@ -1172,13 +1188,20 @@ export const CreateInvoicePage: React.FC = () => {
       }
     }
 
-    const nextAddress = buildContactBillingAddress(contact, masterAddresses);
-    if (!nextAddress || requestId !== billingContactAddressRequestRef.current) {
+    const nextAddress = buildContactAddress(contact, masterAddresses, role);
+    if (!nextAddress || requestId !== contactAddressRequestRef.current[role]) {
       return;
     }
 
-    setBillingAddress(nextAddress);
-    updateDocumentSnapshot('billing_address_snapshot', addressFormToSnapshot(nextAddress));
+    if (role === 'billing') {
+      setBillingAddress(nextAddress);
+    } else {
+      setShippingAddress(nextAddress);
+    }
+    updateDocumentSnapshot(
+      role === 'billing' ? 'billing_address_snapshot' : 'shipping_address_snapshot',
+      addressFormToSnapshot(nextAddress),
+    );
   };
 
   const addLine = () => setLines([...lines, { ...emptyLine(), tax_rate: defaultTaxRate || '' }]);
@@ -2546,7 +2569,7 @@ export const CreateInvoicePage: React.FC = () => {
                                 contact_email: contact.email || current.contact_email,
                                 contact_phone: contact.phone || (contact as any).mobile || current.contact_phone,
                               }));
-                              void applyContactBillingAddress(contact as CustomerContact);
+                              void applyContactAddress('billing', contact as CustomerContact);
                             }
                           }}
                           placeholder="Select customer contact..."
@@ -2615,7 +2638,12 @@ export const CreateInvoicePage: React.FC = () => {
                         <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
                         <ContactSearchCombobox
                           value={shippingContactId}
-                          onValueChange={(val) => setShippingContactId(val)}
+                          onValueChange={(val, contact) => {
+                            setShippingContactId(val);
+                            if (contact) {
+                              void applyContactAddress('shipping', contact as CustomerContact);
+                            }
+                          }}
                           placeholder="Select customer contact..."
                           customerId={customerId}
                           source="customer_contacts"

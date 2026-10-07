@@ -37,6 +37,7 @@ export interface ContactMasterAddress {
   postal_code?: string | null
   country?: string | null
   is_default_billing?: boolean | null
+  is_default_shipping?: boolean | null
 }
 
 /** Address shape the sales forms render/edit (matches their AddressFormState). */
@@ -73,17 +74,25 @@ export interface CustomerDocumentSource<
  * contact first, then the primary contact, then the first one. Picking
  * `contacts[0]` blindly put a doctor/requestor's details on invoices.
  */
-export function getPrimaryCustomerContact<C extends CustomerDocumentContact>(
-  customer?: CustomerDocumentSource<C, any> | null,
+export function getCustomerContactForRole<C extends CustomerDocumentContact>(
+  customer: CustomerDocumentSource<C, any> | null | undefined,
+  role: 'billing' | 'shipping',
 ): C | undefined {
   const contacts = customer?.customer_contacts ?? customer?.customerContacts ?? []
   const categoryOf = (contact: C) => (contact.contact_category || contact.contact_type || '').toLowerCase()
 
   return (
-    contacts.find((contact) => categoryOf(contact) === 'billing')
+    contacts.find((contact) => categoryOf(contact) === role)
     ?? contacts.find((contact) => contact.is_primary)
     ?? contacts[0]
   )
+}
+
+/** The invoice bill-to contact: billing-category → primary → first (issue #320). */
+export function getPrimaryCustomerContact<C extends CustomerDocumentContact>(
+  customer?: CustomerDocumentSource<C, any> | null,
+): C | undefined {
+  return getCustomerContactForRole(customer, 'billing')
 }
 
 /** The customer's default address of a type, else the first of that type. */
@@ -107,35 +116,46 @@ export function getCustomerContactDefaults(customer?: CustomerDocumentSource | n
 }
 
 /** The contact's default billing address from Contact Master, then any billing address. */
+export function pickContactMasterAddress(
+  addresses: ContactMasterAddress[] | null | undefined,
+  role: 'billing' | 'shipping',
+): ContactMasterAddress | undefined {
+  const list = addresses ?? []
+  const defaultFlag = role === 'billing' ? 'is_default_billing' : 'is_default_shipping'
+
+  return (
+    list.find((address) => address[defaultFlag] === true)
+    ?? list.find((address) => (address.address_type ?? '').toLowerCase() === role)
+    ?? undefined
+  )
+}
+
+/** @deprecated use pickContactMasterAddress(addresses, 'billing') */
 export function pickContactMasterBillingAddress(
   addresses?: ContactMasterAddress[] | null,
 ): ContactMasterAddress | undefined {
-  const list = addresses ?? []
-  return (
-    list.find((address) => address.is_default_billing === true)
-    ?? list.find((address) => (address.address_type ?? '').toLowerCase() === 'billing')
-    ?? undefined
-  )
+  return pickContactMasterAddress(addresses, 'billing')
 }
 
 const hasInlineAddress = (contact: CustomerDocumentContact): boolean =>
   Boolean(contact.street || contact.street2 || contact.city || contact.state || contact.zip || contact.country)
 
 /**
- * The billing address to render for a selected related contact person:
- * the contact's Contact Master default billing address when one is supplied,
- * otherwise the customer-specific contact record's inline address. Null when
- * neither exists, so the caller keeps the customer's default billing address.
+ * The billing/shipping address to render for a selected related contact
+ * person: the contact's Contact Master default address of that role when one
+ * is supplied, otherwise the customer-contact record's inline address. Null
+ * when neither exists, so the caller keeps the customer's default address.
  */
-export function buildContactBillingAddress(
-  contact?: CustomerDocumentContact | null,
-  masterAddresses?: ContactMasterAddress[] | null,
+export function buildContactAddress(
+  contact: CustomerDocumentContact | null | undefined,
+  masterAddresses: ContactMasterAddress[] | null | undefined,
+  role: 'billing' | 'shipping',
 ): DocumentAddressForm | null {
   if (!contact) {
     return null
   }
 
-  const master = pickContactMasterBillingAddress(masterAddresses)
+  const master = pickContactMasterAddress(masterAddresses, role)
   if (master) {
     return {
       label: master.label ?? '',
@@ -161,4 +181,12 @@ export function buildContactBillingAddress(
   }
 
   return null
+}
+
+/** @deprecated use buildContactAddress(contact, addresses, 'billing') */
+export function buildContactBillingAddress(
+  contact?: CustomerDocumentContact | null,
+  masterAddresses?: ContactMasterAddress[] | null,
+): DocumentAddressForm | null {
+  return buildContactAddress(contact, masterAddresses, 'billing')
 }
