@@ -283,6 +283,246 @@ class PaymentAdviceReconciliationTest extends TenantTestCase
             ->assertStatus(422);
     }
 
+    /**
+     * UOB GIRO advice (lines 0 = 2026/08/223 7,194.00, 1 = 2026/07/089
+     * 1,744.00; remittance 8,938.00) uploaded against Ascensus invoices.
+     *
+     * @return array{0: int, 1: Invoice, 2: Invoice, 3: Customer}
+     */
+    private function uobImport(float $balanceA = 7194.00, float $balanceB = 2000.00): array
+    {
+        $this->fakeOcr('uob-payment-advice.txt');
+
+        $ascensus = Customer::factory()->create(['name' => "ASCENSUS-BEH'S CLINIC FOR WOMEN PTE LTD"]);
+        $invoiceA = $this->seedInvoice($ascensus, '2026/08/223', $balanceA, '2026-08-31');
+        $invoiceB = $this->seedInvoice($ascensus, '2026/07/089', $balanceB, '2026-07-14');
+
+        $importId = (int) $this->upload('uob.jpg')->assertCreated()->json('data.id');
+
+        return [$importId, $invoiceA, $invoiceB, $ascensus];
+    }
+
+    private function confirm(int $importId, array $allocations): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($this->user)->postJson("/api/v1/payment-advices/{$importId}/confirm", [
+            'allocations' => $allocations,
+        ]);
+    }
+
+    private function assertNoPaymentsFor(int $importId): void
+    {
+        $this->assertSame(0, Payment::query()->where('payment_advice_import_id', $importId)->count());
+        $this->assertSame('draft', DB::table('payment_advice_imports')->where('id', $importId)->value('status'));
+    }
+
+    public function test_confirm_rejects_an_invoice_of_another_customer(): void
+    {
+        [$importId, $invoiceA] = $this->uobImport();
+
+        $other = Customer::factory()->create(['name' => 'Unrelated Trading Pte Ltd']);
+        $foreign = $this->seedInvoice($other, 'OTHER/0001', 5000.00);
+
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 7194.00],
+            ['line_index' => 1, 'invoice_id' => $foreign->id, 'amount' => 1744.00],
+        ])->assertStatus(422)->assertJsonValidationErrors('allocations');
+
+        $this->assertNoPaymentsFor($importId);
+    }
+
+    public function test_confirm_rejects_an_invoice_that_is_not_open(): void
+    {
+        [$importId, , , $ascensus] = $this->uobImport();
+
+        $draft = $this->seedInvoice($ascensus, 'DRAFT/0001', 1744.00);
+        DB::table('invoices')->where('id', $draft->id)->update(['status' => 'draft']);
+
+        $this->confirm($importId, [
+            ['line_index' => 1, 'invoice_id' => $draft->id, 'amount' => 1744.00],
+        ])->assertStatus(422)->assertJsonValidationErrors('allocations');
+
+        $this->assertNoPaymentsFor($importId);
+    }
+
+    public function test_confirm_rejects_repeat_allocations_that_exceed_one_invoice_balance(): void
+    {
+        [$importId, $invoiceA] = $this->uobImport(5000.00, 2000.00);
+
+        // Each allocation fits the 5,000 balance on its own; together they don't.
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 4000.00],
+            ['line_index' => 1, 'invoice_id' => $invoiceA->id, 'amount' => 1744.00],
+        ])->assertStatus(422)->assertJsonValidationErrors('allocations');
+
+        $this->assertNoPaymentsFor($importId);
+    }
+
+    public function test_confirm_counts_existing_draft_payments_against_the_invoice_balance(): void
+    {
+        [$importId, $invoiceA] = $this->uobImport();
+
+        // An unposted draft already earmarks most of invoice A (#477: drafts
+        // don't move the invoice balance, so it must be counted here).
+        app(\App\Services\InvoiceService::class)->recordPayment($invoiceA, [
+            'amount' => 7000.00,
+            'payment_date' => '2026-09-01',
+            'method' => 'bank_transfer',
+            'received_by' => $this->user->id,
+        ], postImmediately: false);
+
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 7194.00],
+        ])->assertStatus(422)->assertJsonValidationErrors('allocations');
+
+        $this->assertNoPaymentsFor($importId);
+    }
+
+    public function test_confirm_rejects_allocations_above_the_advice_total(): void
+    {
+        [$importId, $invoiceA, $invoiceB] = $this->uobImport(7194.00, 9000.00);
+
+        // 7,194 + 5,000 = 12,194 > the 8,938 remitted.
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 7194.00],
+            ['line_index' => 1, 'invoice_id' => $invoiceB->id, 'amount' => 5000.00],
+        ])->assertStatus(422)->assertJsonValidationErrors('allocations');
+
+        $this->assertNoPaymentsFor($importId);
+    }
+
+    public function test_confirm_rejects_the_same_line_allocated_twice(): void
+    {
+        [$importId, $invoiceA, $invoiceB] = $this->uobImport();
+
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 1000.00],
+            ['line_index' => 0, 'invoice_id' => $invoiceB->id, 'amount' => 1000.00],
+        ])->assertStatus(422)->assertJsonValidationErrors('allocations');
+
+        $this->assertNoPaymentsFor($importId);
+    }
+
+    public function test_a_stale_confirm_after_another_confirmation_is_rejected(): void
+    {
+        [$importId, $invoiceA] = $this->uobImport();
+
+        // Two operators load the same draft advice; the first confirms.
+        $stale = \App\Models\PaymentAdviceImport::query()->findOrFail($importId);
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 1000.00],
+        ])->assertOk();
+
+        // The second confirm still holds the 'draft' copy — the status check
+        // must be made against the locked row, not the stale model.
+        try {
+            app(\App\PaymentAdvices\PaymentAdviceService::class)->confirm($stale, [
+                ['line_index' => 1, 'invoice_id' => $invoiceA->id, 'amount' => 100.00],
+            ], $this->user->id);
+            $this->fail('A second confirmation of the same advice must be rejected.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('status', $e->errors());
+        }
+
+        $this->assertSame(1, Payment::query()->where('payment_advice_import_id', $importId)->count());
+
+        // And through the route.
+        $this->confirm($importId, [
+            ['line_index' => 1, 'invoice_id' => $invoiceA->id, 'amount' => 100.00],
+        ])->assertStatus(422);
+    }
+
+    public function test_ocr_outage_returns_503_and_leaves_no_import_or_orphaned_file(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        Http::fake(['*/api/ocr/raw' => Http::response(['detail' => 'boom'], 500)]);
+
+        $response = $this->upload('uob.jpg');
+
+        $response->assertStatus(503);
+        $this->assertStringContainsString('OCR service unavailable', (string) $response->json('message'));
+        $this->assertSame(0, DB::table('payment_advice_imports')->count());
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-advices'));
+    }
+
+    public function test_ocr_connection_failure_returns_503(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('local');
+        Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('Connection refused'));
+
+        $this->upload('uob.jpg')->assertStatus(503);
+        $this->assertSame(0, DB::table('payment_advice_imports')->count());
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles('payment-advices'));
+    }
+
+    public function test_partially_paid_invoices_are_suggested_for_a_no_reference_advice(): void
+    {
+        $this->fakeOcr('uob-transfer-notice.txt');
+
+        $centre = Customer::factory()->create(['name' => 'HEALTH & FERTILITY CENTRE FOR WOMEN PTE LTD']);
+        $invoice = $this->seedInvoice($centre, '2026/05/090', 1090.00, '2026-05-02');
+        DB::table('invoices')->where('id', $invoice->id)->update([
+            'status' => 'partial',
+            'paid_amount' => 545.00,
+            'balance' => 545.00,
+            'settlement_status' => 'partially_paid',
+        ]);
+
+        $data = $this->upload('uob-transfer.jpg')->assertCreated()->json('data');
+
+        $this->assertSame([$invoice->id], array_column($data['suggestions'], 'invoice_id'));
+    }
+
+    public function test_a_no_reference_advice_can_be_confirmed_against_a_picked_suggestion(): void
+    {
+        $this->fakeOcr('uob-transfer-notice.txt');
+
+        $centre = Customer::factory()->create(['name' => 'HEALTH & FERTILITY CENTRE FOR WOMEN PTE LTD']);
+        $invoice = $this->seedInvoice($centre, '2026/05/088', 545.00, '2026-05-02');
+
+        $importId = (int) $this->upload('uob-transfer.jpg')->assertCreated()->json('data.id');
+
+        // The advice has no lines; the picked suggestion allocates against the
+        // advice as a whole (line 0).
+        $this->confirm($importId, [
+            ['line_index' => 0, 'invoice_id' => $invoice->id, 'amount' => 545.00],
+        ])->assertOk();
+
+        $payment = Payment::query()->where('payment_advice_import_id', $importId)->sole();
+        $this->assertSame($invoice->id, (int) $payment->invoice_id);
+        $this->assertSame(545.00, (float) $payment->amount);
+        $this->assertNull($payment->journal_entry_id);
+    }
+
+    public function test_a_role_without_accounting_write_cannot_upload_or_confirm(): void
+    {
+        [$importId, $invoiceA] = $this->uobImport();
+
+        $viewer = User::factory()->create();
+        DB::table('public.users')->updateOrInsert(
+            ['email' => $viewer->email],
+            ['name' => $viewer->name, 'password' => $viewer->password, 'created_at' => now(), 'updated_at' => now()]
+        );
+        $centralId = DB::table('public.users')->where('email', $viewer->email)->value('id');
+        $tenantId = (string) app(\Stancl\Tenancy\Contracts\Tenant::class)->getTenantKey();
+        DB::table('user_company_access')->updateOrInsert(
+            ['user_id' => $centralId, 'tenant_id' => $tenantId],
+            ['role' => 'viewer', 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]
+        );
+
+        $file = UploadedFile::fake()->createWithContent('uob.jpg', 'fake-advice-bytes');
+        $this->actingAs($viewer)->post('/api/v1/payment-advices', ['file' => $file], ['Accept' => 'application/json'])
+            ->assertStatus(403);
+
+        $this->actingAs($viewer)->postJson("/api/v1/payment-advices/{$importId}/confirm", [
+            'allocations' => [['line_index' => 0, 'invoice_id' => $invoiceA->id, 'amount' => 7194.00]],
+        ])->assertStatus(403);
+
+        $this->assertNoPaymentsFor($importId);
+
+        // Reads stay open to accounting.view holders.
+        $this->actingAs($viewer)->getJson("/api/v1/payment-advices/{$importId}")->assertOk();
+    }
+
     public function test_unauthenticated_uploads_are_rejected(): void
     {
         $this->postJson('/api/v1/payment-advices', [])->assertStatus(401);

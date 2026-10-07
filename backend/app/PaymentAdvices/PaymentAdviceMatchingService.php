@@ -43,7 +43,7 @@ class PaymentAdviceMatchingService
                 $note = 'The advice line carries no invoice number.';
             } elseif ($invoice === null) {
                 $note = 'No invoice with this number was found.';
-            } elseif (! in_array($invoice->status, ['posted', 'partial', 'paid'], true)) {
+            } elseif (! in_array($invoice->status, [...PaymentAdviceService::OPEN_INVOICE_STATUSES, 'paid'], true)) {
                 $status = 'not_open';
                 $note = "Invoice {$invoice->invoice_number} is {$invoice->status}, not an open receivable.";
             } elseif ((float) $invoice->balance <= 0.01) {
@@ -123,7 +123,8 @@ class PaymentAdviceMatchingService
 
         return Invoice::query()
             ->where('customer_id', $customerId)
-            ->where('status', 'posted')
+            // Open receivables, including partially paid invoices (#1001).
+            ->whereIn('status', PaymentAdviceService::OPEN_INVOICE_STATUSES)
             ->where('balance', '>', 0)
             ->orderBy('invoice_date')
             ->get(['id', 'invoice_number', 'invoice_date', 'balance'])

@@ -453,6 +453,10 @@ export const CustomerPayments: React.FC = () => {
           <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
             Import
           </HeaderActionButton>
+          {/* #1001: parse a customer's bank payment advice into draft payments. */}
+          <HeaderActionButton icon="solar:document-text-bold-duotone" variant="outline" onClick={() => navigate('/accounting/customers/payments/advices')}>
+            Import payment advice
+          </HeaderActionButton>
           <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowRecordPayment(true)}>
             Record Payment
           </HeaderActionButton>
