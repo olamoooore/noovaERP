@@ -57,6 +57,22 @@ const RESOLUTION = {
   rule_label: 'entity rule',
 }
 
+const CONFIRMATION_RESOLUTION = {
+  outcome: 'RESOLVED',
+  template_id: 'tpl-confirm',
+  template_name: 'Order Confirmation Standard',
+  rule: null,
+  rule_label: 'system default',
+}
+
+const PROFORMA_RESOLUTION = {
+  outcome: 'RESOLVED',
+  template_id: 'tpl-proforma',
+  template_name: 'Pro Forma Standard',
+  rule: null,
+  rule_label: 'system default',
+}
+
 function makeOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: 5,
@@ -86,6 +102,12 @@ beforeEach(() => {
     }
     if (url.startsWith('/documents/sales_order/resolution')) {
       return { data: { data: RESOLUTION } }
+    }
+    if (url.startsWith('/documents/sales_order_confirmation/resolution')) {
+      return { data: { data: CONFIRMATION_RESOLUTION } }
+    }
+    if (url.startsWith('/documents/sales_proforma_invoice/resolution')) {
+      return { data: { data: PROFORMA_RESOLUTION } }
     }
     if (url.startsWith('/template-builder/templates')) {
       return { data: { data: [{ id: 'tpl-so', name: 'Sales Order Standard' }] } }
@@ -156,5 +178,61 @@ describe('SalesOrderDetailPage — shared print and send menu (#618)', () => {
       )
     })
     expect(open).toHaveBeenCalled()
+  })
+
+  // #405 (SU7): the order confirmation and pro-forma invoice documents (#615
+  // data sources + routes) are printable from the same menu.
+  it('offers the order confirmation and pro-forma invoice as documents in the same menu', async () => {
+    renderPage()
+    await screen.findByText(/Sales Order SO-2026-0005/)
+    await openMenu()
+
+    expect(screen.getByText('Sales order')).toBeTruthy()
+    expect(screen.getByText('Order confirmation')).toBeTruthy()
+    expect(screen.getByText('Pro-forma invoice')).toBeTruthy()
+  })
+
+  it('previews the pro-forma invoice at its own endpoint with its own resolved template', async () => {
+    Object.defineProperty(window.URL, 'createObjectURL', { value: vi.fn(() => 'blob:mock'), configurable: true })
+    Object.defineProperty(window.URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    vi.spyOn(window, 'open').mockReturnValue(null)
+
+    renderPage()
+    await screen.findByText(/Sales Order SO-2026-0005/)
+    await openMenu()
+
+    fireEvent.click(screen.getByText('Pro-forma invoice'))
+    expect(await screen.findByText('Using: Pro Forma Standard (system default)')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Preview'))
+
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith(
+        '/sales/orders/5/proforma/pdf',
+        expect.objectContaining({ params: { template: 'tpl-proforma' }, responseType: 'blob' }),
+      )
+    })
+  })
+
+  it('previews the order confirmation at its own endpoint with its own resolved template', async () => {
+    Object.defineProperty(window.URL, 'createObjectURL', { value: vi.fn(() => 'blob:mock'), configurable: true })
+    Object.defineProperty(window.URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    vi.spyOn(window, 'open').mockReturnValue(null)
+
+    renderPage()
+    await screen.findByText(/Sales Order SO-2026-0005/)
+    await openMenu()
+
+    fireEvent.click(screen.getByText('Order confirmation'))
+    expect(await screen.findByText('Using: Order Confirmation Standard (system default)')).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Preview'))
+
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith(
+        '/sales/orders/5/confirmation/pdf',
+        expect.objectContaining({ params: { template: 'tpl-confirm' }, responseType: 'blob' }),
+      )
+    })
   })
 })

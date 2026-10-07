@@ -790,6 +790,96 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
     }
 
     /**
+     * #671 (EINV-UX2): the buyer party exactly as mapInvoice() maps it, for
+     * the pre-posting readiness check.
+     */
+    public function mapBuyerParty(object $customer): array
+    {
+        return $this->mapParty($customer, false);
+    }
+
+    /**
+     * #671 (EINV-UX2): the lines mapInvoice() would send without a
+     * classification code of their own (line or product), with the pack
+     * default the mapper would use instead (null: the mapper refuses).
+     *
+     * @return list<array{line_number: int, line: object, product: object|null, default: string|null}>
+     */
+    public function linesWithoutOwnClassification(Invoice $invoice): array
+    {
+        $default = config('tax_packs.MY.einvoice.default_classification');
+        $default = is_string($default) && trim($default) !== '' ? trim($default) : null;
+
+        $gaps = [];
+        foreach (($invoice->lineItems ?? $invoice->lines ?? collect())->values() as $index => $line) {
+            if ($this->ownClassificationCode($line) === null) {
+                $gaps[] = [
+                    'line_number' => $index + 1,
+                    'line' => $line,
+                    'product' => $line->product ?? null,
+                    'default' => $default,
+                ];
+            }
+        }
+
+        return $gaps;
+    }
+
+    /**
+     * #671 (EINV-UX2): the customer address record the buyer address is read
+     * from, so the readiness check can point an inline fix at it.
+     */
+    public function buyerAddressRecordId(object $customer): ?int
+    {
+        $record = $this->buyerAddressRecord($customer);
+
+        return $record !== null ? (int) $record->id : null;
+    }
+
+    private function ownClassificationCode(object $line): ?string
+    {
+        foreach ([$line->classification_code ?? null, ($line->product ?? null)?->einvoice_classification_code] as $code) {
+            if (is_string($code) && trim($code) !== '') {
+                return $code;
+            }
+        }
+
+        return null;
+    }
+
+    private function buyerAddressRecord(object $party): ?object
+    {
+        if (! $party instanceof \App\Models\Customer || ! $party->exists) {
+            return null;
+        }
+
+        return $party->addresses()
+            ->where('type', 'billing')
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * @return array{street?: string|null, city?: string|null, state?: string|null, postal_code?: string|null, country?: string|null}
+     */
+    private function structuredBuyerAddress(object $party): array
+    {
+        $record = $this->buyerAddressRecord($party);
+        if ($record === null) {
+            return [];
+        }
+
+        return [
+            'street' => $record->street,
+            'city' => $record->city,
+            'state' => $record->state,
+            'postal_code' => $record->zip,
+            'country' => $record->country,
+        ];
+    }
+
+    /**
      * Map party to MyInvoice format
      */
     private function mapParty($party, bool $isSupplier = false): array
@@ -797,6 +887,12 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
         $party = $party ?? (object) [];
 
         $legacyAddress = $this->extractLegacyAddress($party);
+
+        // #671 (EINV-UX2): the customer form keeps the structured address on
+        // the customer's billing address record (#436 CU8); it only fills
+        // what the party and its legacy address leave empty — the gaps the
+        // provider would otherwise default (state → 14 Kuala Lumpur).
+        $structuredAddress = $isSupplier ? [] : $this->structuredBuyerAddress($party);
 
         // BRN/NRIC registration number — check all common field names used across models.
         // tax_number is intentionally excluded here; it stores the TIN, not the registration.
@@ -842,23 +938,29 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
                 'street' => $this->firstNonEmptyString(
                     $party->address_line_1 ?? null,
                     $legacyAddress['street'] ?? null,
+                    $structuredAddress['street'] ?? null,
                 ),
                 'city' => $this->firstNonEmptyString(
                     $party->city ?? null,
                     $legacyAddress['city'] ?? null,
+                    $structuredAddress['city'] ?? null,
                 ),
                 'state' => $this->firstNonEmptyString(
                     $party->state ?? null,
                     $legacyAddress['state'] ?? null,
+                    $structuredAddress['state'] ?? null,
                 ),
                 'postal_code' => $this->firstNonEmptyString(
                     $party->postal_code ?? null,
                     $legacyAddress['postal_code'] ?? null,
+                    $structuredAddress['postal_code'] ?? null,
                 ),
                 'country' => $this->normalizeCountryCode(
                     $party->country_code
-                        ?? $legacyAddress['country']
-                        ?? 'MY'
+                        ?? ($this->firstNonEmptyString(
+                            $legacyAddress['country'] ?? null,
+                            $structuredAddress['country'] ?? null,
+                        ) ?: 'MY')
                 ),
             ],
             'contact' => [
@@ -1031,8 +1133,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
         // code wins; otherwise the pack's declared default. A truly missing
         // classification is a validation error, never a silent '001'.
         $product = $line->product ?? null;
-        $classificationCode = $line->classification_code
-            ?? $product?->einvoice_classification_code
+        $classificationCode = $this->ownClassificationCode($line)
             ?? config('tax_packs.MY.einvoice.default_classification');
 
         if (empty($classificationCode)) {
@@ -1209,6 +1310,11 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
     {
         $supplier = is_array($payload['supplier'] ?? null) ? $payload['supplier'] : [];
 
+        // #668 (EI6): identity fields resolved from the document's legal
+        // entity are authoritative — they replace what the mapper derived
+        // from the tenant-wide company settings rather than only filling gaps.
+        $supplier = $this->applyEntitySupplierIdentity($supplier, $context);
+
         // ── Party identity ──────────────────────────────────────────────────
         $supplier['tin'] = $supplier['tin']
             ?? $context['supplier_tin']
@@ -1228,6 +1334,10 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
 
         $supplier['identity_number'] = $supplier['identity_number']
             ?? $context['supplier_id_number']
+            ?? null;
+
+        $supplier['sst_registration'] = $supplier['sst_registration']
+            ?? $context['supplier_sst_registration_number']
             ?? null;
 
         // ── Business classification (MSIC) ──────────────────────────────────
@@ -1277,5 +1387,69 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract, SupportsPayloadDef
         // The mapper is responsible for a correct buyer.
 
         return $payload;
+    }
+
+    /**
+     * #668 (EI6): overlay the supplier identity fields the core resolved from
+     * the document's legal entity (listed in supplier_identity_entity_fields).
+     *
+     * @param  array<string, mixed>  $supplier
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function applyEntitySupplierIdentity(array $supplier, array $context): array
+    {
+        $entityFields = $context['supplier_identity_entity_fields'] ?? [];
+        if (! is_array($entityFields) || $entityFields === []) {
+            return $supplier;
+        }
+
+        $value = fn (string $key) => in_array($key, $entityFields, true) ? ($context[$key] ?? null) : null;
+
+        foreach ([
+            'supplier_name' => 'name',
+            'supplier_tin' => 'tin',
+            'supplier_registration_number' => 'company_registration',
+            'supplier_id_type' => 'identity_type',
+            'supplier_id_number' => 'identity_number',
+            'supplier_sst_registration_number' => 'sst_registration',
+        ] as $key => $field) {
+            if ($value($key) !== null) {
+                $supplier[$field] = $value($key);
+            }
+        }
+
+        // Statutory identifiers the entity does not carry are not borrowed
+        // from the tenant-wide company record (see the identity resolver).
+        if ($value('supplier_tin') !== null || $value('supplier_registration_number') !== null) {
+            foreach ([
+                'supplier_tin' => 'tin',
+                'supplier_registration_number' => 'company_registration',
+                'supplier_id_type' => 'identity_type',
+                'supplier_id_number' => 'identity_number',
+                'supplier_sst_registration_number' => 'sst_registration',
+            ] as $key => $field) {
+                if ($value($key) === null) {
+                    $supplier[$field] = null;
+                }
+            }
+        }
+
+        $contact = is_array($supplier['contact'] ?? null) ? $supplier['contact'] : [];
+        if ($value('supplier_phone') !== null) {
+            $contact['phone'] = $value('supplier_phone');
+        }
+        if ($value('supplier_email') !== null) {
+            $contact['email'] = $value('supplier_email');
+        }
+        $supplier['contact'] = $contact;
+
+        if ($value('supplier_address') !== null) {
+            $address = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
+            $address['street'] = $value('supplier_address');
+            $supplier['address'] = $address;
+        }
+
+        return $supplier;
     }
 }

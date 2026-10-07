@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
 import { Icon } from '@iconify/react'
-import { addCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
+import { addCalendarDays, diffCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast'
 import { useDensity } from '@/hooks/useDensity'
@@ -19,13 +19,15 @@ import { useAuthStore } from '@/store/authStore'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { TagEditor } from '@/components/tags/TagEditor'
-import { SalesDocumentLineGrid } from '@/components/sales/SalesDocumentLineGrid'
+import { SalesDocumentLineGrid, type SalesDocumentLineGridHandle } from '@/components/sales/SalesDocumentLineGrid'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation'
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { useCustomerAutofill } from '@/hooks/useCustomerAutofill'
+import { getCustomerContactDefaults, pickCustomerAddress } from '@/lib/customerDocumentDefaults'
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox'
 import { HeaderChip } from '@/components/ui/HeaderChip'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -41,6 +43,12 @@ import {
 } from '@/components/sales/salesDesignTokens'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
 import { resolvedCustomerAddress } from '@/lib/customerAddresses'
+import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
+import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
+import { openAppPathInNewTab } from '@/lib/openInNewTab'
+import { useFieldErrors } from '@/hooks/useFieldErrors'
+import { FieldErrorsProvider, FieldSlot } from '@/components/ui/field-errors'
+import { lineFieldKey, payloadRowIndexes } from '@/lib/serverValidation'
 
 /**
  * Issue #314: the single quotation create/edit implementation.
@@ -81,6 +89,10 @@ const addressFormToSnapshot = (address: AddressFormState): string =>
     .filter(Boolean)
     .join('\n')
 
+// '' for an all-empty address so an empty form counts as "not filled in".
+const serializeAddressForm = (address: AddressFormState): string =>
+  Object.values(address).some(Boolean) ? JSON.stringify(address) : ''
+
 export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mode, documentId }) => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -109,6 +121,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [customerReference, setCustomerReference] = useState('')
   const [internalReference, setInternalReference] = useState('')
   const [creditTerms, setCreditTerms] = useState('')
+  // Issue #321: the payment term comes from the payment-terms master; the
+  // credit-terms text follows the picked term's name.
+  const [paymentTermId, setPaymentTermId] = useState('')
   const [attentionTo, setAttentionTo] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -129,7 +144,6 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   // Issue #333: Incoterm code + place.
   const [incotermCode, setIncotermCode] = useState('')
   const [incotermPlace, setIncotermPlace] = useState('')
-  const [validity, setValidity] = useState('')
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
@@ -140,6 +154,22 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
   const autofilledCustomerRef = useRef<string | null>(null)
+  // #318: inline field errors; server line indexes map back through the grid
+  // rows that were actually sent.
+  const fieldErrors = useFieldErrors()
+  const payloadRowsRef = useRef<number[]>([])
+  // #317: edit mode is "ready" for dirty tracking once the saved document
+  // has been put into the form.
+  const [hydrated, setHydrated] = useState(false)
+  // #319: keyboard-first entry — a new document starts on the customer, and
+  // a customer pick moves on to line 1's product.
+  const customerFieldRef = useRef<HTMLDivElement>(null)
+  const lineGridRef = useRef<SalesDocumentLineGridHandle>(null)
+  useEffect(() => {
+    if (mode !== 'create') return
+    customerFieldRef.current?.querySelector<HTMLElement>('button[role="combobox"]')?.focus()
+  }, [mode])
+  const { fill: autofillField, setBaseline: setAutofillBaseline } = useCustomerAutofill()
 
   // One pick fills everything (invoice parity): primary contact, references
   // and the saved billing/shipping addresses pre-fill from the customer.
@@ -158,6 +188,38 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     enabled: canViewPriceLists,
   })
   const priceListRows: any[] = (activePriceLists as any)?.data ?? activePriceLists ?? []
+
+  // Issue #316 (D4): the tenant's industry field profile decides whether the
+  // Case Information group renders. Read from the defaults endpoint every
+  // document creator can reach (#540). Until it resolves (or if it fails) the
+  // historical behaviour ('medical' = shown) is kept.
+  const { data: salesDefaults } = useQuery({
+    queryKey: ['sales-settings', 'defaults'],
+    queryFn: async () => {
+      const response = await api.get('/settings/sales/defaults')
+      return response.data?.data ?? null
+    },
+    staleTime: 60_000,
+  })
+  const fieldProfile = String((salesDefaults as any)?.invoice?.field_profile ?? 'medical')
+
+  // Issue #321: master data for the header pickers.
+  const { data: paymentTermRows = [] } = useQuery({
+    queryKey: ['payment-terms'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-terms')
+      const rows = Array.isArray(response.data) ? response.data : response.data?.data
+      return (Array.isArray(rows) ? rows : []) as Array<{ id: number; name: string; type?: string; days?: number; is_active?: boolean }>
+    },
+  })
+  const { data: tenantUserRows = [] } = useQuery({
+    queryKey: ['tenant-users'],
+    queryFn: async () => {
+      const response = await api.get('/tenant-users')
+      const rows = response.data?.data ?? response.data
+      return (Array.isArray(rows) ? rows : []) as Array<{ id: number; name: string; email?: string }>
+    },
+  })
 
   const { data: sellableCurrencies = [] } = useQuery({
     queryKey: ['currencies', 'sellable'],
@@ -192,12 +254,70 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setLines,
   })
 
+  // #317: unsaved-changes guard + local (this device only) draft autosave.
+  const draftGuard = useDocumentDraftGuard({
+    kind: 'quotation',
+    documentId: mode === 'edit' ? documentId : null,
+    version: mode === 'edit' ? quotation?.lock_version ?? null : null,
+    ready: mode === 'create' || hydrated,
+    snapshot: {
+      tags, customerId, quotationDate, validUntil, validUntilManuallyEdited, commitmentDate, shippingPolicy,
+      notes, terms, discountAmount, discountMode, lines, customerReference, internalReference, creditTerms,
+      paymentTermId, attentionTo, contactEmail, contactPhone, billingAddress, shippingAddress,
+      billingAddressSnapshot, shippingAddressSnapshot, billingContactId, shippingContactId, salesperson,
+      salesTeam, deliveryLeadTime, shippingMethod, shippingTerms, incotermCode, incotermPlace,
+      caseInformation, customQuoteNumber, currencyCode, priceListId,
+    },
+    apply: (draft) => {
+      // The restored values are the user's own: the customer auto-fill must
+      // not overwrite them when the restored customer's detail loads.
+      autofilledCustomerRef.current = draft.customerId
+      setTags(draft.tags)
+      setCustomerId(draft.customerId)
+      setQuotationDate(draft.quotationDate)
+      setValidUntil(draft.validUntil)
+      setValidUntilManuallyEdited(draft.validUntilManuallyEdited)
+      setCommitmentDate(draft.commitmentDate)
+      setShippingPolicy(draft.shippingPolicy)
+      setNotes(draft.notes)
+      setTerms(draft.terms)
+      setDiscountAmount(draft.discountAmount)
+      setDiscountMode(draft.discountMode)
+      setLines(draft.lines)
+      setCustomerReference(draft.customerReference)
+      setInternalReference(draft.internalReference)
+      setCreditTerms(draft.creditTerms)
+      setPaymentTermId(draft.paymentTermId)
+      setAttentionTo(draft.attentionTo)
+      setContactEmail(draft.contactEmail)
+      setContactPhone(draft.contactPhone)
+      setBillingAddress(draft.billingAddress)
+      setShippingAddress(draft.shippingAddress)
+      setBillingAddressSnapshot(draft.billingAddressSnapshot)
+      setShippingAddressSnapshot(draft.shippingAddressSnapshot)
+      setBillingContactId(draft.billingContactId)
+      setShippingContactId(draft.shippingContactId)
+      setSalesperson(draft.salesperson)
+      setSalesTeam(draft.salesTeam)
+      setDeliveryLeadTime(draft.deliveryLeadTime)
+      setShippingMethod(draft.shippingMethod)
+      setShippingTerms(draft.shippingTerms)
+      setIncotermCode(draft.incotermCode)
+      setIncotermPlace(draft.incotermPlace)
+      setCaseInformation(draft.caseInformation)
+      setCustomQuoteNumber(draft.customQuoteNumber)
+      setCurrencyCode(draft.currencyCode)
+      setPriceListId(draft.priceListId)
+    },
+  })
+
   const createMutation = useMutation({
     mutationFn: async (data: unknown) => {
       const response = await api.post('/quotations', data)
       return response.data
     },
     onSuccess: (data) => {
+      draftGuard.clearDraft()
       toast({ title: 'Quotation created successfully' })
       const id = data?.data?.id ?? data?.id
       if (id) {
@@ -207,9 +327,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       }
     },
     onError: (error: any) => {
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current)
       toast({
         variant: 'destructive',
-        title: 'Failed to create quotation',
+        title: inline ? 'Please fix the highlighted fields' : 'Failed to create quotation',
         description: getApiErrorMessage(error),
       })
     },
@@ -226,6 +347,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     },
     onSuccess: () => {
       setConflict(null)
+      draftGuard.clearDraft()
       queryClient.invalidateQueries({ queryKey: ['quotation', documentId] })
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
       toast({ title: 'Quotation updated successfully' })
@@ -239,9 +361,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
         setConflict(saveConflict)
         return
       }
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current)
       toast({
         variant: 'destructive',
-        title: 'Failed to update quotation',
+        title: inline ? 'Please fix the highlighted fields' : 'Failed to update quotation',
         description: getApiErrorMessage(error),
       })
     },
@@ -266,6 +389,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setCustomerReference(quotation.customer_reference || '')
     setInternalReference(quotation.internal_reference || '')
     setCreditTerms(quotation.credit_terms || '')
+    setPaymentTermId(quotation.payment_term_id ? String(quotation.payment_term_id) : '')
     setAttentionTo(quotation.attention_to || '')
     setContactEmail(quotation.contact_email || '')
     setContactPhone(quotation.contact_phone || '')
@@ -273,6 +397,17 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setShippingAddressSnapshot(quotation.shipping_address_snapshot || '')
     setBillingContactId(quotation.billing_contact_id ? String(quotation.billing_contact_id) : '')
     setShippingContactId(quotation.shipping_contact_id ? String(quotation.shipping_contact_id) : '')
+    // #320: the saved values are the auto-fill baseline — a later customer
+    // change may replace them until the user edits them.
+    setAutofillBaseline({
+      attentionTo: quotation.attention_to || '',
+      contactEmail: quotation.contact_email || '',
+      contactPhone: quotation.contact_phone || '',
+      customerReference: quotation.customer_reference || '',
+      creditTerms: quotation.credit_terms || '',
+      billingAddressSnapshot: quotation.billing_address_snapshot || '',
+      shippingAddressSnapshot: quotation.shipping_address_snapshot || '',
+    })
     setSalesperson(quotation.salesperson || '')
     setSalesTeam(quotation.sales_team || '')
     setDeliveryLeadTime(quotation.delivery_lead_time || '')
@@ -280,7 +415,11 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setShippingTerms(quotation.shipping_terms || '')
     setIncotermCode(quotation.incoterm_code || '')
     setIncotermPlace(quotation.incoterm_place || '')
-    setValidity(quotation.validity || '')
+    // #322 (Q14): the saved document currency drives every amount on the
+    // form. The header currency + rate snapshot is not re-derived on a draft
+    // edit (FR-1.7), so it is shown as-is rather than falling back to the
+    // tenant default.
+    setCurrencyCode(quotation.currency_code ? String(quotation.currency_code).toUpperCase() : '')
     setCaseInformation({
       case_number: quotation.case_number || '',
       date_of_case: quotation.date_of_case ? String(quotation.date_of_case).split('T')[0] : '',
@@ -310,45 +449,58 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
     }))
     setLines(mappedLines.length > 0 ? mappedLines : [emptySalesDocumentLine()])
-  }, [quotation])
+    setHydrated(true)
+  }, [quotation, setAutofillBaseline, setCurrencyCode])
 
   useEffect(() => {
     if (!customerDetail || Array.isArray(customerDetail)) return
     if (autofilledCustomerRef.current === customerId) return
     autofilledCustomerRef.current = customerId
 
-    const contacts = customerDetail.customer_contacts ?? customerDetail.customerContacts ?? []
-    const primary = contacts.find((contact: any) => contact.is_primary) ?? contacts[0]
+    // #320: invoice-parity defaults (billing contact first, default addresses),
+    // filled only into fields the user has not edited — a customer change
+    // refreshes untouched fields and keeps the user's own values.
+    const contactDefaults = getCustomerContactDefaults(customerDetail)
+    autofillField('attentionTo', attentionTo, contactDefaults.attentionTo, setAttentionTo)
+    autofillField('contactEmail', contactEmail, contactDefaults.contactEmail, setContactEmail)
+    autofillField('contactPhone', contactPhone, contactDefaults.contactPhone, setContactPhone)
+    autofillField('customerReference', customerReference, customerDetail.code ?? '', setCustomerReference)
 
-    setAttentionTo(primary?.name ?? customerDetail.name ?? '')
-    setContactEmail(primary?.email ?? customerDetail.email ?? '')
-    setContactPhone(primary?.phone ?? primary?.mobile ?? customerDetail.phone ?? customerDetail.mobile ?? '')
-    setCustomerReference((prev) => prev || customerDetail.code || '')
-
+    // #321: prefer the master payment term matching the customer's day count;
+    // without one the day count is kept as text (no term is invented).
     const days = Number(customerDetail.payment_terms)
-    if (Number.isFinite(days) && days >= 0) {
-      setCreditTerms((prev) => prev || (days > 0 ? `Net ${days} days` : 'Due on receipt'))
-    }
+    const matchingTerm = Number.isFinite(days) && days >= 0
+      ? paymentTermRows.find((term) => term.is_active !== false && (
+        days === 0
+          ? term.type === 'immediate' || (term.type === 'net_days' && Number(term.days) === 0)
+          : term.type === 'net_days' && Number(term.days) === days
+      ))
+      : undefined
+    const nextCreditTerms = matchingTerm
+      ? matchingTerm.name
+      : Number.isFinite(days) && days >= 0 ? (days > 0 ? `Net ${days} days` : 'Due on receipt') : ''
+    autofillField('creditTerms', creditTerms, nextCreditTerms, (value: string) => {
+      setCreditTerms(value)
+      setPaymentTermId(matchingTerm ? String(matchingTerm.id) : '')
+    })
 
-    const addresses = customerDetail.addresses ?? []
-    // ADR-003B R4: prefer the backend resolver's bill-to/ship-to.
+    // ADR-003B R4: prefer the backend resolver's bill-to/ship-to, then the
+    // saved addresses; autofill never overwrites what the user typed.
     const pick = (type: 'billing' | 'shipping') => {
       const resolved = resolvedCustomerAddress(customerDetail, type)
-      if (resolved !== undefined) return resolved
-      return addresses.find((address: any) => address.type === type && address.is_default)
-        ?? addresses.find((address: any) => address.type === type)
+      return resolved !== undefined ? resolved : pickCustomerAddress(customerDetail, type)
     }
     const nextBilling = toAddressForm(pick('billing'))
     const nextShipping = toAddressForm(pick('shipping'))
-    setBillingAddress(nextBilling)
-    setShippingAddress(nextShipping)
+    autofillField('billingAddress', billingAddress, nextBilling, setBillingAddress, serializeAddressForm)
+    autofillField('shippingAddress', shippingAddress, nextShipping, setShippingAddress, serializeAddressForm)
     setBillingContactId('')
     setShippingContactId('')
     if (mode === 'edit') {
       // The edit payload ships the raw snapshots, so keep them in step with a
-      // customer change too.
-      setBillingAddressSnapshot(addressFormToSnapshot(nextBilling))
-      setShippingAddressSnapshot(addressFormToSnapshot(nextShipping))
+      // customer change too (unless the user edited them).
+      autofillField('billingAddressSnapshot', billingAddressSnapshot, addressFormToSnapshot(nextBilling), setBillingAddressSnapshot)
+      autofillField('shippingAddressSnapshot', shippingAddressSnapshot, addressFormToSnapshot(nextShipping), setShippingAddressSnapshot)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerDetail, customerId])
@@ -372,13 +524,24 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setter((current) => ({ ...current, [field]: value }))
   }
   const caseCount = Object.values(caseInformation).some((value) => value) ? 1 : 0
+  // #316: a document that already carries case data keeps showing it, so
+  // existing data stays readable/editable whatever the profile says.
+  const showCaseInformation = fieldProfile === 'medical' || caseCount > 0
 
   const hasPricingFeedback = Boolean(
     (currencyCode && pricingMeta?.base_currency_code && pricingMeta.base_currency_code !== currencyCode)
       || pricingMeta?.price_list_name
       || pricingError,
   )
-  const money = (value: number) => formatCurrency(value, currencyCode || undefined)
+  // #322 (Q14): every amount is shown in the document currency — the explicit
+  // or engine-resolved currency first, else the currency of the price list the
+  // user picked (the server resolves the document currency from that list).
+  // Only with neither does it fall back to the tenant default.
+  const selectedPriceListCurrency = priceListId
+    ? priceListRows.find((list: any) => String(list.id) === priceListId)?.currency_code
+    : undefined
+  const documentCurrency = (currencyCode || selectedPriceListCurrency || '') || undefined
+  const money = (value: number) => formatCurrency(value, documentCurrency)
 
   const productLineCount = lines.filter((line) => (line.line_type ?? 'product') === 'product').length
 
@@ -416,10 +579,26 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setValidUntilManuallyEdited(true)
   }
 
+  // #321: the printed "Validity" follows Valid Until so the two can never
+  // contradict each other.
+  const validityDays = validUntil && quotationDate ? diffCalendarDays(quotationDate, validUntil) : null
+  const derivedValidity = validityDays !== null && Number.isFinite(validityDays) && validityDays >= 0
+    ? `${validityDays} day${validityDays === 1 ? '' : 's'}`
+    : null
+
+  // #321: the term/salesperson already on a document stays selectable even
+  // when it is no longer in the master list (deactivated term, departed user).
+  const paymentTermOptions = paymentTermRows.filter(
+    (term) => term.is_active !== false || String(term.id) === paymentTermId,
+  )
+  const salespersonInList = tenantUserRows.some((user) => user.name === salesperson)
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
+    fieldErrors.clearAll()
 
     if (!customerId) {
+      fieldErrors.show({ customer_id: 'Please select a customer' })
       toast({ variant: 'destructive', title: 'Please select a customer' })
       return
     }
@@ -427,8 +606,11 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // #290: ignore fully-empty untouched rows consistently (same as the payload
     // filter below) so a lingering starter row never blocks saving.
     const submissionLines = lines.filter((line) => !isBlankSalesDocumentLine(line))
+    // #318: grid row of each submission line, for inline line errors.
+    const submissionRows = payloadRowIndexes(lines, (line) => !isBlankSalesDocumentLine(line))
 
     if (submissionLines.length === 0 || submissionLines.every((line) => !line.description && !line.product_id)) {
+      fieldErrors.show({ lines: 'Add at least one line item' })
       toast({ variant: 'destructive', title: 'Please add at least one line item' })
       return
     }
@@ -437,6 +619,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       (line.line_type ?? 'product') === 'product' && !line.product_id
     )
     if (missingProductIndex >= 0) {
+      fieldErrors.show({ [lineFieldKey(submissionRows[missingProductIndex], 'product_id')]: 'Select a product before saving.' })
       toast({
         variant: 'destructive',
         title: `Product required on line ${missingProductIndex + 1}`,
@@ -446,6 +629,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     }
 
     if (discountMode === 'percentage' && discountValue > 100) {
+      fieldErrors.show({ discount_value: 'Percentage discount cannot exceed 100%' })
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' })
       return
     }
@@ -457,6 +641,9 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       (line.line_type ?? 'product') === 'product' && !isValidProductQuantity(line.quantity)
     )
     if (invalidQuantityIndex >= 0) {
+      fieldErrors.show({
+        [lineFieldKey(submissionRows[invalidQuantityIndex], 'quantity')]: 'Enter a quantity greater than 0 with at most 4 decimals.',
+      })
       toast({
         variant: 'destructive',
         title: `Invalid quantity on line ${invalidQuantityIndex + 1}`,
@@ -476,6 +663,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       customer_reference: customerReference || null,
       internal_reference: internalReference || null,
       credit_terms: creditTerms || null,
+      payment_term_id: paymentTermId ? Number(paymentTermId) : null,
       attention_to: attentionTo || null,
       contact_email: contactEmail || null,
       contact_phone: contactPhone || null,
@@ -494,7 +682,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       shipping_terms: shippingTerms || null,
       incoterm_code: incotermCode || null,
       incoterm_place: incotermPlace || null,
-      validity: validity || null,
+      // #321: validity is derived from Valid Until, never typed separately.
+      validity: derivedValidity,
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
       terms: terms || null,
@@ -526,6 +715,11 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
         })),
     }
+
+    payloadRowsRef.current = payloadRowIndexes(
+      lines,
+      (line) => !isBlankSalesDocumentLine(line) && Boolean(line.description || line.product_id),
+    )
 
     if (mode === 'edit') {
       updateMutation.mutate(payload)
@@ -561,12 +755,13 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const isPending = mode === 'edit' ? updateMutation.isPending : createMutation.isPending
 
   return (
-    <div className={cn('p-6 space-y-6', SALES_FORM_CLASS)} data-density={density}>
+    <div className={cn('p-6 space-y-6', SALES_FORM_CLASS)} data-density={density} {...draftGuard.trackProps}>
       {mode === 'create' ? (
         <PageHeader
           title="Create Quotation"
           description="Prepare a quotation for your customer. Confirm to create a Sales Order."
           backTo="/quotations"
+          guardBack={draftGuard.guard}
         >
           <div className="mt-2">
             <TagPicker value={tags} onChange={setTags} />
@@ -578,7 +773,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             variant="ghost"
             size="sm"
             className="-ml-2 mb-3 text-muted-foreground hover:text-foreground"
-            onClick={() => navigate(`/quotations/${documentId}`)}
+            onClick={() => draftGuard.guard(() => navigate(`/quotations/${documentId}`))}
           >
             <Icon icon="solar:alt-arrow-left-bold-duotone" className="mr-1.5 h-4 w-4" />
             Back
@@ -597,7 +792,12 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
         <EditingBanner activeEditor={quotation?.active_lock} currentUserId={currentUserId} />
       )}
 
-      <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
+      <DocumentDraftBanner guard={draftGuard} label="quotation" />
+
+      <FieldErrorsProvider value={fieldErrors}>
+      {/* #318: validation is reported inline on the field (scroll + focus);
+          native browser bubbles would block submit before it can run. */}
+      <form noValidate onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Quotation Details</CardTitle>
@@ -608,23 +808,26 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
               <div className="col-span-2 md:col-span-2 xl:col-span-6">
                 <label className="mb-1 block text-xs font-medium">Customer *</label>
-                <CustomerSearchCombobox
-                  className={cn(SALES_CONTROL, 'justify-between')}
-                  value={customerId}
-                  onValueChange={(id, customer) => {
-                    autofilledCustomerRef.current = null
-                    setCustomerId(id)
-                    setCustomerMatch(customer ? {
-                      contacts: (customer as any).matched_contacts ?? [],
-                      tags: (customer as any).matched_tags ?? [],
-                      addresses: (customer as any).matched_addresses ?? [],
-                    } : null)
-                    if (customer && (customer as any).code) {
-                      setCustomerReference((current) => current || (customer as any).code)
-                    }
-                  }}
-                  placeholder="Search customers..."
-                />
+                <FieldSlot name="customer_id">
+                  <div ref={customerFieldRef}>
+                    <CustomerSearchCombobox
+                      focusAfterSelect={() => lineGridRef.current?.focusFirstOpenProduct()}
+                      className={cn(SALES_CONTROL, 'justify-between')}
+                      value={customerId}
+                      onValueChange={(id, customer) => {
+                        fieldErrors.clear('customer_id')
+                        autofilledCustomerRef.current = null
+                        setCustomerId(id)
+                        setCustomerMatch(customer ? {
+                          contacts: (customer as any).matched_contacts ?? [],
+                          tags: (customer as any).matched_tags ?? [],
+                          addresses: (customer as any).matched_addresses ?? [],
+                        } : null)
+                      }}
+                      placeholder="Search customers..."
+                    />
+                  </div>
+                </FieldSlot>
                 {customerMatch && (customerMatch.contacts.length > 0 || customerMatch.tags.length > 0 || customerMatch.addresses.length > 0) && (
                   <p className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-muted-foreground">
                     {customerMatch.contacts.length > 0 && (
@@ -641,31 +844,43 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               </div>
               <div className="col-span-1 md:col-span-1 xl:col-span-3">
                 <label className="mb-1 block text-xs font-medium">Quote Date</label>
-                <input
-                  type="date"
-                  value={quotationDate}
-                  onChange={(event) => handleQuotationDateChange(event.target.value)}
-                  className={SALES_CONTROL}
-                />
+                <FieldSlot name="quotation_date">
+                  <input
+                    type="date"
+                    value={quotationDate}
+                    onChange={(event) => handleQuotationDateChange(event.target.value)}
+                    className={SALES_CONTROL}
+                  />
+                </FieldSlot>
               </div>
               <div className="col-span-1 md:col-span-1 xl:col-span-3">
                 <label className="mb-1 block text-xs font-medium">Valid Until</label>
-                <input
-                  type="date"
-                  value={validUntil}
-                  onChange={(event) => handleValidUntilChange(event.target.value)}
-                  className={SALES_CONTROL}
-                />
+                <FieldSlot name="valid_until">
+                  <input
+                    type="date"
+                    value={validUntil}
+                    onChange={(event) => handleValidUntilChange(event.target.value)}
+                    className={SALES_CONTROL}
+                  />
+                </FieldSlot>
               </div>
             </div>
 
             {/* Row 2: direct dropdowns + chips, one compact strip. */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <label className={SALES_FIELD_SHELL} title="Document currency — auto follows the customer's price list">
+              <label
+                className={SALES_FIELD_SHELL}
+                title={mode === 'edit'
+                  ? 'Document currency — fixed once the quotation is saved'
+                  : "Document currency — auto follows the customer's price list"}
+              >
                 <span className="text-muted-foreground">Currency</span>
                 <select
                   aria-label="Document currency"
                   value={currencyCode}
+                  // #322: the server keeps the saved currency + rate snapshot
+                  // on edit, so the selector must not offer a change it drops.
+                  disabled={mode === 'edit'}
                   onChange={(event) => {
                     const next = event.target.value
                     setCurrencyCode(next)
@@ -810,10 +1025,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Quick Actions</div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {[
-                    { key: 'customers', label: 'Manage Customers', icon: 'solar:users-group-rounded-bold-duotone', onClick: () => navigate('/customers') },
-                    { key: 'profile', label: 'Open Profile', icon: 'solar:user-id-bold-duotone', onClick: () => customerId && navigate(`/customers/${customerId}`), disabled: !customerId },
-                    { key: 'products', label: 'Product List', icon: 'solar:box-bold-duotone', onClick: () => navigate('/products') },
-                    { key: 'new-product', label: 'New Product', icon: 'solar:add-square-bold-duotone', onClick: () => navigate('/products/new') },
+                    { key: 'customers', label: 'Manage Customers', icon: 'solar:users-group-rounded-bold-duotone', onClick: () => openAppPathInNewTab('/customers') },
+                    { key: 'profile', label: 'Open Profile', icon: 'solar:user-id-bold-duotone', onClick: () => customerId && openAppPathInNewTab(`/customers/${customerId}`), disabled: !customerId },
+                    { key: 'products', label: 'Product List', icon: 'solar:box-bold-duotone', onClick: () => openAppPathInNewTab('/products') },
+                    { key: 'new-product', label: 'New Product', icon: 'solar:add-square-bold-duotone', onClick: () => openAppPathInNewTab('/products/new') },
                   ].map((action) => (
                     <button
                       key={action.key}
@@ -916,14 +1131,23 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Salesperson</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium mb-1" htmlFor="quotation-salesperson">Salesperson</label>
+                  {/* #321: picked from the tenant's users (stored by name, the
+                      convention the defaults, followers and digests resolve). */}
+                  <select
+                    id="quotation-salesperson"
                     value={salesperson}
                     onChange={(event) => setSalesperson(event.target.value)}
                     className={SALES_CONTROL}
-                    placeholder="Assigned salesperson"
-                  />
+                  >
+                    <option value="">No salesperson</option>
+                    {salesperson && !salespersonInList && (
+                      <option value={salesperson}>{salesperson}</option>
+                    )}
+                    {tenantUserRows.map((user) => (
+                      <option key={user.id} value={user.name}>{user.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Delivery Lead Time</label>
@@ -980,24 +1204,27 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Credit Terms</label>
-                  <input
-                    type="text"
-                    value={creditTerms}
-                    onChange={(event) => setCreditTerms(event.target.value)}
+                  <label className="block text-sm font-medium mb-1" htmlFor="quotation-payment-term">Payment Terms</label>
+                  {/* #321: picked from the payment-terms master; carried to the
+                      sales order and invoice, where it sets the due date. */}
+                  <select
+                    id="quotation-payment-term"
+                    value={paymentTermId}
+                    onChange={(event) => {
+                      const next = event.target.value
+                      setPaymentTermId(next)
+                      const term = paymentTermRows.find((row) => String(row.id) === next)
+                      setCreditTerms(term ? term.name : '')
+                    }}
                     className={SALES_CONTROL}
-                    placeholder="e.g. Net 30 days"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Validity</label>
-                  <input
-                    type="text"
-                    value={validity}
-                    onChange={(event) => setValidity(event.target.value)}
-                    className={SALES_CONTROL}
-                    placeholder="e.g. 30 days"
-                  />
+                  >
+                    {/* A saved free-text term (legacy, or a customer day count
+                        with no matching master term) is shown, not lost. */}
+                    <option value="">{!paymentTermId && creditTerms ? creditTerms : 'Select payment term'}</option>
+                    {paymentTermOptions.map((term) => (
+                      <option key={term.id} value={String(term.id)}>{term.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1199,10 +1426,12 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 </div>
               </section>
 
-              <section className="space-y-3 border-t pt-4">
-                <h3 className="text-sm font-semibold">Case information</h3>
-                <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} embedded />
-              </section>
+              {showCaseInformation && (
+                <section className="space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-semibold">Case information</h3>
+                  <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} embedded />
+                </section>
+              )}
             </div>
           </SheetContent>
         </Sheet>
@@ -1214,14 +1443,17 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <SalesDocumentLineGrid
-              lines={lines}
-              setLines={setLines}
-              money={money}
-              resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
-              defaultHiddenColumns={[6]}
-              tableClass="quotation-document-columns"
-            />
+            <FieldSlot name="lines" highlight={false}>
+              <SalesDocumentLineGrid
+                ref={lineGridRef}
+                lines={lines}
+                setLines={setLines}
+                money={money}
+                resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
+                defaultHiddenColumns={[6]}
+                tableClass="quotation-document-columns"
+              />
+            </FieldSlot>
 
             <DocumentTotalsCard
               subtotal={subtotal}
@@ -1229,6 +1461,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
               total={total}
               money={money}
               discountLabel="Discount"
+              discountFieldKey="discount_value"
               discountMode={discountMode}
               onDiscountModeChange={setDiscountMode}
               discountAmount={discountAmount}
@@ -1243,7 +1476,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate(mode === 'edit' ? `/quotations/${documentId}` : '/quotations')}
+            onClick={() => draftGuard.guard(() => navigate(mode === 'edit' ? `/quotations/${documentId}` : '/quotations'))}
           >
             Cancel
           </Button>
@@ -1262,6 +1495,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           </Button>
         </div>
       </form>
+      </FieldErrorsProvider>
 
       {mode === 'edit' && (
         <SaveConflictDialog
@@ -1273,6 +1507,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           onOverwrite={handleOverwrite}
         />
       )}
+
+      <DocumentLeaveDialog guard={draftGuard} />
     </div>
   )
 }

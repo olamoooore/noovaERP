@@ -3,12 +3,15 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\BuyerTypeResolver;
+use App\Accounting\Contracts\ExplainsSubmissionErrors;
 use App\Accounting\Contracts\ProvidesProviderName;
 use App\Accounting\Contracts\SupportsCredentialValidation;
 use App\Accounting\Contracts\SupportsPayloadDefaults;
+use App\Accounting\Contracts\SupportsReadinessCheck;
 use App\Accounting\Contracts\SupportsSigning;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Enums\UserRole;
+use App\Jobs\SubmitEInvoiceJob;
 use App\Models\Accounting\ComplianceDocument;
 use App\Models\Accounting\ComplianceEvent;
 use App\Models\Accounting\ComplianceSubmission;
@@ -41,6 +44,55 @@ class ComplianceService
     private function currentTenantId(): ?string
     {
         return tenancy()->tenant?->id;
+    }
+
+    private function supplierIdentityResolver(): EInvoiceSupplierIdentityResolver
+    {
+        return app(EInvoiceSupplierIdentityResolver::class);
+    }
+
+    /**
+     * #668 (EI6): the provider context for a document — the tenant's country
+     * configuration (credentials, settings) with the supplier identity of the
+     * document's legal entity laid over it. The report says which identity
+     * fields came from the entity and which fell back to the tenant.
+     *
+     * @return array{context: array<string, mixed>, report: array<string, mixed>}
+     */
+    private function providerContextFor(?CountryConfiguration $config, mixed $sourceDocument): array
+    {
+        $resolved = $this->supplierIdentityResolver()->resolve($sourceDocument, $config?->getProviderContext() ?? []);
+
+        if ($resolved['report']['fallback_used'] || $resolved['report']['missing_fields'] !== []) {
+            Log::info('E-invoice supplier identity: tenant configuration fallback', [
+                'source_type' => is_object($sourceDocument) ? class_basename($sourceDocument) : null,
+                'source_id' => is_object($sourceDocument) ? ($sourceDocument->id ?? null) : null,
+                'report' => $resolved['report'],
+            ]);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * #668 (EI6): a document is gated by its legal entity's country — an SG
+     * entity's invoice never goes to MyInvois and a MY entity's never to
+     * Peppol. Returns an error message, or null when the country matches (or
+     * the document has no entity country, which keeps the tenant behaviour).
+     */
+    private function entityCountryMismatch(mixed $sourceDocument, string $countryCode): ?string
+    {
+        $entityCountry = $this->supplierIdentityResolver()->countryFor($sourceDocument);
+
+        if ($entityCountry === null || $entityCountry === strtoupper($countryCode)) {
+            return null;
+        }
+
+        return sprintf(
+            'ENTITY_COUNTRY_MISMATCH: this document belongs to a legal entity registered in %s; it cannot be submitted to the %s e-invoicing system.',
+            $entityCountry,
+            strtoupper($countryCode),
+        );
     }
 
     /**
@@ -209,7 +261,11 @@ class ComplianceService
         try {
             $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
             $config = $this->getCountryConfig($countryCode);
-            $context = $config?->getProviderContext() ?? [];
+            // #668 (EI6): a retry re-maps the payload, so it carries the
+            // document entity's supplier identity like the first submission.
+            $context = $sourceDocument
+                ? $this->providerContextFor($config, $sourceDocument)['context']
+                : ($config?->getProviderContext() ?? []);
 
             if ($sourceDocument) {
                 $nonInvoiceTypes = ['credit_note', 'refund_note', 'bill', 'vendor_debit_note'];
@@ -816,29 +872,327 @@ class ComplianceService
     /**
      * #667 (EI5): the countries a posted document is auto-submitted to — the
      * tenant's enabled configurations with settings.auto_submit on, limited
-     * to the tenant's own country (no cross-country submission).
+     * to the issuing country (no cross-country submission).
+     *
+     * #668 (EI6): the issuing country is the document's legal entity's
+     * country when known ($documentCountry); the tenant's country is only
+     * the fallback for documents without an entity country.
      *
      * @return array<int, string>
      */
-    public function autoSubmitCountryCodes(?string $tenantId = null): array
+    public function autoSubmitCountryCodes(?string $tenantId = null, ?string $documentCountry = null): array
+    {
+        return $this->enabledCountryCodes($tenantId, $documentCountry, requireAutoSubmit: true);
+    }
+
+    /**
+     * The tenant's enabled e-invoicing countries for a document country
+     * (#667/#668 gate), optionally only those with auto_submit on.
+     *
+     * @return array<int, string>
+     */
+    private function enabledCountryCodes(?string $tenantId, ?string $documentCountry, bool $requireAutoSubmit): array
     {
         $tenantId ??= $this->currentTenantId();
         if ($tenantId === null) {
             return [];
         }
 
-        $tenant = tenancy()->tenant ?? (function_exists('tenant') ? tenant() : null);
-        $tenantCountry = strtoupper((string) ($tenant?->tenant_country_code ?? ''));
+        $gateCountry = strtoupper(trim((string) $documentCountry));
+        if ($gateCountry === '') {
+            $tenant = tenancy()->tenant ?? (function_exists('tenant') ? tenant() : null);
+            $gateCountry = strtoupper((string) ($tenant?->tenant_country_code ?? ''));
+        }
 
         return CountryConfiguration::where('tenant_id', $tenantId)
             ->where('is_enabled', true)
             ->get()
-            ->filter(fn (CountryConfiguration $config) => ($config->settings['auto_submit'] ?? false)
-                && ($tenantCountry === '' || $tenantCountry === strtoupper((string) $config->country_code)))
+            ->filter(fn (CountryConfiguration $config) => (! $requireAutoSubmit || ($config->settings['auto_submit'] ?? false))
+                && ($gateCountry === '' || $gateCountry === strtoupper((string) $config->country_code)))
             ->map(fn (CountryConfiguration $config) => strtoupper((string) $config->country_code))
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * #668 (EI6): the auto-submit countries for one posted document, gated by
+     * its legal entity's country.
+     *
+     * @return array<int, string>
+     */
+    public function autoSubmitCountryCodesFor(
+        Invoice|CustomerCreditNote|Payment $source,
+        ?string $tenantId = null,
+    ): array {
+        return $this->autoSubmitCountryCodes($tenantId, $this->supplierIdentityResolver()->countryFor($source));
+    }
+
+    /**
+     * #671 (EINV-UX2): the e-invoice readiness checklist for an invoice — a
+     * dry run of each applicable country pack's own submission rules with
+     * the same provider context (and #668 entity supplier identity) that a
+     * real submission uses. Read-only: nothing is recorded and no provider
+     * is called. Applicable countries are the tenant's enabled e-invoicing
+     * configurations for the invoice's issuing country (auto-submit or not).
+     *
+     * @return array<string, mixed>
+     */
+    public function invoiceReadiness(Invoice $invoice): array
+    {
+        $countries = $this->enabledCountryCodes(
+            null,
+            $this->supplierIdentityResolver()->countryFor($invoice),
+            requireAutoSubmit: false,
+        );
+
+        $issues = [];
+        $supplierIdentity = [];
+
+        foreach ($countries as $countryCode) {
+            ['context' => $context, 'report' => $report] = $this->providerContextFor($this->getCountryConfig($countryCode), $invoice);
+            $supplierIdentity[$countryCode] = $report;
+
+            if ($report['source'] === EInvoiceSupplierIdentityResolver::SOURCE_LEGAL_ENTITY) {
+                $context['supplier_identity_legal_entity_id'] = $report['legal_entity_id'];
+            }
+
+            $validator = $this->pluginRegistry->has($countryCode)
+                ? $this->pluginRegistry->resolve($countryCode, 'validator')
+                : null;
+
+            if ($validator === null) {
+                $countryIssues = [[
+                    'code' => 'no_plugin',
+                    'severity' => 'blocking',
+                    'message' => "No e-invoicing plugin is available for {$countryCode}.",
+                    'fix' => null,
+                ]];
+            } elseif ($validator instanceof SupportsReadinessCheck) {
+                $countryIssues = $validator->readinessIssues($invoice, $context);
+            } else {
+                // A pack without the capability still gets its validator's
+                // verdict — as plain blocking messages without a fix target.
+                $countryIssues = array_map(fn (string $error) => [
+                    'code' => 'validation',
+                    'severity' => 'blocking',
+                    'message' => $error,
+                    'fix' => null,
+                ], $validator->validateInvoice($invoice, $context)['errors'] ?? []);
+            }
+
+            foreach ($countryIssues as $issue) {
+                $issues[] = ['country_code' => $countryCode] + $issue;
+            }
+        }
+
+        $blocking = count(array_filter($issues, fn (array $issue) => $issue['severity'] === 'blocking'));
+
+        return [
+            'applicable' => $countries !== [],
+            'ready' => $blocking === 0,
+            'countries' => $countries,
+            'summary' => [
+                'blocking' => $blocking,
+                'warnings' => count($issues) - $blocking,
+            ],
+            'issues' => $issues,
+            'supplier_identity' => $supplierIdentity,
+        ];
+    }
+
+    /**
+     * #673 (EINV-UX4): statuses of the failed / invalid queue — the only
+     * documents a retry resubmits. Anything LHDN holds (submitted, Valid)
+     * or that is already queued is left alone.
+     */
+    public const RETRYABLE_STATUSES = ['failed', 'rejected'];
+
+    /** Source document types SubmitEInvoiceJob can resubmit. */
+    private const RETRYABLE_DOCUMENT_TYPES = ['invoice', 'credit_note', 'refund_note'];
+
+    public const BULK_RETRY_LIMIT = 100;
+
+    /**
+     * #673 (EINV-UX4): retry the selected failed / invalid documents. Each
+     * document is claimed atomically (failed|rejected -> queued, retry
+     * counted) and handed to the #667 SubmitEInvoiceJob — the same queued,
+     * backed-off submission path as auto-submit — one job per document. A
+     * document that is not in the queue (Valid, submitted, already queued)
+     * is skipped, so a double click never submits twice.
+     *
+     * @param  array<int, int|string>  $documentIds
+     * @return list<array<string, mixed>>
+     */
+    public function bulkRetryDocuments(array $documentIds): array
+    {
+        $tenantId = $this->currentTenantId();
+        $results = [];
+
+        foreach (array_values(array_unique(array_map('intval', $documentIds))) as $id) {
+            $document = ComplianceDocument::query()->where('tenant_id', $tenantId)->find($id);
+
+            if ($document === null) {
+                $results[] = ['id' => $id, 'outcome' => 'skipped', 'reason' => 'E-invoice document not found.'];
+
+                continue;
+            }
+
+            if (! in_array($document->document_type, self::RETRYABLE_DOCUMENT_TYPES, true)) {
+                $results[] = $this->bulkRetryResult($document, 'skipped', "A {$document->document_type} cannot be resubmitted from the e-invoice queue.");
+
+                continue;
+            }
+
+            $claimed = ComplianceDocument::query()
+                ->whereKey($document->id)
+                ->where('tenant_id', $tenantId)
+                ->whereIn('compliance_status', self::RETRYABLE_STATUSES)
+                ->update([
+                    'compliance_status' => 'queued',
+                    'retry_count' => DB::raw('COALESCE(retry_count, 0) + 1'),
+                    'last_retried_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            if ($claimed === 0) {
+                $document->refresh();
+                $results[] = $this->bulkRetryResult($document, 'skipped', match (true) {
+                    in_array($document->compliance_status, ['accepted', 'valid', 'submitted'], true) => 'Already submitted to LHDN — it is not resubmitted.',
+                    $document->compliance_status === 'queued' => 'Already queued for submission.',
+                    default => "Only failed or invalid e-invoices can be retried (this one is {$document->compliance_status}).",
+                });
+
+                continue;
+            }
+
+            SubmitEInvoiceJob::dispatch((string) $tenantId, $document->document_type, (int) $document->document_id, (string) $document->country_code);
+
+            $results[] = $this->bulkRetryResult($document->refresh(), 'queued');
+        }
+
+        return $results;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function bulkRetryResult(ComplianceDocument $document, string $outcome, ?string $reason = null): array
+    {
+        return array_filter([
+            'id' => $document->id,
+            'outcome' => $outcome,
+            'reason' => $reason,
+            'document_number' => $document->document_number,
+            'compliance_status' => $document->compliance_status,
+            'retry_count' => (int) $document->retry_count,
+        ], fn ($value) => $value !== null);
+    }
+
+    /**
+     * #673 (EINV-UX4): the last error of a failed / invalid document, each
+     * explained by the country pack in plain language with the record and
+     * field to fix (ExplainsSubmissionErrors). A pack without the capability,
+     * or an error it does not recognise, shows the raw message.
+     *
+     * The last error is what the document already records: for an Invalid
+     * document the latest rejected submission (its code and message, or the
+     * LHDN validation step errors); for a failed one the failure reason the
+     * submission / #667 job wrote to it, with the code of the failed
+     * submission that returned that reason.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function documentErrors(ComplianceDocument $document): array
+    {
+        if (! in_array($document->compliance_status, self::RETRYABLE_STATUSES, true)) {
+            return [];
+        }
+
+        $rawErrors = [];
+        $latest = ComplianceSubmission::query()
+            ->where('document_id', $document->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($document->compliance_status === 'rejected' && $latest?->submission_status === 'rejected') {
+            $details = is_array($latest->status_details) ? $latest->status_details : [];
+            foreach (is_array($details['validation_errors'] ?? null) ? $details['validation_errors'] : [] as $validationError) {
+                $message = trim((string) ($validationError['message'] ?? ''));
+                if ($message !== '') {
+                    $rawErrors[] = ['code' => $validationError['code'] ?? null, 'message' => $message];
+                }
+            }
+
+            if ($rawErrors === []) {
+                $message = trim((string) ($latest->error_message ?: $latest->rejection_reason ?: $document->compliance_notes));
+                if ($message !== '') {
+                    $rawErrors[] = ['code' => $latest->error_code, 'message' => $message];
+                }
+            }
+        } else {
+            $message = trim((string) $document->compliance_notes);
+            if ($message !== '') {
+                $code = $latest?->submission_status === 'failed'
+                    && is_string($latest->error_message)
+                    && $latest->error_message !== ''
+                    && str_contains($message, $latest->error_message)
+                    ? $latest->error_code
+                    : null;
+                $rawErrors[] = ['code' => $code, 'message' => $message];
+            }
+        }
+
+        if ($rawErrors === []) {
+            return [];
+        }
+
+        $countryCode = (string) $document->country_code;
+        $validator = $this->pluginRegistry->has($countryCode)
+            ? $this->pluginRegistry->resolve($countryCode, 'validator')
+            : null;
+        $source = null;
+        $context = [];
+
+        if ($validator instanceof ExplainsSubmissionErrors) {
+            $source = match ($document->document_type) {
+                'credit_note' => CustomerCreditNote::with('customer')->find($document->document_id),
+                'refund_note' => Payment::with('customer')->find($document->document_id),
+                'invoice' => Invoice::with('customer')->find($document->document_id),
+                default => null,
+            };
+
+            if ($source !== null) {
+                ['context' => $context, 'report' => $report] = $this->providerContextFor($this->getCountryConfig($countryCode), $source);
+                if ($report['source'] === EInvoiceSupplierIdentityResolver::SOURCE_LEGAL_ENTITY) {
+                    $context['supplier_identity_legal_entity_id'] = $report['legal_entity_id'];
+                }
+            }
+        }
+
+        $explained = [];
+        foreach ($rawErrors as $raw) {
+            $code = $raw['code'] !== null && $raw['code'] !== '' ? (string) $raw['code'] : null;
+            $items = $validator instanceof ExplainsSubmissionErrors
+                ? $validator->explainSubmissionError($code, $raw['message'], $source, $context)
+                : [];
+
+            if ($items === []) {
+                $items = [[
+                    'code' => $code,
+                    'issue_code' => null,
+                    'message' => $raw['message'],
+                    'raw_message' => $raw['message'],
+                    'fix' => null,
+                ]];
+            }
+
+            foreach ($items as $item) {
+                $explained[] = ['country_code' => $countryCode] + $item;
+            }
+        }
+
+        return $explained;
     }
 
     /**
@@ -900,7 +1254,7 @@ class ComplianceService
         Invoice|CustomerCreditNote|Payment $source,
         ?string $tenantId = null,
     ): array {
-        $countries = $this->autoSubmitCountryCodes($tenantId);
+        $countries = $this->autoSubmitCountryCodesFor($source, $tenantId);
 
         foreach ($countries as $countryCode) {
             $this->queueForAutoSubmit($documentType, $source, $countryCode, $tenantId);
@@ -1270,6 +1624,11 @@ class ComplianceService
             return ['success' => false, 'message' => "Associated {$docType} not found"];
         }
 
+        $countryMismatch = $this->entityCountryMismatch($sourceDocument, $countryCode);
+        if ($countryMismatch !== null) {
+            return ['success' => false, 'document_id' => $document->id, 'message' => $countryMismatch];
+        }
+
         $queued = $this->queueB2CConsolidationIfNeeded($document, $sourceDocument);
         if ($queued !== null) {
             return $queued;
@@ -1312,12 +1671,13 @@ class ComplianceService
         try {
             DB::beginTransaction();
 
-            // Tenant supplier identity is configured in MyInvois settings,
-            // rather than duplicated on every invoice. Load it before
-            // validation so the Malaysia validator sees the same values that
-            // will be mapped into and submitted with the payload.
+            // #668 (EI6): the supplier identity is the document's legal
+            // entity's, falling back to the tenant's country configuration
+            // (and reported as such) only for what the entity does not carry.
+            // Load it before validation so the validator sees the same values
+            // that will be mapped into and submitted with the payload.
             $config = $this->getCountryConfig($countryCode);
-            $context = $config?->getProviderContext() ?? [];
+            ['context' => $context, 'report' => $supplierIdentity] = $this->providerContextFor($config, $sourceDocument);
 
             $validator = $this->pluginRegistry->resolve($countryCode, 'validator');
             if (! $validator) {
@@ -1481,6 +1841,7 @@ class ComplianceService
                     'error_code' => $submitResult['error_code'] ?? null,
                     'error_message' => $submitResult['message'] ?? null,
                     'lhdn_details' => $submitResult['details'] ?? null,
+                    'supplier_identity' => $supplierIdentity,
                     'submitted_by' => \Auth::id(),
                     'submitted_at' => now()->toIso8601String(),
                 ], null, 'user');
@@ -1519,6 +1880,7 @@ class ComplianceService
                 'payload_hash' => $payloadHash,
                 'document_hash' => $documentHash,
                 'signature_enabled' => (bool) ($preparedDocument['signature_metadata']['enabled'] ?? false),
+                'supplier_identity' => $supplierIdentity,
                 'submitted_by' => \Auth::id(),
                 'submitted_at' => now()->toIso8601String(),
             ], null, 'user');
@@ -1538,6 +1900,7 @@ class ComplianceService
                 'document_id' => $document->id,
                 'submission_id' => $submission->id,
                 'provider_reference' => $submitResult['provider_reference'],
+                'supplier_identity' => $supplierIdentity,
                 'message' => 'Submitted successfully',
             ];
         } catch (\Exception $e) {
@@ -1607,7 +1970,7 @@ class ComplianceService
         }
 
         $config = $this->getCountryConfig($countryCode);
-        $context = $config?->getProviderContext() ?? [];
+        $context = $this->providerContextFor($config, $invoice)['context'];
         $payload = $this->applyProviderPayloadDefaults($payload, $context, $countryCode);
         $preparedDocument = $this->prepareDocumentArtifacts($countryCode, $payload, $context, $signingData);
 

@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { EInvoiceRetryQueue } from './components/EInvoiceRetryQueue'
 
 type HandwrittenSignatureMetadata = {
   data_url?: string
@@ -294,6 +295,14 @@ export default function MyInvoisEinvoicePage() {
           </div>
         </div>
       )}
+
+      {/* #673 (EINV-UX4): failed / invalid queue with bulk retry. */}
+      <EInvoiceRetryQueue
+        countryCode="MY"
+        canRetry={canSubmit}
+        documentPath={(doc) => getDocumentDetailPath(doc as ComplianceDocument)}
+        onRetried={() => { void refetchDocuments() }}
+      />
 
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-4">MY Compliance Documents</h2>

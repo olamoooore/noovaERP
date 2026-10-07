@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import DepositAccountSelect from '@/components/payment/DepositAccountSelect';
-import { rememberDeposit, type DepositAccountOption } from '@/lib/paymentDepositAccount';
 import { buildMethodOptions, type PaymentMethodRow } from '@/lib/paymentMethods'; // #486
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,15 +9,15 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AuditTab } from '@/components/audit/AuditTab';
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { InvoiceSearchCombobox } from '@/components/ui/InvoiceSearchCombobox';
-import { RecordPaymentForm } from '@/components/payment/RegisterPaymentDialog'; // #491
+import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'; // #491, #487
+import { PaymentAllocationsPanel } from '@/components/payment/PaymentAllocations'; // #488
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import {
   AlertDialog,
@@ -170,6 +168,9 @@ export const CustomerPayments: React.FC = () => {
   const navigate = useNavigate();
   const invoiceIdParam = searchParams.get('invoice_id') || '';
   const [showRecordPayment, setShowRecordPayment] = useState(!!invoiceIdParam);
+  // #487: pin the deep-linked invoice for this dialog session — the URL param
+  // is stripped right after opening, and the dialog must not remount blank.
+  const [recordInvoiceId, setRecordInvoiceId] = useState(invoiceIdParam);
 
   // Auto-open the Record Payment dialog when arriving with ?invoice_id=X
   // (from invoice detail page). After opening once, strip the param from the URL
@@ -442,27 +443,19 @@ export const CustomerPayments: React.FC = () => {
           <HeaderActionButton icon="solar:upload-bold-duotone" variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
             Import
           </HeaderActionButton>
-          <Dialog open={showRecordPayment} onOpenChange={setShowRecordPayment}>
-            <DialogTrigger asChild>
-              <HeaderActionButton icon="solar:add-circle-bold-duotone">
-                Record Payment
-              </HeaderActionButton>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Record Customer Payment</DialogTitle>
-              </DialogHeader>
-              <RecordPaymentForm
-                unpaidInvoices={unpaidInvoices || []}
-                initialInvoiceId={invoiceIdParam}
-                onSuccess={() => {
-                  setShowRecordPayment(false);
-                  queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
-                  toast({ title: 'Payment recorded successfully' });
-                }}
-              />
-            </DialogContent>
-          </Dialog>
+          <HeaderActionButton icon="solar:add-circle-bold-duotone" onClick={() => setShowRecordPayment(true)}>
+            Record Payment
+          </HeaderActionButton>
+          {/* #487 (PAY-UX1): the one shared payment-entry dialog. */}
+          <RegisterPaymentDialog
+            open={showRecordPayment}
+            invoiceId={recordInvoiceId || null}
+            unpaidInvoices={unpaidInvoices || []}
+            onOpenChange={(open) => {
+              setShowRecordPayment(open);
+              if (!open) setRecordInvoiceId('');
+            }}
+          />
         </div>
       </div>
 
@@ -859,25 +852,13 @@ export const CustomerPayments: React.FC = () => {
         />
       )}
 
-      {editingPayment && (
-        <Dialog open onOpenChange={(open) => { if (!open) setEditingPayment(null); }}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit Draft Payment</DialogTitle>
-            </DialogHeader>
-            <EditPaymentForm
-              payment={editingPayment}
-              unpaidInvoices={unpaidInvoices || []}
-              onSuccess={() => {
-                setEditingPayment(null);
-                invalidate();
-                queryClient.invalidateQueries({ queryKey: ['unpaid-invoices'] });
-                toast({ title: 'Draft payment updated successfully' });
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* #487 (PAY-UX1): drafts are edited in the same shared dialog. */}
+      <RegisterPaymentDialog
+        payment={editingPayment}
+        unpaidInvoices={unpaidInvoices || []}
+        onOpenChange={(open) => { if (!open) setEditingPayment(null); }}
+        onSuccess={() => invalidate()}
+      />
 
       {/* Payment Correction Dialog (reverse / refund / unapply) */}
       {correctionTarget && (
@@ -1175,6 +1156,16 @@ const ViewPaymentDialog: React.FC<{
             </div>
           </div>
 
+          {/* #488 (PAY-UX2): the #155 applications, unapplied amount and Allocate. */}
+          <PaymentAllocationsPanel
+            paymentId={detail.id}
+            paymentLabel={detail.payment_number || `PAY-${detail.id}`}
+            customerId={detail.customer_id ?? detail.customer?.id ?? null}
+            paymentStatus={detail.payment_status}
+            currency={detail.currency}
+            onNavigate={onClose}
+          />
+
           {detail.notes && (
             <div className="border-t pt-4">
               <p className="text-xs text-muted-foreground mb-1">Notes</p>
@@ -1224,130 +1215,5 @@ const ViewPaymentDialog: React.FC<{
 };
 
 
-// Record Payment Form Component
-const EditPaymentForm: React.FC<{
-  payment: Payment;
-  unpaidInvoices: any[];
-  onSuccess: () => void;
-}> = ({ payment, unpaidInvoices, onSuccess }) => {
-  const [formData, setFormData] = useState({
-    invoice_id: payment.invoice_id ? String(payment.invoice_id) : '',
-    amount: String(payment.amount),
-    payment_date: payment.payment_date.slice(0, 10),
-    method: payment.method,
-    reference: payment.reference || '',
-    notes: payment.notes || '',
-    // #485: prefill from the stored deposit account; no silent auto-fill for
-    // legacy drafts (saving must not change the posting target unasked).
-    bank_account_id: payment.bank_account_id ? String(payment.bank_account_id) : '',
-  });
-  const { user: authUser } = useAuthStore();
-  const { data: depositOptions, isLoading: depositLoading } = useQuery<DepositAccountOption[]>({
-    queryKey: ['bank-accounts'],
-    queryFn: async () => {
-      const response = await api.get('/accounting/bank-accounts');
-      return response.data.data as DepositAccountOption[];
-    },
-  });
-  const { data: methodRows } = useQuery<PaymentMethodRow[]>({
-    queryKey: ['payment-methods'],
-    queryFn: async () => {
-      const response = await api.get('/accounting/payment-methods');
-      return response.data.data as PaymentMethodRow[];
-    },
-  });
-  const methodOptions = buildMethodOptions(methodRows);
-  const { toast } = useToast();
-
-  const updatePaymentMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.put(`/payments/${payment.id}`, {
-        ...formData,
-        invoice_id: formData.invoice_id ? Number(formData.invoice_id) : null,
-        amount: Number(formData.amount),
-        bank_account_id: formData.bank_account_id ? Number(formData.bank_account_id) : null,
-      });
-      return response.data;
-    },
-    onSuccess,
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to update payment',
-        description: error.response?.data?.message || 'An error occurred',
-      });
-    },
-  });
-
-  const selectedInvoice = unpaidInvoices.find((invoice) => invoice.id === Number(formData.invoice_id));
-  const availableBalance = selectedInvoice
-    ? Number(selectedInvoice.balance || 0) + (selectedInvoice.id === payment.invoice_id ? Number(payment.amount) : 0)
-    : null;
-
-  return (
-    <form onSubmit={(event) => { event.preventDefault(); updatePaymentMutation.mutate(); }} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="edit_invoice_id">Invoice</Label>
-          <InvoiceSearchCombobox
-            value={formData.invoice_id}
-            onValueChange={(value) => setFormData((current) => ({ ...current, invoice_id: value }))}
-            placeholder="Search invoice number, customer code, or name..."
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="edit_amount">Amount</Label>
-          <Input id="edit_amount" type="number" min="0.01" step="0.01" required value={formData.amount}
-            onChange={(event) => setFormData((current) => ({ ...current, amount: event.target.value }))} />
-          {availableBalance !== null && (
-            <p className="text-xs text-muted-foreground">Available invoice balance: {formatCurrency(availableBalance)}</p>
-          )}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="edit_payment_date">Payment Date</Label>
-          <Input id="edit_payment_date" type="date" required value={formData.payment_date}
-            onChange={(event) => setFormData((current) => ({ ...current, payment_date: event.target.value }))} />
-        </div>
-        <div className="space-y-2">
-          <Label>Payment Method</Label>
-          <Select value={formData.method} onValueChange={(value) => setFormData((current) => ({ ...current, method: value }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {methodOptions.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="edit_reference">Reference Number</Label>
-        <Input id="edit_reference" value={formData.reference}
-          onChange={(event) => setFormData((current) => ({ ...current, reference: event.target.value }))} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="edit_notes">Notes</Label>
-        <Input id="edit_notes" value={formData.notes}
-          onChange={(event) => setFormData((current) => ({ ...current, notes: event.target.value }))} />
-      </div>
-      <DepositAccountSelect
-        id="edit_deposit_account_id"
-        value={formData.bank_account_id}
-        onChange={(value) => {
-          if (authUser && value) rememberDeposit(authUser.id, formData.method, Number(value));
-          setFormData((current) => ({ ...current, bank_account_id: value }));
-        }}
-        options={depositOptions}
-        isLoading={depositLoading}
-      />
-
-      <div className="flex justify-end pt-4">
-        <Button type="submit" disabled={updatePaymentMutation.isPending}>
-          {updatePaymentMutation.isPending ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
-    </form>
-  );
-};
 
 export default CustomerPayments;

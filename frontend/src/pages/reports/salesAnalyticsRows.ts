@@ -26,6 +26,12 @@ export interface ProductRow extends ComparisonFields {
   name: string;
   sku: string;
   total_quantity: number;
+  /** Issue #600: paid units (= total_quantity), FOC units and their list value. */
+  paid_quantity: number;
+  foc_quantity: number;
+  foc_list_value: number;
+  /** Issue #600: revenue / paid units. */
+  average_price: number;
   total_revenue: number;
   total_cost: number;
   total_profit: number;
@@ -39,6 +45,10 @@ export interface CustomerRow extends ComparisonFields {
   total_orders: number;
   total_revenue: number;
   average_order_value: number;
+  /** Issue #600: paid units, FOC units and the FOC list value. */
+  paid_quantity: number;
+  foc_quantity: number;
+  foc_list_value: number;
   last_purchase_date: string | null;
 }
 
@@ -104,6 +114,10 @@ export const normalizeProducts = (payload: any): ProductRow[] =>
     name: p.name ?? p.product_name ?? '-',
     sku: p.sku ?? '-',
     total_quantity: num(pick(p, 'total_quantity', 'quantity_sold')),
+    paid_quantity: num(pick(p, 'paid_quantity', 'total_quantity', 'quantity_sold')),
+    foc_quantity: num(p.foc_quantity),
+    foc_list_value: num(p.foc_list_value),
+    average_price: num(p.average_price),
     total_revenue: num(pick(p, 'total_revenue', 'total_sales', 'revenue')),
     total_cost: num(pick(p, 'total_cost', 'cost')),
     total_profit: num(pick(p, 'total_profit', 'profit')),
@@ -118,6 +132,9 @@ export const normalizeCustomers = (payload: any): CustomerRow[] =>
     total_orders: num(pick(c, 'total_orders', 'order_count')),
     total_revenue: num(pick(c, 'total_revenue', 'total_sales', 'revenue')),
     average_order_value: num(pick(c, 'average_order_value', 'avg_order_value')),
+    paid_quantity: num(c.paid_quantity),
+    foc_quantity: num(c.foc_quantity),
+    foc_list_value: num(c.foc_list_value),
     last_purchase_date: c.last_purchase_date ?? null,
     ...comparisonFields(c),
   }));

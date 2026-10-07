@@ -56,6 +56,27 @@ class ProductBatch extends Model
 
     public const STATUS_RECALLED = 'recalled';
 
+    /**
+     * Issue #689: days before expiry at which a lot is flagged "near expiry"
+     * in the sales lot picker. Same 30-day window as isExpiringSoon() and the
+     * expiring-batches report default.
+     */
+    public const NEAR_EXPIRY_DAYS = 30;
+
+    /**
+     * FEFO order: earliest expiry first (lots without expiry last), then the
+     * oldest receipt, then id. Single definition shared by stock consumption
+     * (BatchSerialConsumptionService) and the sales lot picker (issue #689),
+     * so the lot the picker suggests is the lot FEFO would consume.
+     */
+    public function scopeFefoOrder($query)
+    {
+        return $query
+            ->orderByRaw('expiry_date ASC NULLS LAST')
+            ->orderByRaw('received_date ASC NULLS LAST')
+            ->orderBy('id');
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
@@ -99,7 +120,7 @@ class ProductBatch extends Model
     /**
      * Check if batch is expiring soon (within given days)
      */
-    public function isExpiringSoon(int $days = 30): bool
+    public function isExpiringSoon(int $days = self::NEAR_EXPIRY_DAYS): bool
     {
         if (! $this->expiry_date) {
             return false;

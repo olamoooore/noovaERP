@@ -71,6 +71,23 @@ class PaymentController extends Controller
             $query->whereDate('payment_date', '<=', $request->date_to);
         }
 
+        // #488 (PAY-UX2): only posted payments that still hold unapplied
+        // credit (capacity − live applications, the same formula as
+        // PaymentAllocationService::unappliedAmount()), each carrying it as
+        // `unapplied_amount` — for the customer page / invoice "outstanding
+        // credits" and the Allocate action.
+        $unappliedOnly = $request->boolean('unapplied');
+        if ($unappliedOnly) {
+            $liveApplied = '(SELECT COALESCE(SUM(pa.applied_amount), 0) FROM payment_applications pa '
+                .'WHERE pa.payment_id = payments.id AND pa.reversed_at IS NULL)';
+            $unappliedSql = "ROUND(CAST(payments.amount + COALESCE(payments.discount_amount, 0) - {$liveApplied} AS numeric), 2)";
+            $query->where('payment_status', 'applied')
+                ->whereNotNull('customer_id')
+                ->select('payments.*')
+                ->selectRaw("{$unappliedSql} AS unapplied_amount")
+                ->whereRaw("{$unappliedSql} > 0");
+        }
+
         $search = $request->filled('search') ? trim((string) $request->search) : '';
         if ($search !== '') {
             app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
@@ -185,14 +202,28 @@ class PaymentController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
-        $invoices = $query->get()->map(function ($invoice) {
+        // #489: the customer-first receipt allocates oldest-due first and only
+        // across base-currency invoices (CustomerReceiptService) — expose the
+        // due date and whether the invoice is in a foreign currency.
+        $baseByCustomer = [];
+        $invoices = $query->get()->map(function ($invoice) use (&$baseByCustomer) {
+            $base = $baseByCustomer[$invoice->customer_id]
+                ??= strtoupper((string) \App\Services\DocumentCurrencyResolver::baseFor(null, $invoice->customer_id));
+            $currency = strtoupper((string) ($invoice->currency_code ?: $base));
+
             return [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
                 'invoice_date' => $invoice->invoice_date,
+                'due_date' => $invoice->due_date,
+                'currency_code' => $currency,
+                'foreign' => $currency !== $base,
                 'total' => (float) $invoice->total,
                 'balance' => (float) ($invoice->balance ?? $invoice->total),
                 'status' => $invoice->status,
+                // #488: the allocation UI offers only POSTED receivables
+                // (PaymentAllocationService rejects any other lifecycle).
+                'lifecycle_status' => $invoice->lifecycle_status,
                 'customer_id' => $invoice->customer_id,
                 'customer_name' => $invoice->customer?->name ?? 'Unknown',
             ];
@@ -210,6 +241,53 @@ class PaymentController extends Controller
         ]);
     }
 
+    /**
+     * #490 (PAY-UX4): read-only preview of a payment's currency, rate,
+     * base-currency amount and expected realized FX gain/loss — computed by
+     * PaymentPostingService::settlementPreview(), the same code post() uses,
+     * on an unsaved payment shaped exactly as store() would record it.
+     */
+    public function fxPreview(Request $request)
+    {
+        $validated = $request->validate([
+            'invoice_id' => 'required|exists:invoices,id',
+            'amount' => 'required|numeric|min:0',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'payment_date' => 'nullable|date',
+            'exchange_rate' => 'nullable|numeric|gt:0',
+        ]);
+
+        $invoice = Invoice::findOrFail($validated['invoice_id']);
+
+        $payment = new Payment([
+            'invoice_id' => $invoice->id,
+            'customer_id' => $invoice->customer_id,
+            'amount' => $validated['amount'],
+            'discount_amount' => $validated['discount_amount'] ?? 0,
+            'payment_date' => $validated['payment_date'] ?? now()->toDateString(),
+            // Same currency inheritance as InvoiceService::recordPayment().
+            'currency' => $invoice->currency_code ?? \App\Services\DocumentCurrencyResolver::resolve(),
+            'base_currency_code' => $invoice->base_currency_code
+                ?? \App\Services\DocumentCurrencyResolver::baseFor($invoice->salesOrder?->legal_entity_id, $invoice->customer_id),
+            'exchange_rate' => $validated['exchange_rate'] ?? null,
+        ]);
+        $payment->setRelation('invoice', $invoice);
+
+        try {
+            $preview = $this->paymentPostingService->settlementPreview($payment);
+        } catch (\App\Exceptions\PricingException $e) {
+            // No usable rate: posting would be blocked too (FR-1.5/AC-3).
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        if (isset($validated['exchange_rate'])) {
+            $preview['rate_source'] = 'manual';
+        }
+        unset($preview['rate_resolved']);
+
+        return response()->json(['data' => $preview]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -221,6 +299,9 @@ class PaymentController extends Controller
             'reference' => 'nullable|string',
             'notes' => 'nullable|string',
             'bank_account_id' => 'nullable|exists:bank_accounts,id',
+            // #490: the bank's actual rate, edited in the payment dialog.
+            // Absent → the payment-date snapshot is used (unchanged).
+            'exchange_rate' => 'nullable|numeric|gt:0',
         ]);
 
         // #486: field requirements come from the method master, not a
@@ -246,6 +327,18 @@ class PaymentController extends Controller
             if ($totalApplied > $invoice->balance) {
                 return response()->json([
                     'message' => 'Payment amount exceeds invoice balance',
+                ], 422);
+            }
+
+            // #539: sales.invoice.allow_partial_payments=false means a receipt
+            // must settle the whole outstanding balance.
+            if (
+                ! app(\App\Services\SalesSettings::class)->allowPartialPayments()
+                && bccomp(number_format((float) $totalApplied, 2, '.', ''), number_format((float) $invoice->balance, 2, '.', ''), 2) < 0
+            ) {
+                return response()->json([
+                    'message' => 'Partial payments are disabled by the sales setting sales.invoice.allow_partial_payments. Record the full outstanding balance of '.number_format((float) $invoice->balance, 2, '.', '').'.',
+                    'code' => 'PARTIAL_PAYMENT_NOT_ALLOWED',
                 ], 422);
             }
 
@@ -283,6 +376,82 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Issue #489 (PAY-UX3): customer-first receipt. One request records a
+     * customer-level payment, posts it (PaymentPostingService → PostingEngine)
+     * and allocates it across the customer's invoices (#155
+     * PaymentAllocationService) atomically; the remainder stays as unapplied
+     * credit. Gated by accounting.post on the route — it posts to the GL.
+     */
+    public function storeReceipt(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|integer|exists:customers,id',
+            'payment_date' => 'nullable|date',
+            'amount' => 'required|numeric|min:0.01',
+            'method' => ['required', 'string', Rule::in($this->methodCodes())],
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+            'bank_account_id' => 'nullable|exists:bank_accounts,id',
+            'applications' => 'nullable|array',
+            'applications.*.invoice_id' => 'required|integer|distinct|exists:invoices,id',
+            'applications.*.amount' => 'required|numeric|min:0.01',
+        ]);
+
+        $methodRow = PaymentMethod::query()->active()->where('code', $validated['method'])->first();
+        if ($methodRow?->requires_reference && blank($validated['reference'] ?? null)) {
+            return response()->json([
+                'message' => "A reference number is required for {$methodRow->label} payments.",
+            ], 422);
+        }
+
+        $paymentDate = $validated['payment_date'] ?? now()->toDateString();
+        $lockResult = $this->lockDateValidator->validateTransactionDate('payments', $paymentDate);
+        if ($lockResult['is_locked']) {
+            return response()->json([
+                'message' => "Cannot record payment dated in a closed period. {$lockResult['message']}",
+                'lock_date' => $lockResult['lock_date'],
+                'transaction_date' => $paymentDate,
+            ], 422);
+        }
+
+        $applications = array_values($validated['applications'] ?? []);
+        unset($validated['applications']);
+
+        try {
+            $payment = app(\App\Services\CustomerReceiptService::class)->receive($validated, $applications);
+        } catch (\App\Exceptions\PartialPaymentNotAllowedException $e) {
+            return response()->json(['message' => $e->getMessage(), 'code' => 'PARTIAL_PAYMENT_NOT_ALLOWED'], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage(), 'error' => 'INVALID_ALLOCATION'], 422);
+        } catch (\RuntimeException $e) {
+            // The posting engine rejected the receipt (e.g. GL mapping missing).
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $this->writeAuditLog(
+            'payment_posted',
+            (int) $payment->id,
+            ['payment_status' => null, 'journal_entry_id' => null],
+            [
+                'payment_status' => $payment->payment_status,
+                'journal_entry_id' => $payment->journal_entry_id,
+                'amount' => (float) $payment->amount,
+            ],
+            ['customer_id' => $payment->customer_id, 'customer_receipt' => true],
+        );
+
+        $allocation = app(\App\Services\PaymentAllocationService::class);
+
+        return response()->json([
+            'message' => 'Payment posted and allocated',
+            'id' => $payment->id,
+            'data' => $payment,
+            'applied_amount' => round((float) $payment->applications->whereNull('reversed_at')->sum('applied_amount'), 2),
+            'unapplied_amount' => $allocation->unappliedAmount($payment),
+        ], 201);
     }
 
     /**

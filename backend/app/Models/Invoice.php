@@ -45,6 +45,36 @@ class Invoice extends Model implements WorkflowSubject
 
     public const EVIDENCE_SATISFIED = 'satisfied';
 
+    /**
+     * Issue #634: header fields whose edits are written to the chatter History
+     * feed as "field: old → new" (see App\Services\Chatter\FieldChangeTracker).
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const CHATTER_TRACKED_FIELDS = [
+        'customer_id' => ['Customer', 'customer'],
+        'invoice_date' => ['Invoice date', 'date'],
+        'due_date' => ['Due date', 'date'],
+        'delivery_date' => ['Delivery date', 'date'],
+        'payment_term_id' => ['Payment term', 'payment_term'],
+        'payment_terms_snapshot' => ['Payment terms (days)', 'text'],
+        'discount_amount' => ['Discount', 'money'],
+    ];
+
+    /**
+     * Issue #634: line fields whose old → new values are shown in the chatter
+     * History feed (grouped per line). Keys match the audit line snapshot.
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const CHATTER_TRACKED_LINE_FIELDS = [
+        'description' => ['description', 'text'],
+        'quantity' => ['qty', 'quantity'],
+        'unit_price' => ['price', 'money'],
+        'discount_amount' => ['discount', 'money'],
+        'tax_rate' => ['tax', 'percent'],
+    ];
+
     protected static function boot(): void
     {
         parent::boot();
@@ -207,6 +237,8 @@ class Invoice extends Model implements WorkflowSubject
         'billing_address_snapshot',
         'delivery_address_snapshot',
         'payment_terms_snapshot',
+        // Issue #321: master payment term carried from the sales order.
+        'payment_term_id',
         'company_registration_number',
         'tax_registration_number',
         'tax_exemption_code',

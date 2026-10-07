@@ -22,6 +22,7 @@ export function PageHeader({
   onBack,
   backTo,
   backLabel = 'Back',
+  guardBack,
   className,
 }: {
   title: ReactNode
@@ -31,6 +32,11 @@ export function PageHeader({
   onBack?: () => void
   backTo?: string
   backLabel?: string
+  /**
+   * #317: wraps the Back action, e.g. to confirm leaving a form with unsaved
+   * changes. Receives the navigation to run once the user agrees.
+   */
+  guardBack?: (proceed: () => void) => void
   className?: string
 }) {
   const navigate = useNavigate()
@@ -62,7 +68,7 @@ export function PageHeader({
       {/* Back — own row, no container chrome */}
       <button
         type="button"
-        onClick={goBack}
+        onClick={() => (guardBack ? guardBack(goBack) : goBack())}
         className="-ml-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Icon icon="solar:alt-arrow-left-bold-duotone" className="h-4 w-4" />

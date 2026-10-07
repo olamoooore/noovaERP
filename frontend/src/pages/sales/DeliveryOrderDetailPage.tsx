@@ -25,6 +25,10 @@ import { DeliveryOrderColumnVisibility, SalesLineColumnMenu } from '@/components
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  DeliveryOrderInvoicingProgressSummary,
+  DeliveryOrderLineInvoicingChip,
+} from '@/components/sales/DocumentProgressChip'
 
 const SHIPPED_ITEM_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name',
@@ -659,6 +663,8 @@ export function DeliveryOrderDetailPage() {
             onClick={() => navigate(`/quotations/${deliveryOrder.quotation.id}`)}
           />
         )}
+        {/* Issue #688 (INV-UX2): "Invoiced x/y" with the billing invoices. */}
+        <DeliveryOrderInvoicingProgressSummary progress={deliveryOrder.invoicing_progress} />
       </div>
 
       {/* Linked invoices (expandable) */}
@@ -951,7 +957,12 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                   <TableCell>{line.patient_name || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
-                  <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
+                  <TableCell className="text-right font-medium text-green-600">
+                    <div>{line.quantity_delivered}</div>
+                    <div className="mt-1 print:hidden">
+                      <DeliveryOrderLineInvoicingChip progress={deliveryOrder.invoicing_progress} lineId={line.id} />
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right">{line.unit}</TableCell>
                   <TableCell className="text-right">{line.unit_price ? money(Number(line.unit_price)) : '-'}</TableCell>
                   <TableCell className="text-right font-medium">

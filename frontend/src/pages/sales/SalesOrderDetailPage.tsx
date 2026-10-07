@@ -34,6 +34,8 @@ import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
+import { SalesOrderCreditNoteAction } from '@/components/sales/SalesOrderCreditNoteAction'
+import { SalesOrderBillingRecurrenceCard } from '@/components/sales/SalesOrderBillingRecurrenceCard'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
 import { useAuthStore } from '@/store/authStore'
@@ -111,6 +113,8 @@ interface SalesOrder {
   // Issue #407: a confirmed order can be locked against amendments.
   is_locked?: boolean
   locked_at?: string | null
+  // Issue #376: invoice only the delivered quantity (changeable until the first invoice).
+  bill_by_delivered_qty?: boolean
   allowed_transitions?: string[]
   invoice_status?: string
   subtotal: number
@@ -370,6 +374,9 @@ export function SalesOrderDetailPage() {
   // silent backorder path (#379).
   const [shortageLines, setShortageLines] = useState<ShortageLine[] | null>(null)
   const [preflightPending, setPreflightPending] = useState(false)
+  // Issue #376: the credit preview is re-read and shown before Confirm; an
+  // over-limit order stops on this dialog instead of failing blind.
+  const [creditGate, setCreditGate] = useState<CreditPreview | null>(null)
   const confirmIntentRef = useRef<'backorder' | 'partial' | null>(null)
   // Issue #906: stale-save conflict state (dialog) + the payload to resend.
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
@@ -391,7 +398,11 @@ export function SalesOrderDetailPage() {
 
   // #402 (SU4): the credit-preview endpoint already computes the customer's
   // exposure; the header reports it instead of re-deriving credit locally.
-  const { data: creditPreview, isError: creditPreviewFailed } = useQuery({
+  const {
+    data: creditPreview,
+    isError: creditPreviewFailed,
+    refetch: refetchCreditPreview,
+  } = useQuery({
     queryKey: ['sales-order-credit-preview', id],
     queryFn: async () => {
       const response = await api.get(`/sales/orders/${id}/credit-preview`)
@@ -487,6 +498,26 @@ export function SalesOrderDetailPage() {
    * confirm proceeds as before, it never silently blocks a confirmation.
    */
   const beginConfirm = async () => {
+    // Issue #376: re-read the credit position at the moment of confirming
+    // (the header chip may be stale). The server stays the authority — an
+    // unreachable preview is reported by the header chip and the confirm
+    // proceeds to the server's own credit check.
+    setPreflightPending(true)
+    let freshCredit: CreditPreview | undefined
+    try {
+      freshCredit = (await refetchCreditPreview()).data
+    } finally {
+      setPreflightPending(false)
+    }
+    if (freshCredit && freshCredit.approved === false) {
+      setCreditGate(freshCredit)
+      return
+    }
+
+    await runConfirmPreflight()
+  }
+
+  const runConfirmPreflight = async () => {
     const productLines = (order?.lines ?? []).filter(
       (line) =>
         (line.line_type ?? 'product') === 'product' &&
@@ -859,6 +890,14 @@ export function SalesOrderDetailPage() {
           )}
           {/* Issue #374: a draft order is edited (header + lines) on the
               shared sales order form; confirmed orders use lock/amend (#407). */}
+          {/* Issue #376 / #154: credit an invoiced order from the order itself. */}
+          {order.status === 'invoiced' && canOverwrite && (
+            <SalesOrderCreditNoteAction
+              orderId={order.id}
+              orderNumber={order.sales_order_number}
+              invoices={order.invoices ?? []}
+            />
+          )}
           {order.status === 'draft' && canOverwrite && (
             <HeaderActionButton
               variant="outline"
@@ -953,6 +992,26 @@ export function SalesOrderDetailPage() {
             filename={`SO-${order.sales_order_number}.pdf`}
             title="Sales Order"
             resolutionPath={`/documents/sales_order/resolution?document_id=${id}`}
+            label="Sales order"
+            // #405: order confirmation and pro-forma invoice (#615 templates).
+            documents={[
+              {
+                documentType: 'sales_order_confirmation',
+                label: 'Order confirmation',
+                pdfPath: `/sales/orders/${id}/confirmation/pdf`,
+                filename: `SO-${order.sales_order_number}-confirmation.pdf`,
+                title: 'Order Confirmation',
+                resolutionPath: `/documents/sales_order_confirmation/resolution?document_id=${id}`,
+              },
+              {
+                documentType: 'sales_proforma_invoice',
+                label: 'Pro-forma invoice',
+                pdfPath: `/sales/orders/${id}/proforma/pdf`,
+                filename: `SO-${order.sales_order_number}-proforma.pdf`,
+                title: 'Pro-forma Invoice',
+                resolutionPath: `/documents/sales_proforma_invoice/resolution?document_id=${id}`,
+              },
+            ]}
           />
           <ChatterDialog
             open={chatterOpen}
@@ -1287,6 +1346,17 @@ export function SalesOrderDetailPage() {
           </CardContent>
         </Card>
       )}
+      {/* Issue #376: bill-by-delivered policy + recurring schedules. */}
+      <SalesOrderBillingRecurrenceCard
+        orderId={order.id}
+        billByDelivered={order.bill_by_delivered_qty === true}
+        hasInvoices={
+          (order.invoices ?? []).some((invoice) => String(invoice.status).toLowerCase() !== 'cancelled') ||
+          productLines.some((line) => quantityValue(line.quantity_invoiced) > 0)
+        }
+        canWrite={canOverwrite}
+        canRecur={order.status !== 'cancelled'}
+      />
       {/* #404 (SU6): inline status timeline merged with chatter activity. */}
       <SalesOrderTimeline
         subjectType="Modules\\Sales\\Models\\SalesOrder"
@@ -1315,6 +1385,51 @@ export function SalesOrderDetailPage() {
         onDeliverPartially={() => chooseShortageAction('partial')}
         onChangeWarehouse={changeShortageWarehouse}
       />
+      {/* Issue #376: credit preview shown before Confirm when over limit. */}
+      <Dialog
+        open={creditGate !== null}
+        onOpenChange={(open) => {
+          if (!open) setCreditGate(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Customer credit check</DialogTitle>
+            <DialogDescription>{creditGate?.reason}</DialogDescription>
+          </DialogHeader>
+          {creditGate && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <dt className="text-muted-foreground">Credit limit</dt>
+              <dd className="text-right">{formatCurrency(Number(creditGate.creditLimit ?? 0))}</dd>
+              <dt className="text-muted-foreground">Current balance</dt>
+              <dd className="text-right">{formatCurrency(Number(creditGate.currentBalance ?? 0))}</dd>
+              <dt className="text-muted-foreground">Available credit</dt>
+              <dd className="text-right" data-testid="credit-gate-available">
+                {creditGate.availableCredit == null ? 'Unlimited' : formatCurrency(Number(creditGate.availableCredit))}
+              </dd>
+              <dt className="text-muted-foreground">This order</dt>
+              <dd className="text-right font-medium">{formatCurrency(Number(creditGate.orderTotal ?? 0))}</dd>
+            </dl>
+          )}
+          <p className="text-sm text-muted-foreground">
+            The server makes the final credit decision: confirming may be rejected or sent for approval.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreditGate(null)}>
+              Back
+            </Button>
+            <Button
+              disabled={actionMutation.isPending || preflightPending}
+              onClick={() => {
+                setCreditGate(null)
+                void runConfirmPreflight()
+              }}
+            >
+              Confirm anyway
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={promiseOpen} onOpenChange={setPromiseOpen}>
         <DialogContent>
           <DialogHeader>

@@ -18,6 +18,8 @@ import type {
   SalesReconciliationData,
   SalesPivotData,
   UnbilledDeliveriesData,
+  MedicalCasePerformanceData,
+  MedicalCaseDateField,
   PivotDimension,
   PivotMeasure,
   ExpensesByCategoryData,
@@ -693,6 +695,32 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Unbilled Deliveries');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #609: hospital/doctor performance of medical cases for a period —
+   * units used (not allocated), case counts and invoiced value.
+   */
+  async getMedicalCasePerformance(
+    filters: Pick<ReportFilters, 'start_date' | 'end_date'>,
+    dateField: MedicalCaseDateField = 'procedure_date'
+  ): Promise<MedicalCasePerformanceData> {
+    try {
+      const response = await api.get<ApiResponse<MedicalCasePerformanceData>>(
+        '/medical-cases/reports/performance',
+        {
+          params: {
+            from_date: filters.start_date,
+            to_date: filters.end_date,
+            date_field: dateField,
+          },
+        }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Product Usage');
       throw error;
     }
   }

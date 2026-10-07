@@ -30,6 +30,16 @@ class NumberingService
     private const SETTING_PREFIX = 'document_format.';
 
     /**
+     * #548 / decision on #538 (2026-10-02): the reset period is an explicit
+     * per-document-type setting. When a tenant has not chosen one, the period
+     * is inferred from the format exactly as before (no behaviour change for
+     * existing tenants).
+     */
+    private const RESET_SETTING_PREFIX = 'document_reset.';
+
+    public const RESET_PERIODS = ['never', 'yearly', 'monthly'];
+
+    /**
      * Register a document numbering sequence.
      */
     public function register(
@@ -81,43 +91,11 @@ class NumberingService
         for ($attempt = 0; $attempt < 3; $attempt++) {
             try {
                 return DB::transaction(function () use ($documentType, $tenantId, $format, $existingNumbers) {
-                    $sequence = NumberingSequence::where('tenant_id', $tenantId)
-                        ->where('document_type', $documentType)
-                        ->lockForUpdate()
-                        ->first();
 
-                    if ($sequence === null) {
-                        $sequence = NumberingSequence::create([
-                            'id' => (string) Str::uuid(),
-                            'tenant_id' => $tenantId,
-                            'document_type' => $documentType,
-                            'prefix' => $this->prefixFor($format, $documentType),
-                            'padding' => $this->paddingFor($format),
-                            'format' => $format,
-                            'current_number' => 0,
-                            'reset_frequency' => $this->resetFrequencyFor($format),
-                            'is_active' => true,
-                        ]);
-                    } else {
-                        $sequence->prefix = $this->prefixFor($format, $documentType);
-                        $sequence->padding = $this->paddingFor($format);
-                        $sequence->format = $format;
-                        $sequence->reset_frequency = $this->resetFrequencyFor($format);
-                        $sequence->is_active = true;
-                    }
+                    $sequence = $this->lockedSequence($documentType, $tenantId, $format);
 
-                    $this->checkReset($sequence);
-
-                    if ($existingNumbers !== null) {
-                        $existing = array_values((array) $existingNumbers($this->literalPrefix($format)));
-                        $max = $this->maxSequenceIn($format, $existing);
-
-                        if ($max !== null && $max > (int) $sequence->current_number) {
-                            $sequence->current_number = $max;
-                        }
-                    }
-
-                    $sequence->current_number = (int) $sequence->current_number + 1;
+                    // #548: the same computation the read-only preview uses.
+                    $sequence->current_number = $this->pendingValue($sequence, $format, $existingNumbers);
                     $sequence->save();
 
                     return $this->formatNumber($sequence);
@@ -137,30 +115,108 @@ class NumberingService
     /**
      * Preview the number the next business document would receive, without
      * consuming the counter.
+     *
+     * #548: this runs the exact computation {@see nextFor()} runs (configured
+     * format, effective reset period, the period reset, the jump past issued
+     * numbers) on an unsaved copy of the sequence row, so the preview equals
+     * the next number nextFor() issues. Nothing is written.
+     *
+     * @param  callable(string): array<int, string>|null  $existingNumbers  the same
+     *                                                                      issued-number lookup the document's generator passes to nextFor().
+     * @param  string|null  $format  render an unsaved format instead of the configured one
+     * @param  string|null  $resetPeriod  preview an unsaved reset period
      */
-    public function peekFor(string $documentType, string $defaultFormat, ?string $tenantId = null): string
-    {
+    public function peekFor(
+        string $documentType,
+        string $defaultFormat,
+        ?string $tenantId = null,
+        ?callable $existingNumbers = null,
+        ?string $format = null,
+        ?string $resetPeriod = null,
+    ): string {
+        $format ??= $this->resolveFormat($documentType, $defaultFormat);
+        $probe = $this->previewSequence($documentType, $defaultFormat, $tenantId, $existingNumbers, $format, $resetPeriod);
+
+        return $this->formatNumber($probe);
+    }
+
+    /**
+     * The sequence value (integer) the next document of this type receives,
+     * without consuming it.
+     */
+    public function peekValueFor(
+        string $documentType,
+        string $defaultFormat,
+        ?string $tenantId = null,
+        ?callable $existingNumbers = null,
+    ): int {
+        $format = $this->resolveFormat($documentType, $defaultFormat);
+
+        return (int) $this->previewSequence($documentType, $defaultFormat, $tenantId, $existingNumbers, $format, null)->current_number;
+    }
+
+    /**
+     * #548: move the next sequence value forward (admin setting). Moving it
+     * backwards would reissue numbers, so a value below the next number the
+     * generator would issue is refused.
+     *
+     * @throws \InvalidArgumentException when $nextValue is behind the next number
+     */
+    public function advanceTo(
+        string $documentType,
+        string $defaultFormat,
+        int $nextValue,
+        ?string $tenantId = null,
+        ?callable $existingNumbers = null,
+    ): void {
         $tenantId = $this->resolveTenantId($tenantId);
         $format = $this->resolveFormat($documentType, $defaultFormat);
 
-        $sequence = NumberingSequence::where('tenant_id', $tenantId)
-            ->where('document_type', $documentType)
-            ->first();
+        DB::transaction(function () use ($documentType, $tenantId, $format, $existingNumbers, $nextValue) {
+            $sequence = $this->lockedSequence($documentType, $tenantId, $format);
+            $pending = $this->pendingValue($sequence, $format, $existingNumbers);
 
-        $current = $sequence !== null ? (int) $sequence->current_number : 0;
+            if ($nextValue < $pending) {
+                throw new \InvalidArgumentException(
+                    "The next sequence value can only move forward: it must be at least {$pending}."
+                );
+            }
 
-        if ($sequence !== null && $this->shouldReset($sequence)) {
-            $current = 0;
+            $sequence->current_number = $nextValue - 1;
+            $sequence->save();
+        });
+    }
+
+    /**
+     * The explicit reset period stored for a document type, or null when the
+     * tenant has not chosen one.
+     */
+    public function explicitResetPeriod(string $documentType): ?string
+    {
+        $value = Setting::getValue(self::RESET_SETTING_PREFIX.$documentType);
+
+        return is_string($value) && in_array($value, self::RESET_PERIODS, true) ? $value : null;
+    }
+
+    /**
+     * The reset period in force: the explicit setting, else inferred from the
+     * format.
+     */
+    public function resolveResetPeriod(string $documentType, string $format): string
+    {
+        return $this->explicitResetPeriod($documentType) ?? $this->resetFrequencyFor($format);
+    }
+
+    /**
+     * Store the explicit reset period for a document type.
+     */
+    public function setResetPeriod(string $documentType, string $period): void
+    {
+        if (! in_array($period, self::RESET_PERIODS, true)) {
+            throw new \InvalidArgumentException("Unsupported reset period {$period}.");
         }
 
-        $probe = new NumberingSequence([
-            'prefix' => $this->prefixFor($format, $documentType),
-            'padding' => $this->paddingFor($format),
-            'format' => $format,
-            'current_number' => $current,
-        ]);
-
-        return $this->formatNumber($probe, $current + 1);
+        Setting::setValue(self::RESET_SETTING_PREFIX.$documentType, $period);
     }
 
     /**
@@ -313,6 +369,98 @@ class NumberingService
         // callers (importers, console commands, tests) share this nil UUID
         // instead of failing the uuid cast.
         return '00000000-0000-0000-0000-000000000000';
+    }
+
+    /**
+     * Load (and lock) or create the sequence row for a document type, synced
+     * to the configured format and the effective reset period. Must be called
+     * inside a transaction.
+     */
+    private function lockedSequence(string $documentType, string $tenantId, string $format): NumberingSequence
+    {
+        $sequence = NumberingSequence::where('tenant_id', $tenantId)
+            ->where('document_type', $documentType)
+            ->lockForUpdate()
+            ->first();
+
+        if ($sequence === null) {
+            $sequence = NumberingSequence::create([
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $tenantId,
+                'document_type' => $documentType,
+                'prefix' => $this->prefixFor($format, $documentType),
+                'padding' => $this->paddingFor($format),
+                'format' => $format,
+                'current_number' => 0,
+                'reset_frequency' => $this->resolveResetPeriod($documentType, $format),
+                'is_active' => true,
+            ]);
+        }
+
+        $this->syncToFormat($sequence, $documentType, $format, null);
+
+        return $sequence;
+    }
+
+    private function syncToFormat(NumberingSequence $sequence, string $documentType, string $format, ?string $resetPeriod): void
+    {
+        $sequence->prefix = $this->prefixFor($format, $documentType);
+        $sequence->padding = $this->paddingFor($format);
+        $sequence->format = $format;
+        $sequence->reset_frequency = $resetPeriod ?? $this->resolveResetPeriod($documentType, $format);
+        $sequence->is_active = true;
+    }
+
+    /**
+     * The value the next number takes: the counter (zeroed when the period
+     * has rolled over), advanced past any number already issued for the
+     * current period, plus one. Pure — does not write.
+     */
+    private function pendingValue(NumberingSequence $sequence, string $format, ?callable $existingNumbers): int
+    {
+        $current = $this->shouldReset($sequence) ? 0 : (int) $sequence->current_number;
+
+        if ($existingNumbers !== null) {
+            $existing = array_values((array) $existingNumbers($this->literalPrefix($format)));
+            $max = $this->maxSequenceIn($format, $existing);
+
+            if ($max !== null && $max > $current) {
+                $current = $max;
+            }
+        }
+
+        return $current + 1;
+    }
+
+    /**
+     * An unsaved copy of the sequence row holding the next value — what
+     * nextFor() would save, without the lock or the write.
+     */
+    private function previewSequence(
+        string $documentType,
+        string $defaultFormat,
+        ?string $tenantId,
+        ?callable $existingNumbers,
+        string $format,
+        ?string $resetPeriod,
+    ): NumberingSequence {
+        $tenantId = $this->resolveTenantId($tenantId);
+
+        $stored = NumberingSequence::where('tenant_id', $tenantId)
+            ->where('document_type', $documentType)
+            ->first();
+
+        $probe = new NumberingSequence(['current_number' => 0]);
+
+        if ($stored !== null) {
+            $probe->current_number = (int) $stored->current_number;
+            $probe->updated_at = $stored->updated_at;
+        }
+
+        $this->syncToFormat($probe, $documentType, $format, $resetPeriod);
+        $probe->current_number = $this->pendingValue($probe, $format, $existingNumbers);
+
+        return $probe;
     }
 
     /**

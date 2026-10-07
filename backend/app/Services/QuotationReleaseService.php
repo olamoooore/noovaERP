@@ -108,6 +108,9 @@ class QuotationReleaseService
                 // (and from there to its invoices).
                 'incoterm_code' => $quotation->incoterm_code,
                 'incoterm_place' => $quotation->incoterm_place,
+                // Issue #321: the accepted payment term travels with the order
+                // (and from there sets the invoice due date).
+                'payment_term_id' => $quotation->payment_term_id,
                 // #291: the header discount is part of the accepted price — it
                 // must travel onto the Sales Order (and from there the invoice),
                 // otherwise a quote accepted at 990 was ordered/billed at 1,100.

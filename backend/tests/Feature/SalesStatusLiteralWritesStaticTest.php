@@ -35,6 +35,8 @@ class SalesStatusLiteralWritesStaticTest extends TestCase
         'modules/Sales/src/Services/RecurringSalesService.php',
         'modules/Sales/src/Services/OrderLifecycleService.php',
         'modules/Sales/src/Services/SalesOrderService.php',
+        // #573 (MC8): medical case statuses are applied through the engine.
+        'app/Http/Controllers/Api/MedicalCaseController.php',
     ];
 
     private const WRITE_METHODS = [

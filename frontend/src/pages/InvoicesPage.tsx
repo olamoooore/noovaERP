@@ -26,6 +26,7 @@ import { SortableHead } from '@/components/ui/SortableHead'
 import { useSort } from '@/hooks/useSort'
 import { SalesOrderFilterChip } from '@/components/sales/SalesOrderFilterChip'
 import { useSalesOrderFilterParam } from '@/hooks/useSalesOrderFilterParam'
+import { InvoiceDeliveryChip } from '@/components/sales/DocumentProgressChip'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
 
@@ -39,6 +40,8 @@ export function InvoicesPage() {
   const [hiddenInvoiceColumns, setHiddenInvoiceColumns] = useState<number[]>([])
   const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
+  // Issue #688 (INV-UX2): "invoiced not delivered" list filter.
+  const [progressFilter, setProgressFilter] = useState<'all' | 'invoiced_not_delivered'>('all')
   // MRD FR-8.1: document-currency filter + currency sort on the list.
   const [currencyFilter, setCurrencyFilter] = useState('all')
   const [sortBy, setSortBy] = useState<'date' | 'currency'>('date')
@@ -72,6 +75,7 @@ export function InvoicesPage() {
   const activeFilterParams = () => {
     const params: Record<string, string> = {}
     if (statusFilter !== 'all') params.status = statusFilter
+    if (progressFilter !== 'all') params.progress_filter = progressFilter
     if (currencyFilter !== 'all') params.currency_code = currencyFilter
     if (sortBy === 'currency') params.sort_by = 'currency'
     if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim()
@@ -93,7 +97,7 @@ export function InvoicesPage() {
   }
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, salesOrderFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
+    queryKey: ['invoices', page, perPage, statusFilter, progressFilter, currencyFilter, sortBy, debouncedSearchQuery, customerFilter, salesOrderFilter, tagFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
@@ -308,6 +312,19 @@ export function InvoicesPage() {
                 <SelectItem value="partial">Partial</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={progressFilter}
+              onValueChange={(value) => { setProgressFilter(value as typeof progressFilter); setPage(1) }}
+            >
+              <SelectTrigger className="h-8 w-44 rounded-full px-2.5 text-xs" aria-label="Delivery progress">
+                <SelectValue placeholder="All Deliveries" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Deliveries</SelectItem>
+                <SelectItem value="invoiced_not_delivered">Invoiced, not delivered</SelectItem>
               </SelectContent>
             </Select>
 
@@ -545,6 +562,7 @@ export function InvoicesPage() {
                             {invoice.status}
                           </Badge>
                         )}
+                        <InvoiceDeliveryChip progress={invoice.delivery_progress} className="mt-1 block w-fit" />
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1.5">

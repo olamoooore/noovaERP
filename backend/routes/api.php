@@ -237,6 +237,8 @@ Route::prefix('v1/accounting')->middleware([
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':accounting.post')->group(function () {
             Route::post('/documents/{id}/sign', [\App\Http\Controllers\Accounting\ComplianceController::class, 'signDocument']);
             Route::post('/documents/{id}/submit', [\App\Http\Controllers\Accounting\ComplianceController::class, 'submitDocument']);
+            // #673 (EINV-UX4): retry the selected failed / invalid documents.
+            Route::post('/documents/bulk-retry', [\App\Http\Controllers\Accounting\ComplianceController::class, 'bulkRetryDocuments']);
             Route::post('/submissions/{id}/retry', [\App\Http\Controllers\Accounting\ComplianceController::class, 'retrySubmission']);
             Route::post('/submissions/{id}/cancel', [\App\Http\Controllers\Accounting\ComplianceController::class, 'cancelSubmission']);
             Route::post('/submissions/{id}/rejection-response', [\App\Http\Controllers\Accounting\ComplianceController::class, 'respondToRejectionRequest']);

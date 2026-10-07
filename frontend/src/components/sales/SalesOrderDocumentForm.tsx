@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
-import { SalesDocumentLineGrid } from '@/components/sales/SalesDocumentLineGrid'
+import { SalesDocumentLineGrid, type SalesDocumentLineGridHandle } from '@/components/sales/SalesDocumentLineGrid'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import {
@@ -30,6 +30,11 @@ import { isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
 import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils'
 import { emptySalesDocumentLine, isBlankSalesDocumentLine, type SalesDocumentLine } from '@/lib/salesDocumentLines'
+import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
+import { useFieldErrors } from '@/hooks/useFieldErrors'
+import { FieldErrorsProvider, FieldSlot } from '@/components/ui/field-errors'
+import { lineFieldKey, payloadRowIndexes } from '@/lib/serverValidation'
+import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
 
 /**
  * Issue #374 (SALES-SO / O5): create and edit a Sales Order directly.
@@ -91,6 +96,20 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
   // Issue #906: what to show when the server rejects a save as stale.
   const [conflict, setConflict] = useState<SaveConflict | null>(null)
   const lastPayloadRef = useRef<Record<string, any> | null>(null)
+  // #318: inline field errors; server line indexes map back through the grid
+  // rows that were actually sent.
+  const fieldErrors = useFieldErrors()
+  const payloadRowsRef = useRef<number[]>([])
+  // #317: edit mode is "ready" for dirty tracking once the order is loaded.
+  const [hydrated, setHydrated] = useState(false)
+  // #319: keyboard-first entry — a new document starts on the customer, and
+  // a customer pick moves on to line 1's product.
+  const customerFieldRef = useRef<HTMLDivElement>(null)
+  const lineGridRef = useRef<SalesDocumentLineGridHandle>(null)
+  useEffect(() => {
+    if (mode !== 'create') return
+    customerFieldRef.current?.querySelector<HTMLElement>('button[role="combobox"]')?.focus()
+  }, [mode])
 
   const { data: order, isLoading, refetch: refetchOrder } = useQuery({
     queryKey: ['sales-order', documentId],
@@ -168,8 +187,41 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         invoicing_policy: line.invoicing_policy ?? null,
       }))
     setLines(mapped.length > 0 ? mapped : [emptySalesDocumentLine()])
+    setHydrated(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order])
+
+  // #317: unsaved-changes guard + local (this device only) draft autosave.
+  // Only a draft order is editable here, so only then is anything guarded.
+  const draftGuard = useDocumentDraftGuard({
+    kind: 'sales-order',
+    documentId: mode === 'edit' ? documentId : null,
+    version: mode === 'edit' ? order?.lock_version ?? null : null,
+    ready: mode === 'create' || (hydrated && order?.status === 'draft'),
+    snapshot: {
+      customerId, orderDate, requiredDate, commitmentDate, shippingPolicy, customerReference, salesperson,
+      incotermCode, incotermPlace, notes, internalNotes, discountAmount, discountMode, lines,
+      currencyCode, priceListId,
+    },
+    apply: (draft) => {
+      setCustomerId(draft.customerId)
+      setOrderDate(draft.orderDate)
+      setRequiredDate(draft.requiredDate)
+      setCommitmentDate(draft.commitmentDate)
+      setShippingPolicy(draft.shippingPolicy)
+      setCustomerReference(draft.customerReference)
+      setSalesperson(draft.salesperson)
+      setIncotermCode(draft.incotermCode)
+      setIncotermPlace(draft.incotermPlace)
+      setNotes(draft.notes)
+      setInternalNotes(draft.internalNotes)
+      setDiscountAmount(draft.discountAmount)
+      setDiscountMode(draft.discountMode)
+      setLines(draft.lines)
+      setCurrencyCode(draft.currencyCode)
+      setPriceListId(draft.priceListId)
+    },
+  })
 
   // A new order re-resolves engine prices when the customer changes (FR-2.3).
   useEffect(() => {
@@ -184,13 +236,19 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
       return response.data
     },
     onSuccess: (data) => {
+      draftGuard.clearDraft()
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
       toast({ title: 'Sales order created' })
       const id = data?.data?.id ?? data?.id
       navigate(id ? `/sales/orders/${id}` : '/sales/orders')
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Failed to create sales order', description: getApiErrorMessage(error) })
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current)
+      toast({
+        variant: 'destructive',
+        title: inline ? 'Please fix the highlighted fields' : 'Failed to create sales order',
+        description: getApiErrorMessage(error),
+      })
     },
   })
 
@@ -202,6 +260,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
     },
     onSuccess: () => {
       setConflict(null)
+      draftGuard.clearDraft()
       queryClient.invalidateQueries({ queryKey: ['sales-order', documentId] })
       queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
       toast({ title: 'Sales order updated' })
@@ -213,7 +272,12 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         setConflict(saveConflict)
         return
       }
-      toast({ variant: 'destructive', title: 'Failed to update sales order', description: getApiErrorMessage(error) })
+      const inline = fieldErrors.showServer(error, payloadRowsRef.current)
+      toast({
+        variant: 'destructive',
+        title: inline ? 'Please fix the highlighted fields' : 'Failed to update sales order',
+        description: getApiErrorMessage(error),
+      })
     },
   })
 
@@ -223,17 +287,22 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
+    fieldErrors.clearAll()
 
     if (!customerId) {
+      fieldErrors.show({ customer_id: 'Please select a customer' })
       toast({ variant: 'destructive', title: 'Please select a customer' })
       return
     }
 
-    const submissionLines = (lines as SalesOrderFormLine[])
-      .filter((line) => !isBlankSalesDocumentLine(line))
-      .filter((line) => line.description || line.product_id)
+    const isSent = (line: SalesOrderFormLine) =>
+      !isBlankSalesDocumentLine(line) && Boolean(line.description || line.product_id)
+    const submissionLines = (lines as SalesOrderFormLine[]).filter(isSent)
+    // #318: grid row of each submitted line, for inline line errors.
+    const submissionRows = payloadRowIndexes(lines as SalesOrderFormLine[], isSent)
 
     if (submissionLines.length === 0) {
+      fieldErrors.show({ lines: 'Add at least one line item' })
       toast({ variant: 'destructive', title: 'Please add at least one line item' })
       return
     }
@@ -242,6 +311,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
       (line.line_type ?? 'product') === 'product' && !line.product_id,
     )
     if (missingProductIndex >= 0) {
+      fieldErrors.show({ [lineFieldKey(submissionRows[missingProductIndex], 'product_id')]: 'Select a product before saving.' })
       toast({
         variant: 'destructive',
         title: `Product required on line ${missingProductIndex + 1}`,
@@ -254,6 +324,9 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
       (line.line_type ?? 'product') === 'product' && !isValidProductQuantity(line.quantity),
     )
     if (invalidQuantityIndex >= 0) {
+      fieldErrors.show({
+        [lineFieldKey(submissionRows[invalidQuantityIndex], 'quantity')]: 'Enter a quantity greater than 0 with at most 4 decimals.',
+      })
       toast({
         variant: 'destructive',
         title: `Invalid quantity on line ${invalidQuantityIndex + 1}`,
@@ -263,6 +336,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
     }
 
     if (discountMode === 'percentage' && discountValue > 100) {
+      fieldErrors.show({ discount_amount: 'Percentage discount cannot exceed 100%' })
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' })
       return
     }
@@ -301,6 +375,8 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         ...(line.invoicing_policy ? { invoicing_policy: line.invoicing_policy } : {}),
       })),
     }
+
+    payloadRowsRef.current = submissionRows
 
     if (mode === 'edit') {
       payload.version = order?.lock_version ?? undefined
@@ -364,7 +440,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
   const isPending = mode === 'edit' ? updateMutation.isPending : createMutation.isPending
 
   return (
-    <div className={cn('space-y-6 p-6', SALES_FORM_CLASS)} data-density={density}>
+    <div className={cn('space-y-6 p-6', SALES_FORM_CLASS)} data-density={density} {...draftGuard.trackProps}>
       <PageHeader
         title={mode === 'create' ? 'Create Sales Order' : 'Edit Sales Order'}
         description={
@@ -375,11 +451,17 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
               : 'Update the draft sales order'
         }
         backTo={mode === 'create' ? '/sales/orders' : `/sales/orders/${documentId}`}
+        guardBack={draftGuard.guard}
       />
 
       {mode === 'edit' && <EditingBanner activeEditor={order?.active_lock} currentUserId={currentUserId} />}
 
-      <form onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
+      <DocumentDraftBanner guard={draftGuard} label="sales order" />
+
+      <FieldErrorsProvider value={fieldErrors}>
+      {/* #318: validation is reported inline on the field (scroll + focus);
+          native browser bubbles would block submit before it can run. */}
+      <form noValidate onSubmit={handleSubmit} onKeyDown={preventImplicitSubmit}>
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Order Details</CardTitle>
@@ -388,17 +470,23 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
             <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-4 xl:grid-cols-12">
               <div className="col-span-2 md:col-span-2 xl:col-span-6">
                 <label className="mb-1 block text-xs font-medium">Customer *</label>
-                <CustomerSearchCombobox
-                  className={cn(SALES_CONTROL, 'justify-between')}
-                  value={customerId}
-                  onValueChange={(id, customer) => {
-                    setCustomerId(id)
-                    if (customer && (customer as any).code) {
-                      setCustomerReference((current) => current || (customer as any).code)
-                    }
-                  }}
-                  placeholder="Search customers..."
-                />
+                <FieldSlot name="customer_id">
+                  <div ref={customerFieldRef}>
+                    <CustomerSearchCombobox
+                      focusAfterSelect={() => lineGridRef.current?.focusFirstOpenProduct()}
+                      className={cn(SALES_CONTROL, 'justify-between')}
+                      value={customerId}
+                      onValueChange={(id, customer) => {
+                        fieldErrors.clear('customer_id')
+                        setCustomerId(id)
+                        if (customer && (customer as any).code) {
+                          setCustomerReference((current) => current || (customer as any).code)
+                        }
+                      }}
+                      placeholder="Search customers..."
+                    />
+                  </div>
+                </FieldSlot>
               </div>
               <div className="col-span-1 xl:col-span-3">
                 <label className="mb-1 block text-xs font-medium" htmlFor="so-order-date">Order Date</label>
@@ -565,13 +653,16 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
             <CardTitle>Line Items</CardTitle>
           </CardHeader>
           <CardContent>
-            <SalesDocumentLineGrid
-              lines={lines}
-              setLines={setLines}
-              money={money}
-              resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
-              defaultHiddenColumns={[6]}
-            />
+            <FieldSlot name="lines" highlight={false}>
+              <SalesDocumentLineGrid
+                ref={lineGridRef}
+                lines={lines}
+                setLines={setLines}
+                money={money}
+                resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
+                defaultHiddenColumns={[6]}
+              />
+            </FieldSlot>
 
             <DocumentTotalsCard
               subtotal={totals.grossSubtotal}
@@ -623,7 +714,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate(mode === 'edit' ? `/sales/orders/${documentId}` : '/sales/orders')}
+            onClick={() => draftGuard.guard(() => navigate(mode === 'edit' ? `/sales/orders/${documentId}` : '/sales/orders'))}
           >
             Cancel
           </Button>
@@ -635,6 +726,7 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
           </Button>
         </div>
       </form>
+      </FieldErrorsProvider>
 
       {mode === 'edit' && (
         <SaveConflictDialog
@@ -646,6 +738,8 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
           onOverwrite={handleOverwrite}
         />
       )}
+
+      <DocumentLeaveDialog guard={draftGuard} />
     </div>
   )
 }

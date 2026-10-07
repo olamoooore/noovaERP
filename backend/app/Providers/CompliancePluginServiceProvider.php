@@ -249,7 +249,8 @@ class CompliancePluginServiceProvider extends ServiceProvider
         /** @var ComplianceService $complianceService */
         $complianceService = app(ComplianceService::class);
 
-        foreach ($complianceService->autoSubmitCountryCodes() as $countryCode) {
+        // #668 (EI6): gated by the document's legal entity country.
+        foreach ($complianceService->autoSubmitCountryCodesFor($source) as $countryCode) {
             try {
                 // Idempotent: an invoice's document was already created as
                 // queued inside its posting transaction.

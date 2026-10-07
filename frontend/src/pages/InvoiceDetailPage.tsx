@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import { ChatterDock } from '@/components/chatter'
 import { AuditTab } from '@/components/audit/AuditTab'
 import { InvoiceJournalTab } from '@/components/accounting/InvoiceJournalTab'
 import { InvoiceWriteOffDialog } from '@/components/accounting/InvoiceWriteOffDialog'
+import { EInvoiceReadinessPanel } from '@/components/accounting/EInvoiceReadinessPanel'
 import { StockMovesTab } from '@/components/inventory/StockMovesTab'
 import { StockCogsBadge } from '@/components/inventory/StockCogsBadge'
 import { TagEditor } from '@/components/tags/TagEditor'
@@ -32,7 +33,13 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Textarea } from '@/components/ui/textarea'
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog'
+import { UnappliedCreditsCard } from '@/components/payment/PaymentAllocations'
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment'
+import {
+  InvoiceDeliveryProgressSummary,
+  InvoiceLineDeliveryChip,
+  type InvoiceDeliveryProgress,
+} from '@/components/sales/DocumentProgressChip'
 
 interface Invoice {
   id: number
@@ -112,6 +119,8 @@ interface Invoice {
   sales_order?: { id: number; sales_order_number: string }
   quotation?: { id: number; quotation_number: string }
   delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
+  // Issue #688 (INV-UX2): "Delivered x/y", header and per line.
+  delivery_progress?: InvoiceDeliveryProgress | null
   requires_approval?: boolean
   approval_status?: 'not_required' | 'pending' | 'approved' | 'rejected' | 'expired' | 'withdrawn'
   approval_request_id?: number
@@ -440,7 +449,16 @@ export function InvoiceDetailPage() {
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [writeOffDialogOpen, setWriteOffDialogOpen] = useState(false)
   // #491: register a payment in place (existing dialog + POST /payments).
-  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(false)
+  // #487: the retired /invoices/:id/payment page redirects here with
+  // ?register_payment=1 — open the shared dialog once, then drop the flag.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(() => searchParams.get('register_payment') === '1')
+  useEffect(() => {
+    if (searchParams.get('register_payment') !== '1') return
+    const next = new URLSearchParams(searchParams)
+    next.delete('register_payment')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
   const canRegisterPayment = useCanRegisterPayment()
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
   const [sendDialogPaymentUrl, setSendDialogPaymentUrl] = useState<string | null>(null)
@@ -901,6 +919,16 @@ export function InvoiceDetailPage() {
         </div>
       )}
 
+      {/* #671 (EINV-UX2): e-invoice gaps (TIN, classification, address)
+          shown before Post, with customer fixes in place. */}
+      {id && (
+        <EInvoiceReadinessPanel
+          invoiceId={id}
+          enabled={invoice.status === 'draft'}
+          canEditCustomer={hasPermission('customers.write')}
+        />
+      )}
+
       <Tabs defaultValue="document" className="space-y-6">
         <TabsList className="h-10 w-fit rounded-full print:hidden">
           <TabsTrigger value="document" className="gap-2 rounded-full px-4">
@@ -939,6 +967,7 @@ export function InvoiceDetailPage() {
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
           />
         ))}
+        <InvoiceDeliveryProgressSummary progress={invoice.delivery_progress} />
         {(invoice.write_offs ?? []).filter((writeOff) => writeOff.journal_entry_id).map((writeOff) => (
           <Link
             key={`write-off-${writeOff.id}`}
@@ -1080,7 +1109,12 @@ export function InvoiceDetailPage() {
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
-                    <TableCell className="text-right">{line.quantity}</TableCell>
+                    <TableCell className="text-right">
+                      <div>{line.quantity}</div>
+                      <div className="mt-1 print:hidden">
+                        <InvoiceLineDeliveryChip progress={invoice.delivery_progress} lineId={line.id} />
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">{money(line.unit_price)}</TableCell>
                     <TableCell className="text-right">{money(line.tax_amount)}</TableCell>
                     <TableCell className="text-right font-medium">{money(line.line_total)}</TableCell>
@@ -1355,6 +1389,19 @@ export function InvoiceDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* #488 (PAY-UX2): the customer's unapplied payments, applicable here. */}
+          {isInvoicePayable(invoice) && invoice.customer_id && (
+            <div className="mb-8">
+              <UnappliedCreditsCard
+                customerId={Number(invoice.customer_id)}
+                invoiceId={invoice.id}
+                invoiceBalance={Number(invoice.balance ?? 0)}
+                currency={invoice.currency_code}
+                hideWhenEmpty
+              />
+            </div>
+          )}
 
           {/* Payment History */}
           {invoice.payments && invoice.payments.length > 0 && (

@@ -35,6 +35,8 @@ interface LineItemsTableProps {
   variant?: 'raw' | 'shadcn'
   tableClassName?: string
   headRowClassName?: string
+  /** Rows after the line rows (raw variant), e.g. the #319 new-line entry row. */
+  footer?: React.ReactNode
 }
 
 function headerCellClassName(column: LineItemsColumn): string {
@@ -50,6 +52,7 @@ export function LineItemsTable({
   variant = 'raw',
   tableClassName,
   headRowClassName,
+  footer,
 }: LineItemsTableProps) {
   const visibleColumns = columns.filter((column) => !column.hidden)
 
@@ -82,6 +85,7 @@ export function LineItemsTable({
         </tr>
       </thead>
       <tbody>{children}</tbody>
+      {footer && <tfoot>{footer}</tfoot>}
     </table>
   )
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\InvoiceEvidence;
 use App\Services\InvoiceEvidenceService;
+use App\Services\SalesSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -165,13 +166,6 @@ class InvoiceAcceptanceController extends Controller
 
     public function accept(Request $request, string $token)
     {
-        $validated = $request->validate([
-            'signer_name' => 'required|string|max:255',
-            'signer_email' => 'required|email|max:255',
-            'agreed' => 'accepted',
-            'signature' => 'nullable|string|max:1048576',
-        ]);
-
         $evidence = $this->evidenceService->findByAcceptanceToken($token);
 
         if (! $evidence) {
@@ -180,6 +174,31 @@ class InvoiceAcceptanceController extends Controller
                 'code' => 'INVALID_TOKEN',
             ], 404);
         }
+
+        // #539: the tenant's portal settings are enforced server-side
+        // (InitializeTenantForPublicAccess bound the owning tenant). Acceptance can be
+        // switched off, and a drawn signature is required unless the tenant
+        // turned sales.portal.require_signature off.
+        $salesSettings = app(SalesSettings::class);
+
+        if (! $salesSettings->acceptanceEnabled()) {
+            return response()->json([
+                'error' => 'Online acceptance is not available for this invoice.',
+                'code' => 'ACCEPTANCE_DISABLED',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'signer_name' => 'required|string|max:255',
+            'signer_email' => 'required|email|max:255',
+            'agreed' => 'accepted',
+            'signature' => [
+                $salesSettings->requireSignature() ? 'required' : 'nullable',
+                'string',
+                'max:1048576',
+                ...($salesSettings->requireSignature() ? ['starts_with:data:image/'] : []),
+            ],
+        ]);
 
         $invoice = Invoice::find($evidence->invoice_id);
 

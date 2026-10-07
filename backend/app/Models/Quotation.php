@@ -13,6 +13,40 @@ class Quotation extends Model implements WorkflowSubject
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * Issue #634: header fields whose edits are written to the chatter History
+     * feed as "field: old → new" (see App\Services\Chatter\FieldChangeTracker).
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const CHATTER_TRACKED_FIELDS = [
+        'customer_id' => ['Customer', 'customer'],
+        'quotation_date' => ['Quotation date', 'date'],
+        'valid_until' => ['Valid until', 'date'],
+        'commitment_date' => ['Commitment date', 'date'],
+        'delivery_date' => ['Delivery date', 'date'],
+        'payment_term_id' => ['Payment term', 'payment_term'],
+        'credit_terms' => ['Credit terms', 'text'],
+        'salesperson' => ['Salesperson', 'text'],
+        'discount_type' => ['Discount type', 'text'],
+        'discount_value' => ['Discount value', 'decimal'],
+        'discount_amount' => ['Discount', 'money'],
+    ];
+
+    /**
+     * Issue #634: line fields whose old → new values are shown in the chatter
+     * History feed (grouped per line). Keys match the audit line snapshot.
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
+    public const CHATTER_TRACKED_LINE_FIELDS = [
+        'description' => ['description', 'text'],
+        'quantity' => ['qty', 'quantity'],
+        'unit_price' => ['price', 'money'],
+        'discount_amount' => ['discount', 'money'],
+        'tax_rate' => ['tax', 'percent'],
+    ];
+
     protected static function boot(): void
     {
         parent::boot();
@@ -65,6 +99,8 @@ class Quotation extends Model implements WorkflowSubject
         'customer_reference',
         'internal_reference',
         'credit_terms',
+        // Issue #321: payment term from the payment-terms master.
+        'payment_term_id',
         'attention_to',
         'billing_contact_id',
         'shipping_contact_id',

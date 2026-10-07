@@ -269,6 +269,8 @@ class QuotationController extends Controller
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:255',
             'credit_terms' => 'nullable|string|max:255',
+            // Issue #321: payment term picked from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'attention_to' => 'nullable|string|max:255',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
@@ -340,6 +342,9 @@ class QuotationController extends Controller
         $validated = app(\App\Services\SalesDefaultsService::class)
             ->applyCreationDefaults($validated, Auth::id());
 
+        // Issue #321: a master payment term also sets the printed credit terms.
+        $validated = $this->applyPaymentTerm($validated);
+
         // A supplied price without an explicit intent is legacy behaviour
         // (kept verbatim); the wired UI always sends price_mode.
         $linePriceMode = static function (array $lineData): string {
@@ -374,6 +379,7 @@ class QuotationController extends Controller
                     'customer_reference' => $validated['customer_reference'] ?? null,
                     'internal_reference' => $validated['internal_reference'] ?? null,
                     'credit_terms' => $validated['credit_terms'] ?? null,
+                    'payment_term_id' => $validated['payment_term_id'] ?? null,
                     'attention_to' => $validated['attention_to'] ?? null,
                     'billing_contact_id' => $validated['billing_contact_id'] ?? null,
                     'shipping_contact_id' => $validated['shipping_contact_id'] ?? null,
@@ -527,6 +533,25 @@ class QuotationController extends Controller
         return response()->json($quotation);
     }
 
+    /**
+     * Issue #321: when a payment term is picked from the master, the
+     * quotation's printed credit terms follow the term's name so the two
+     * can never disagree. Without a term the free-text value is kept as-is
+     * (legacy documents and imports).
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function applyPaymentTerm(array $validated): array
+    {
+        if (! empty($validated['payment_term_id'])) {
+            $term = \App\Models\PaymentTerm::query()->findOrFail((int) $validated['payment_term_id']);
+            $validated['credit_terms'] = $term->name;
+        }
+
+        return $validated;
+    }
+
     public function update(Request $request, $id)
     {
         $quotation = Quotation::find($id);
@@ -557,6 +582,8 @@ class QuotationController extends Controller
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:255',
             'credit_terms' => 'nullable|string|max:255',
+            // Issue #321: payment term picked from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'attention_to' => 'nullable|string|max:255',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
@@ -618,6 +645,9 @@ class QuotationController extends Controller
             $validated['discount_type'] = 'fixed';
             $validated['discount_value'] = $validated['discount_amount'];
         }
+
+        // Issue #321: a master payment term also sets the printed credit terms.
+        $validated = $this->applyPaymentTerm($validated);
 
         $before = $quotation->getOriginal();
         // Issue #895: the draft edit replaces lines (delete + recreate), which
@@ -744,13 +774,25 @@ class QuotationController extends Controller
             Auth::user(),
         );
 
+        // Issue #895 snapshots, reused by #634 for the chatter field-change list.
+        $afterHeader = $quotation->fresh()->getAttributes();
+        $afterLines = $quotation->lines()->get()
+            ->map(fn ($line) => $this->auditLineSnapshot($line))
+            ->values()
+            ->all();
+
+        // Issue #634: one chatter entry per save listing every tracked field
+        // (header and lines) with its old → new value.
+        $tracked = app(\App\Services\Chatter\FieldChangeTracker::class)
+            ->track(Quotation::class, $before, $afterHeader, $beforeLines, $afterLines);
+
         $extra = $request->has('lines') ? ['lines' => 'line items replaced'] : [];
-        if ($changedFields !== [] || $extra !== []) {
+        if ($changedFields !== [] || $extra !== [] || $tracked !== []) {
             $this->logQuotationChatter(
                 $quotation,
                 'updated',
                 "Updated quotation {$quotation->quotation_number}",
-                $extra + ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)],
+                $extra + ['fields' => $changedFields === [] ? 'line items' : implode(', ', $changedFields)] + $tracked,
             );
 
             // Issue #895: field-level, append-only audit of what the edit
@@ -763,11 +805,8 @@ class QuotationController extends Controller
                     'lines' => $beforeLines,
                 ],
                 [
-                    'fields' => array_intersect_key($quotation->fresh()->getAttributes(), array_flip($changedFields)),
-                    'lines' => $quotation->lines()->get()
-                        ->map(fn ($line) => $this->auditLineSnapshot($line))
-                        ->values()
-                        ->all(),
+                    'fields' => array_intersect_key($afterHeader, array_flip($changedFields)),
+                    'lines' => $afterLines,
                 ],
                 ['quotation_number' => $quotation->quotation_number],
             );
