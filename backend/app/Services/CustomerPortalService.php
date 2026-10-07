@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Modules\Sales\Models\SalesOrder;
 
 /**
  * Issue #337 — customer portal: a signed, expiring, revocable per-customer
@@ -24,9 +25,9 @@ use Illuminate\Support\Str;
  *     and in the central #466 `public.document_token_lookup` registry that the
  *     public route uses to resolve the owning tenant in one indexed lookup.
  *   - A link is scoped to exactly one customer and, when issued under a legal
- *     entity, to that entity's invoices. Every document route re-checks the
- *     document against that scope; anything outside it is a 404 (never a 403,
- *     which would confirm the id exists).
+ *     entity, to that entity's invoices, orders and quotations. Every
+ *     document route re-checks the document against that scope; anything
+ *     outside it is a 404 (never a 403, which would confirm the id exists).
  *   - Revocation removes the central mapping, so a revoked token no longer
  *     even resolves a tenant.
  */
@@ -38,6 +39,13 @@ class CustomerPortalService
 
     /** Quotation statuses a customer may see: sent (open) or confirmed (accepted). */
     public const VISIBLE_QUOTATION_STATUSES = ['sent', 'confirmed'];
+
+    /**
+     * Issue #337 (re-verification): OPEN sales orders a customer may see —
+     * confirmed and not yet fully invoiced or cancelled (draft orders were
+     * never sent; invoiced orders surface as their invoices).
+     */
+    public const OPEN_ORDER_STATUSES = ['confirmed', 'allocated', 'fulfilled'];
 
     public function __construct(private DocumentTokenRegistry $registry) {}
 
@@ -136,14 +144,66 @@ class CustomerPortalService
     }
 
     /**
-     * Sent/accepted quotations of the link's customer. Quotations carry no
-     * legal entity column yet, so they are scoped by customer only.
+     * Sent/accepted quotations of the link's customer (and entity).
+     *
+     * Quotations carry no legal entity column. On an entity-scoped link they
+     * follow the platform rule (SalesDocumentEntityScope: a quotation belongs
+     * to its customer's entity), but fail closed like invoices do:
+     *   - a quotation converted into an order belongs to that ORDER's entity
+     *     (the one real per-document signal), so it is shown only when the
+     *     order is in the link's entity;
+     *   - an unconverted quotation (or one whose order has no entity) is
+     *     shown only when the customer itself belongs to the link's entity —
+     *     a shared customer (no entity) could hold quotations for any entity,
+     *     so none of those are shown.
      */
     public function quotationsQuery(CustomerPortalLink $link): Builder
     {
-        return Quotation::query()
+        $query = Quotation::query()
+            ->where('quotations.customer_id', $link->customer_id)
+            ->whereIn('quotations.status', self::VISIBLE_QUOTATION_STATUSES);
+
+        if ($link->legal_entity_id === null) {
+            return $query;
+        }
+
+        $entityId = (int) $link->legal_entity_id;
+        $customerInEntity = Customer::query()
+            ->whereKey($link->customer_id)
+            ->where('legal_entity_id', $entityId)
+            ->exists();
+
+        return $query->where(function (Builder $scope) use ($entityId, $customerInEntity) {
+            $scope->whereIn('quotations.sales_order_id', fn ($orders) => $orders->select('id')
+                ->from('sales_orders')
+                ->where('legal_entity_id', $entityId));
+
+            if ($customerInEntity) {
+                $scope->orWhere(fn (Builder $unconverted) => $unconverted
+                    ->whereNull('quotations.sales_order_id')
+                    ->orWhereIn('quotations.sales_order_id', fn ($orders) => $orders->select('id')
+                        ->from('sales_orders')
+                        ->whereNull('legal_entity_id')));
+            }
+        });
+    }
+
+    /**
+     * Open sales orders of the link's customer (and entity). Orders carry
+     * their own legal entity (#140); like invoices, an order with no entity
+     * is not shown on an entity-scoped portal (fail closed).
+     */
+    public function salesOrdersQuery(CustomerPortalLink $link): Builder
+    {
+        $query = SalesOrder::query()
             ->where('customer_id', $link->customer_id)
-            ->whereIn('status', self::VISIBLE_QUOTATION_STATUSES);
+            ->whereIn('status', self::OPEN_ORDER_STATUSES);
+
+        if ($link->legal_entity_id !== null) {
+            $query->where('legal_entity_id', $link->legal_entity_id);
+        }
+
+        return $query;
     }
 
     /**

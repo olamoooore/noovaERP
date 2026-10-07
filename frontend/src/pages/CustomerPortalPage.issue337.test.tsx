@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import CustomerPortalPage from './CustomerPortalPage'
@@ -70,6 +70,53 @@ describe('CustomerPortalPage (#337)', () => {
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customer-portal/tok/invoices/7/pay'))
     await waitFor(() => expect(toast).toHaveBeenCalled())
     expect(assign).not.toHaveBeenCalled()
+  })
+
+  it('lists open sales orders with delivery/invoice status and downloads the order confirmation', async () => {
+    apiGet.mockResolvedValueOnce({
+      data: {
+        ...payload(),
+        orders: [
+          {
+            id: 11,
+            sales_order_number: 'SO-11',
+            order_date: '2026-10-02',
+            commitment_date: null,
+            status: 'confirmed',
+            currency_code: 'USD',
+            total: 300,
+            customer_reference: 'PO-9',
+            invoice_status: 'to_invoice',
+            delivery_status: 'partially_delivered',
+          },
+        ],
+      },
+    })
+    apiGet.mockResolvedValueOnce({ data: new Blob(['%PDF']) })
+    const createObjectURL = vi.fn(() => 'blob:x')
+    const revokeObjectURL = vi.fn()
+    Object.assign(URL, { createObjectURL, revokeObjectURL })
+
+    renderPage()
+
+    const table = await screen.findByRole('table', { name: 'Open orders' })
+    expect(within(table).getByText('SO-11')).toBeTruthy()
+    expect(within(table).getByText('Your ref: PO-9')).toBeTruthy()
+    expect(within(table).getByText('Confirmed')).toBeTruthy()
+    expect(within(table).getByText('Partially delivered')).toBeTruthy()
+    expect(within(table).getByText('Not invoiced')).toBeTruthy()
+
+    fireEvent.click(within(table).getByRole('button', { name: 'Download' }))
+    await waitFor(() =>
+      expect(apiGet).toHaveBeenCalledWith('/customer-portal/tok/orders/11/pdf', { responseType: 'blob' }),
+    )
+  })
+
+  it('shows an empty orders state when the customer has no open orders', async () => {
+    apiGet.mockResolvedValueOnce({ data: { ...payload(), orders: [] } })
+    renderPage()
+
+    expect(await screen.findByText('No open orders.')).toBeTruthy()
   })
 
   it('shows the expired state on 410', async () => {

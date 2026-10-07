@@ -16,6 +16,7 @@ use App\Services\SalesSettings;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Modules\Sales\Models\SalesOrder;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -82,6 +83,26 @@ class CustomerPortalController extends Controller
                 'acceptance_token' => $this->liveAcceptanceToken($quotation),
             ])->values()->all();
 
+        $orders = $this->portal->salesOrdersQuery($link)
+            ->with('lines')
+            ->orderByDesc('order_date')
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get()
+            ->map(fn (SalesOrder $order) => [
+                'id' => $order->id,
+                'sales_order_number' => $order->sales_order_number,
+                'order_date' => $order->order_date?->format('Y-m-d'),
+                'commitment_date' => $order->commitment_date?->format('Y-m-d'),
+                'status' => $order->status,
+                'currency_code' => $order->currency_code,
+                'total' => (float) $order->total,
+                'customer_reference' => $order->customer_reference,
+                // #371 canonical invoice progress (never re-derived here).
+                'invoice_status' => $order->invoiceStatus(),
+                'delivery_status' => $this->deliveryStatus($order),
+            ])->values()->all();
+
         return response()->json([
             'customer' => [
                 'name' => $customer->name,
@@ -91,6 +112,7 @@ class CustomerPortalController extends Controller
             'expires_at' => $link->expires_at?->toIso8601String(),
             'invoices' => $invoices,
             'quotations' => $quotations,
+            'orders' => $orders,
         ]);
     }
 
@@ -149,6 +171,28 @@ class CustomerPortalController extends Controller
         }
 
         return $this->renderPdf($pdf, 'quotation', (string) $model->id, 'quotation-'.$model->quotation_number.'.pdf');
+    }
+
+    /**
+     * The customer-facing document of an order is its order confirmation
+     * (#405 template), rendered through the same PdfGenerationService path
+     * the staff `/sales/orders/{id}/confirmation/pdf` route uses.
+     */
+    public function salesOrderPdf(string $token, string $order, PdfGenerationServiceContract $pdf): Response
+    {
+        [$link, , $error] = $this->guard($token);
+        if ($error !== null) {
+            return $error;
+        }
+
+        $model = ctype_digit($order)
+            ? $this->portal->salesOrdersQuery($link)->whereKey((int) $order)->first()
+            : null;
+        if (! $model) {
+            return $this->documentNotFound();
+        }
+
+        return $this->renderPdf($pdf, 'sales_order_confirmation', (string) $model->id, 'order-'.$model->sales_order_number.'.pdf');
     }
 
     public function pay(string $token, string $invoice, InvoiceService $invoices, SalesSettings $settings): JsonResponse
@@ -253,6 +297,31 @@ class CustomerPortalController extends Controller
         }
 
         return $this->portal->invoicesQuery($link)->whereKey((int) $invoice)->first();
+    }
+
+    /**
+     * Delivery progress from the order lines' delivered quantities, using the
+     * order's own #408 isFullyDelivered rule. Null when nothing is deliverable
+     * (service/note-only orders).
+     */
+    private function deliveryStatus(SalesOrder $order): ?string
+    {
+        $deliverable = $order->lines->filter(
+            fn ($line) => ! in_array($line->line_type ?? 'product', ['note', 'section'], true)
+                && (float) $line->quantity - (float) $line->quantity_cancelled > 0.0001
+        );
+
+        if ($deliverable->isEmpty()) {
+            return null;
+        }
+
+        if ($order->isFullyDelivered()) {
+            return 'delivered';
+        }
+
+        return $deliverable->contains(fn ($line) => (float) $line->quantity_delivered > 0.0001)
+            ? 'partially_delivered'
+            : 'not_delivered';
     }
 
     private function liveAcceptanceToken(Quotation $quotation): ?string

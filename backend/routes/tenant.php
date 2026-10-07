@@ -242,6 +242,8 @@ Route::middleware([
             ->middleware('throttle:30,1,customer-portal-pdf');
         Route::get('/quotations/{quotation}/pdf', [\App\Http\Controllers\Api\CustomerPortalController::class, 'quotationPdf'])
             ->middleware('throttle:30,1,customer-portal-pdf');
+        Route::get('/orders/{order}/pdf', [\App\Http\Controllers\Api\CustomerPortalController::class, 'salesOrderPdf'])
+            ->middleware('throttle:30,1,customer-portal-pdf');
         Route::post('/invoices/{invoice}/pay', [\App\Http\Controllers\Api\CustomerPortalController::class, 'pay'])
             ->middleware('throttle:10,1,customer-portal-pay');
     });

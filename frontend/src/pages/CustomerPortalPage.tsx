@@ -17,6 +17,7 @@ import api from '@/lib/api'
  *   GET  /api/v1/customer-portal/{token}/statement
  *   GET  /api/v1/customer-portal/{token}/invoices/{id}/pdf
  *   GET  /api/v1/customer-portal/{token}/quotations/{id}/pdf
+ *   GET  /api/v1/customer-portal/{token}/orders/{id}/pdf   (order confirmation)
  *   POST /api/v1/customer-portal/{token}/invoices/{id}/pay
  *
  * Open quotations link to the existing /quotation-accept/:token page.
@@ -47,12 +48,26 @@ interface PortalQuotation {
   acceptance_token: string | null
 }
 
+interface PortalOrder {
+  id: number
+  sales_order_number: string
+  order_date: string | null
+  commitment_date: string | null
+  status: string
+  currency_code: string | null
+  total: number
+  customer_reference: string | null
+  invoice_status: string | null
+  delivery_status: string | null
+}
+
 interface PortalPayload {
   customer: { name: string; code?: string | null }
   company?: { name?: string; logo_url?: string }
   expires_at: string | null
   invoices: PortalInvoice[]
   quotations: PortalQuotation[]
+  orders?: PortalOrder[]
 }
 
 interface StatementPayload {
@@ -73,6 +88,25 @@ const money = (n: number, code?: string | null) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: code || 'USD', minimumFractionDigits: 2 }).format(
     Number(n) || 0,
   )
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  confirmed: 'Confirmed',
+  allocated: 'In preparation',
+  fulfilled: 'Fulfilled',
+}
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  not_delivered: 'Not delivered',
+  partially_delivered: 'Partially delivered',
+  delivered: 'Delivered',
+}
+
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  nothing_to_invoice: 'Nothing to invoice',
+  to_invoice: 'Not invoiced',
+  partially_invoiced: 'Partially invoiced',
+  fully_invoiced: 'Invoiced',
+}
 
 const isHttpUrl = (url: unknown): url is string => typeof url === 'string' && /^https?:\/\//i.test(url)
 
@@ -301,6 +335,68 @@ export default function CustomerPortalPage() {
                               </Link>
                             </Button>
                           ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Orders</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(data.orders ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No open orders.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" aria-label="Open orders">
+                  <thead>
+                    <tr className="text-left text-muted-foreground">
+                      <th className="py-2 pr-3">Order</th>
+                      <th className="py-2 pr-3">Date</th>
+                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2 pr-3">Delivery</th>
+                      <th className="py-2 pr-3">Invoicing</th>
+                      <th className="py-2 pr-3 text-right">Total</th>
+                      <th className="py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.orders ?? []).map((o) => (
+                      <tr key={o.id} className="border-t">
+                        <td className="py-2 pr-3 font-medium">
+                          {o.sales_order_number}
+                          {o.customer_reference ? (
+                            <div className="text-xs text-muted-foreground">Your ref: {o.customer_reference}</div>
+                          ) : null}
+                        </td>
+                        <td className="py-2 pr-3">{o.order_date ?? '—'}</td>
+                        <td className="py-2 pr-3">
+                          <Badge variant="outline">{ORDER_STATUS_LABELS[o.status] ?? o.status}</Badge>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {o.delivery_status ? (DELIVERY_STATUS_LABELS[o.delivery_status] ?? o.delivery_status) : '—'}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {o.invoice_status ? (INVOICE_STATUS_LABELS[o.invoice_status] ?? o.invoice_status) : '—'}
+                        </td>
+                        <td className="py-2 pr-3 text-right">{money(o.total, o.currency_code)}</td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy !== null}
+                            onClick={() =>
+                              runDownload(`so-${o.id}`, `${base}/orders/${o.id}/pdf`, `${o.sales_order_number}.pdf`)
+                            }
+                          >
+                            Download
+                          </Button>
                         </td>
                       </tr>
                     ))}

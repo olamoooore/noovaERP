@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\Sales\Models\SalesOrder;
 use Modules\TemplateBuilder\Models\GeneratedDocument;
 use Tests\TenantTestCase;
 
@@ -104,6 +105,38 @@ class Issue337CustomerPortalTest extends TenantTestCase
             'total' => 200,
             'created_by' => $this->admin->id,
         ]);
+    }
+
+    private function salesOrder(Customer $customer, string $number, string $status, ?int $entityId = null): SalesOrder
+    {
+        return SalesOrder::query()->forceCreate([
+            'sales_order_number' => $number,
+            'customer_id' => $customer->id,
+            'legal_entity_id' => $entityId,
+            'status' => $status,
+            'order_date' => now()->toDateString(),
+            'subtotal' => 300,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 300,
+            'currency_code' => 'USD',
+            'created_by' => $this->admin->id,
+        ]);
+    }
+
+    /** @return array{0: int, 1: int} two legal entities */
+    private function twoEntities(): array
+    {
+        $groupId = DB::table('entity_groups')->insertGetId([
+            'name' => 'I337 SO Group', 'code' => 'I337-SO-GRP', 'base_currency' => 'USD', 'fiscal_year_start' => '01-01',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $entity = fn (string $code) => DB::table('legal_entities')->insertGetId([
+            'group_id' => $groupId, 'name' => $code, 'code' => $code, 'base_currency' => 'USD',
+            'fiscal_year_start' => '01-01', 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return [$entity('I337-SO-A'), $entity('I337-SO-B')];
     }
 
     private function publicGet(string $uri): \Illuminate\Testing\TestResponse
@@ -358,5 +391,91 @@ class Issue337CustomerPortalTest extends TenantTestCase
 
         $this->assertSame(404, $statuses[0]);
         $this->assertSame(429, $statuses[10], 'The 11th pay request in the window must be throttled: '.implode(',', $statuses));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Re-verification gaps: open sales orders + entity scope of quotations
+    // ─────────────────────────────────────────────────────────────────────
+
+    public function test_portal_lists_this_customers_open_sales_orders_only(): void
+    {
+        $confirmed = $this->salesOrder($this->customer, 'SO-337-CONF', 'confirmed');
+        $this->salesOrder($this->customer, 'SO-337-ALLOC', 'allocated');
+        $this->salesOrder($this->customer, 'SO-337-FULF', 'fulfilled');
+        $draft = $this->salesOrder($this->customer, 'SO-337-DRAFT', 'draft');
+        $this->salesOrder($this->customer, 'SO-337-CANC', 'cancelled');
+        $this->salesOrder($this->customer, 'SO-337-INVD', 'invoiced');
+        $foreign = $this->salesOrder($this->otherCustomer, 'SO-337-OTHER', 'confirmed');
+
+        $link = $this->issueLink($this->customer);
+        $base = "/api/v1/customer-portal/{$link['token']}";
+
+        $response = $this->publicGet($base);
+        $response->assertOk();
+
+        $numbers = collect($response->json('orders'))->pluck('sales_order_number')->sort()->values()->all();
+        $this->assertSame(['SO-337-ALLOC', 'SO-337-CONF', 'SO-337-FULF'], $numbers);
+
+        $row = collect($response->json('orders'))->firstWhere('id', $confirmed->id);
+        $this->assertSame('confirmed', $row['status']);
+        $this->assertEqualsWithDelta(300.0, (float) $row['total'], 0.001);
+        $this->assertSame('USD', $row['currency_code']);
+        $this->assertArrayHasKey('invoice_status', $row);
+        $this->assertArrayHasKey('delivery_status', $row);
+
+        // Another customer's order and the customer's own draft are 404 on
+        // the download route, never a leak.
+        $this->publicGet("{$base}/orders/{$foreign->id}/pdf")->assertNotFound();
+        $this->publicGet("{$base}/orders/{$draft->id}/pdf")->assertNotFound();
+    }
+
+    public function test_entity_scoped_link_hides_another_entitys_orders_and_quotations(): void
+    {
+        [$entityA, $entityB] = $this->twoEntities();
+        $this->customer->forceFill(['legal_entity_id' => $entityA])->save();
+
+        $this->salesOrder($this->customer, 'SO-337-LEA', 'confirmed', $entityA);
+        $orderB = $this->salesOrder($this->customer, 'SO-337-LEB', 'confirmed', $entityB);
+        $this->salesOrder($this->customer, 'SO-337-NOLE', 'confirmed', null);
+
+        $this->quotation($this->customer, 'QT-337-LEA-OPEN', 'sent');
+        $quoteB = $this->quotation($this->customer, 'QT-337-LEB-CONV', 'confirmed');
+        $quoteB->forceFill(['sales_order_id' => $orderB->id])->save();
+
+        $link = $this->issueLink($this->customer);
+        $this->assertSame($entityA, (int) DB::table('customer_portal_links')->where('id', $link['id'])->value('legal_entity_id'));
+        $base = "/api/v1/customer-portal/{$link['token']}";
+
+        $response = $this->publicGet($base);
+        $response->assertOk();
+
+        $this->assertSame(['SO-337-LEA'], collect($response->json('orders'))->pluck('sales_order_number')->all());
+        $this->assertSame(['QT-337-LEA-OPEN'], collect($response->json('quotations'))->pluck('quotation_number')->all());
+
+        $this->publicGet("{$base}/orders/{$orderB->id}/pdf")->assertNotFound();
+        $this->publicGet("{$base}/quotations/{$quoteB->id}/pdf")->assertNotFound();
+    }
+
+    public function test_entity_scoped_link_for_a_shared_customer_shows_only_quotations_converted_in_that_entity(): void
+    {
+        [$entityA, $entityB] = $this->twoEntities();
+        // Shared customer (no entity of its own): its quotations could belong
+        // to any entity, so only those provably in the link's entity show.
+        $link = $this->issueLink($this->customer);
+        // The link was issued under entity A's context (customer has none).
+        DB::table('customer_portal_links')->where('id', $link['id'])->update(['legal_entity_id' => $entityA]);
+
+        $orderA = $this->salesOrder($this->customer, 'SO-337-SH-A', 'confirmed', $entityA);
+        $orderB = $this->salesOrder($this->customer, 'SO-337-SH-B', 'confirmed', $entityB);
+
+        $this->quotation($this->customer, 'QT-337-SH-OPEN', 'sent');
+        $this->quotation($this->customer, 'QT-337-SH-A', 'confirmed')->forceFill(['sales_order_id' => $orderA->id])->save();
+        $this->quotation($this->customer, 'QT-337-SH-B', 'confirmed')->forceFill(['sales_order_id' => $orderB->id])->save();
+
+        $response = $this->publicGet("/api/v1/customer-portal/{$link['token']}");
+        $response->assertOk();
+
+        $this->assertSame(['QT-337-SH-A'], collect($response->json('quotations'))->pluck('quotation_number')->all());
+        $this->assertSame(['SO-337-SH-A'], collect($response->json('orders'))->pluck('sales_order_number')->all());
     }
 }
