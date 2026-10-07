@@ -39,10 +39,36 @@ interface StageResult {
   status: string
 }
 
+interface CommitRejection {
+  row_number: number
+  reason: string
+}
+
 interface CommitResult {
   imported: number
   rejected: number
+  rejections?: CommitRejection[]
+  rejections_truncated?: boolean
   batch_id: string
+}
+
+/** #1037: why rows were not imported, as returned by the commit endpoint. */
+function CommitRejectionList({ rejections, rejected, truncated }: { rejections: CommitRejection[]; rejected: number; truncated: boolean }) {
+  if (rejections.length === 0) return null
+  return (
+    <div className="space-y-2 rounded-xl border border-red-200 bg-red-50/60 p-3 dark:border-red-900 dark:bg-red-950/30">
+      <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+        Rejected rows{truncated ? ` (first ${rejections.length} of ${rejected})` : ''}
+      </p>
+      <ul className="max-h-60 space-y-1 overflow-auto text-xs">
+        {rejections.map((rejection) => (
+          <li key={rejection.row_number}>
+            <span className="font-medium">Row {rejection.row_number}:</span> {rejection.reason}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 const TEMPLATE_COLUMNS: ImportTemplateColumn[] = [
@@ -90,6 +116,8 @@ export function CustomerImportPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [stageResult, setStageResult] = useState<StageResult | null>(null)
   const [commitResult, setCommitResult] = useState<CommitResult | null>(null)
+  // #1037: a commit that imported nothing (422) leaves the batch open; keep its reasons.
+  const [failedCommit, setFailedCommit] = useState<CommitResult | null>(null)
 
   const stageMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -140,15 +168,20 @@ export function CustomerImportPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] })
+      setFailedCommit(null)
       setCommitResult(data)
       toast({
-        title: 'Import complete',
+        title: data.rejected > 0 ? 'Import finished with rejected rows' : 'Import complete',
         description: `${data.imported} customers imported${data.rejected > 0 ? `, ${data.rejected} rejected` : ''}.`,
+        variant: data.imported === 0 && data.rejected > 0 ? 'destructive' : undefined,
       })
     },
-    onError: (error: Error) => {
+    onError: (error: Error & { response?: { status?: number; data?: CommitResult } }) => {
+      // #1037: 422 = nothing imported; the batch stays open and can be committed again.
+      const data = error.response?.status === 422 ? error.response.data : undefined
+      setFailedCommit(data?.rejections ? data : null)
       toast({
-        title: 'Import failed',
+        title: data ? 'Nothing imported' : 'Import failed',
         description: error.message || 'An error occurred during commit.',
         variant: 'destructive',
       })
@@ -216,6 +249,7 @@ export function CustomerImportPage() {
     setSelectedFile(null)
     setStageResult(null)
     setCommitResult(null)
+    setFailedCommit(null)
   }
 
   const commitReadyRows = (stageResult?.counts.valid || 0) + (stageResult?.counts.duplicate || 0)
@@ -288,6 +322,13 @@ export function CustomerImportPage() {
           {/* Staging results — review before commit */}
           {stageResult && !commitResult && (
             <div className="space-y-4">
+              {failedCommit && (
+                <CommitRejectionList
+                  rejections={failedCommit.rejections ?? []}
+                  rejected={failedCommit.rejected}
+                  truncated={Boolean(failedCommit.rejections_truncated)}
+                />
+              )}
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                   <Icon icon="solar:clipboard-check-bold-duotone" className="h-5 w-5" />
@@ -369,7 +410,7 @@ export function CustomerImportPage() {
                   <Icon icon="solar:check-circle-bold-duotone" className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">Import complete</p>
+                  <p className="text-sm font-semibold">{commitResult.rejected > 0 ? 'Import finished with rejected rows' : 'Import complete'}</p>
                   <p className="text-xs text-muted-foreground">
                     {commitResult.imported} customers imported successfully
                     {commitResult.rejected > 0 ? `, ${commitResult.rejected} rejected` : ''}.
@@ -382,6 +423,12 @@ export function CustomerImportPage() {
                   { label: 'Imported', value: commitResult.imported, tone: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40', glyph: 'text-emerald-600 dark:text-emerald-400' },
                   { label: 'Rejected', value: commitResult.rejected, tone: 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40', glyph: 'text-red-600 dark:text-red-400' },
                 ]}
+              />
+
+              <CommitRejectionList
+                rejections={commitResult.rejections ?? []}
+                rejected={commitResult.rejected}
+                truncated={Boolean(commitResult.rejections_truncated)}
               />
 
               <div className="flex flex-wrap items-center gap-2">
