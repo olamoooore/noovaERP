@@ -543,7 +543,13 @@ class InvoiceController extends Controller
             'price_list_id' => 'nullable|integer',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
+            // Issue #327: the user confirmed "create anyway" for a likely
+            // duplicate (same customer reference / PO).
+            'confirm_duplicate' => 'nullable|boolean',
         ]);
+
+        $confirmDuplicate = (bool) ($validated['confirm_duplicate'] ?? false);
+        unset($validated['confirm_duplicate']);
 
         // #315: sales.invoice.allow_custom_number gates hand-typed numbers. A
         // client-supplied number is rejected (not silently ignored or
@@ -591,7 +597,22 @@ class InvoiceController extends Controller
 
             // Issue #326: create + credit check in one transaction, so a
             // `block` verdict leaves no invoice (or backing order) behind.
-            [$invoice, $creditCheck] = $this->createInvoiceWithCreditGate($validated);
+            // Issue #327: an unconfirmed likely duplicate rolls back the same way.
+            [$invoice, $creditCheck, $duplicateCheck] = DB::transaction(function () use ($validated, $confirmDuplicate) {
+                [$invoice, $creditCheck] = $this->createInvoiceWithCreditGate($validated);
+
+                $duplicates = app(\App\Services\InvoiceDuplicateCheck::class);
+                $duplicateCheck = $duplicates->check($invoice);
+
+                if ($duplicateCheck['level'] === \App\Services\InvoiceDuplicateCheck::LEVEL_LIKELY && ! $confirmDuplicate) {
+                    throw new \App\Exceptions\LikelyDuplicateInvoiceException(
+                        $duplicateCheck,
+                        'Likely duplicate of '.$duplicates->describe($duplicateCheck).'. Confirm to create it anyway.',
+                    );
+                }
+
+                return [$invoice, $creditCheck, $duplicateCheck];
+            });
 
             if (is_array($tagNames) && $tagNames !== []) {
                 app(\App\Services\TagService::class)->attach($invoice, $tagNames, $request->user()?->id);
@@ -606,7 +627,12 @@ class InvoiceController extends Controller
                 [
                     'invoice_number' => $invoice->invoice_number,
                     'total' => (float) $invoice->total,
-                ],
+                ] + ($duplicateCheck['level'] === \App\Services\InvoiceDuplicateCheck::LEVEL_LIKELY ? [
+                    // Issue #327: the user's "create anyway" is recorded
+                    // with the invoices it was flagged against.
+                    'duplicate_confirmed' => true,
+                    'duplicate_of' => array_column($duplicateCheck['matches'], 'id'),
+                ] : []),
             );
 
             // When the tenant requires approval, submitting for review is part
@@ -625,11 +651,19 @@ class InvoiceController extends Controller
                 // Issue #326: the credit verdict (a warning under the `warn`
                 // policy when approved is false).
                 'credit_check' => $creditCheck,
+                // Issue #327: none | possible | likely (likely only when confirmed).
+                'duplicate_check' => $duplicateCheck,
             ], 201);
 
         } catch (ValidationException $e) {
             // #302: an explicit tax rule that cannot apply is a 422, not a 500.
             throw $e;
+        } catch (\App\Exceptions\LikelyDuplicateInvoiceException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'DUPLICATE_INVOICE_LIKELY',
+                'duplicate_check' => $e->result,
+            ], 422);
         } catch (CreditLimitExceededException $e) {
             return $this->creditLimitExceededResponse(app(CreditCheckService::class)->invoiceVerdict($e->creditCheck));
         } catch (\App\Exceptions\PricingException $e) {

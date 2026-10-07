@@ -23,6 +23,7 @@ class InvoicePreflightService
         private InvoiceEvidenceService $evidenceService,
         private LockDateValidationService $lockDateValidator,
         private CreditCheckService $creditCheckService,
+        private InvoiceDuplicateCheck $duplicateCheck,
     ) {}
 
     public function run(Invoice $invoice): array
@@ -129,37 +130,31 @@ class InvoicePreflightService
             : $this->warn('credit', 'Credit limit', $detail);
     }
 
+    /**
+     * Issue #327: the shared duplicate rule (InvoiceDuplicateCheck) that
+     * invoice create also applies. Likely duplicates (same customer
+     * reference / PO) fail unless confirmed at creation; possible ones (same
+     * total within 7 days) warn.
+     */
     private function duplicateCheck(Invoice $invoice): array
     {
-        if (! $invoice->customer_id || (float) $invoice->total <= 0) {
-            return $this->pass('duplicate', 'Possible duplicate', 'Nothing to compare.');
+        $result = $this->duplicateCheck->check($invoice);
+
+        if ($result['level'] === InvoiceDuplicateCheck::LEVEL_NONE) {
+            return $this->pass('duplicate', 'Possible duplicate', $invoice->customer_id
+                ? 'No invoice with the same reference or PO, and no similar total within '.InvoiceDuplicateCheck::POSSIBLE_WINDOW_DAYS.' days.'
+                : 'Nothing to compare.');
         }
 
-        $base = $invoice->invoice_date ? $invoice->invoice_date->copy() : now();
+        $matches = $this->duplicateCheck->describe($result);
 
-        $duplicate = Invoice::query()
-            ->where('customer_id', $invoice->customer_id)
-            ->whereKeyNot($invoice->id)
-            ->whereIn('status', ['draft', 'posted', 'sent', 'partial', 'overdue', 'paid'])
-            ->whereNotIn('lifecycle_status', ['superseded', 'voided', 'reversed'])
-            ->whereBetween('invoice_date', [
-                $base->copy()->subDays(7)->toDateString(),
-                $base->copy()->addDays(7)->toDateString(),
-            ])
-            ->whereRaw('ABS(total - ?) <= GREATEST(0.01, ABS(total) * 0.005)', [(float) $invoice->total])
-            ->orderByDesc('invoice_date')
-            ->first();
-
-        if (! $duplicate) {
-            return $this->pass('duplicate', 'Possible duplicate', 'No similar invoice within 7 days.');
+        if ($result['level'] === InvoiceDuplicateCheck::LEVEL_LIKELY) {
+            return $result['confirmed']
+                ? $this->warn('duplicate', 'Likely duplicate', "Likely duplicate of {$matches} — confirmed as intended when the invoice was created.")
+                : $this->fail('duplicate', 'Likely duplicate', "Likely duplicate of {$matches} — check before posting.");
         }
 
-        return $this->warn('duplicate', 'Possible duplicate', sprintf(
-            '%s already exists for this customer (%s, %s) — check before posting.',
-            $duplicate->invoice_number,
-            $duplicate->invoice_date ? $duplicate->invoice_date->format('d M Y') : 'no date',
-            number_format((float) $duplicate->total, 2),
-        ));
+        return $this->warn('duplicate', 'Possible duplicate', "{$matches} already exists for this customer — check before posting.");
     }
 
     private function tinCheck(Invoice $invoice): array

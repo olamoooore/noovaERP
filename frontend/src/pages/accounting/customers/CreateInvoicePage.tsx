@@ -52,6 +52,8 @@ import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/C
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
 import { creditWarning } from '@/lib/creditCheck';
+import { duplicateWarning, likelyDuplicateFromError, type DuplicateCheckResult } from '@/lib/duplicateCheck';
+import { DuplicateInvoiceDialog } from '@/components/sales/DuplicateInvoiceDialog';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
@@ -501,6 +503,8 @@ export const CreateInvoicePage: React.FC = () => {
     }),
   });
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  // Issue #327: a likely duplicate the server refused until confirmed.
+  const [likelyDuplicate, setLikelyDuplicate] = useState<DuplicateCheckResult | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
   const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
@@ -992,7 +996,9 @@ export const CreateInvoicePage: React.FC = () => {
       setConflict(null);
       draftGuard.clearDraft();
       // Issue #326: a save under the `warn` credit policy carries the verdict.
-      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully`, description: creditWarning(data) });
+      // Issue #327: a create that resembles another invoice warns too.
+      const warnings = [creditWarning(data), duplicateWarning(data)].filter(Boolean).join(' ');
+      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully`, description: warnings || undefined });
       const invoiceId = id || data?.id || data?.data?.id;
       const savedStatus = data?.status ?? data?.data?.status;
 
@@ -1030,6 +1036,12 @@ export const CreateInvoicePage: React.FC = () => {
     },
     onError: (error: any, variables: unknown) => {
       const message = getApiErrorMessage(error);
+      // Issue #327: likely duplicate — ask before creating it anyway.
+      const duplicate = likelyDuplicateFromError(error);
+      if (duplicate) {
+        setLikelyDuplicate(duplicate);
+        return;
+      }
       // FR-6.3: a below-floor manual override needs an audited reason — ask
       // for it once, then retry with the reason attached to manual lines.
       if (typeof message === 'string' && message.toLowerCase().includes('override_reason')) {
@@ -3342,6 +3354,16 @@ export const CreateInvoicePage: React.FC = () => {
           </div>
         </form>
         </FieldErrorsProvider>
+
+        <DuplicateInvoiceDialog
+          check={likelyDuplicate}
+          pending={saveMutation.isPending}
+          onCancel={() => setLikelyDuplicate(null)}
+          onConfirm={() => {
+            setLikelyDuplicate(null);
+            saveMutation.mutate({ ...(lastSavePayloadRef.current ?? {}), confirm_duplicate: true });
+          }}
+        />
 
         <Dialog open={overrideDialogOpen} onOpenChange={setOverrideDialogOpen}>
           <DialogContent>
