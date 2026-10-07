@@ -209,6 +209,8 @@ class SalesOrderController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
+            // Issue #409: the shipping line round-trips its marker.
+            'lines.*.is_delivery' => 'nullable|boolean',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
@@ -433,6 +435,8 @@ class SalesOrderController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
+            // Issue #409: the shipping line round-trips its marker.
+            'lines.*.is_delivery' => 'nullable|boolean',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.invoicing_policy' => 'nullable|in:ordered_qty,delivered_qty',
@@ -769,6 +773,41 @@ class SalesOrderController extends Controller
         }
 
         return response()->json(['message' => 'Order unlocked', 'order' => $order]);
+    }
+
+    /**
+     * Issue #409: "Add shipping" — the delivery method's shipping line on a
+     * draft order (replacing any previous one), priced by the method and
+     * taxed through the line tax resolver at the order date.
+     */
+    public function addShipping(Request $request, $id)
+    {
+        $order = $this->findScopedOrder($request, $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'delivery_method_id' => 'required|integer|exists:delivery_methods,id',
+        ]);
+
+        $method = \App\Models\DeliveryMethod::with('product')->findOrFail($validated['delivery_method_id']);
+        if (! $method->is_active) {
+            return response()->json(['message' => 'This delivery method is inactive.'], 422);
+        }
+
+        if ($order->isLocked() || ! $order->isDraft()) {
+            return response()->json(['message' => 'Shipping can only be added to a draft sales order.'], 422);
+        }
+
+        try {
+            $order = $this->orderService->applyDeliveryMethod($order, $method);
+        } catch (\DomainException|\InvalidArgumentException|\App\Exceptions\PricingException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Shipping added', 'order' => $order]);
     }
 
     public function confirm($id)

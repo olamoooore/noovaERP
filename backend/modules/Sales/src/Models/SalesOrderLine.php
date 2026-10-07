@@ -9,6 +9,8 @@ class SalesOrderLine extends Model
 {
     protected $fillable = [
         'line_type',
+        // Issue #409: the shipping line added from a delivery method.
+        'is_delivery',
         'sequence',
         'sales_order_id',
         // Issue #140: mirrors the parent order's legal entity.
@@ -66,6 +68,7 @@ class SalesOrderLine extends Model
     protected $appends = ['is_backordered'];
 
     protected $casts = [
+        'is_delivery' => 'boolean',
         'analytic_distribution' => 'array',
         'sequence' => 'integer',
         'quantity' => 'decimal:4',

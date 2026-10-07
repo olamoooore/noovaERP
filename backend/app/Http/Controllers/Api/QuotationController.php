@@ -341,6 +341,8 @@ class QuotationController extends Controller
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
+            // Issue #409: the shipping line round-trips its marker.
+            'lines.*.is_delivery' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // FR-5.2: header currency + explicit price list selection.
             'currency_code' => 'nullable|string|size:3',
@@ -395,6 +397,12 @@ class QuotationController extends Controller
         $linePriceMode = static function (array $lineData): string {
             if (isset($lineData['price_mode'])) {
                 return (string) $lineData['price_mode'];
+            }
+
+            // Issue #409: a shipping line's price comes from its delivery
+            // method — carried, never re-priced from the product list price.
+            if (! empty($lineData['is_delivery'])) {
+                return 'carried';
             }
 
             return ($lineData['unit_price'] ?? null) !== null && (float) ($lineData['unit_price'] ?? 0) > 0
@@ -535,6 +543,8 @@ class QuotationController extends Controller
                         'discount_amount' => $lineData['discount_amount'] ?? 0,
                         // Issue #338: optional products (never for note/section rows).
                         'is_optional' => $lineType === 'product' && (bool) ($lineData['is_optional'] ?? false),
+                        // Issue #409: the shipping line marker.
+                        'is_delivery' => $lineType === 'product' && (bool) ($lineData['is_delivery'] ?? false),
                     ], $priced));
                 }
 
@@ -811,6 +821,8 @@ class QuotationController extends Controller
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
+            // Issue #409: the shipping line round-trips its marker.
+            'lines.*.is_delivery' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // Issue #550: per-quotation acceptance requirements (NULL = the
             // tenant's Sales Settings value).
@@ -872,7 +884,10 @@ class QuotationController extends Controller
                             ? \App\Models\Product::find($lineData['product_id'])
                             : null;
 
-                        $mode = $lineData['price_mode'] ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                        // Issue #409: a round-tripped shipping line is carried.
+                        $mode = $lineData['price_mode'] ?? (! empty($lineData['is_delivery'])
+                            ? 'carried'
+                            : (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto'));
                         $priced = $pricing->priceLineArray($lineProduct, $lineData, $pricingContext, $mode);
 
                         // Issue #685: same sales-UoM rule as create.
@@ -917,6 +932,8 @@ class QuotationController extends Controller
                             // Issue #338: selecting an optional line internally
                             // is an edit that clears the flag.
                             'is_optional' => $lineType === 'product' && (bool) ($lineData['is_optional'] ?? false),
+                            // Issue #409: the shipping line marker.
+                            'is_delivery' => $lineType === 'product' && (bool) ($lineData['is_delivery'] ?? false),
                         ], $priced));
                     }
                 }
@@ -1007,6 +1024,119 @@ class QuotationController extends Controller
         }
 
         return response()->json($quotation->fresh(['customer', 'lines.product']));
+    }
+
+    /**
+     * Issue #409: "Add shipping" — add the delivery method's shipping line to
+     * a draft quotation, replacing any previous shipping line.
+     *
+     * The line is an ordinary product line: priced by the method (fixed /
+     * percentage / free above threshold, DeliveryMethodService), taxed by the
+     * line tax resolver (#302) at the quotation date, persisted through
+     * PricingService (carried mode with a delivery-method trace) against the
+     * quotation's own currency snapshot. From here it is carried quote →
+     * order → invoice by the existing conversions.
+     */
+    public function addShipping(Request $request, $id)
+    {
+        $quotation = Quotation::find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'delivery_method_id' => 'required|integer|exists:delivery_methods,id',
+        ]);
+
+        $method = \App\Models\DeliveryMethod::with('product')->findOrFail($validated['delivery_method_id']);
+        if (! $method->is_active) {
+            return response()->json(['message' => 'This delivery method is inactive.'], 422);
+        }
+
+        if ($quotation->status !== 'draft') {
+            return response()->json(['message' => 'Shipping can only be added to a draft quotation.'], 422);
+        }
+
+        try {
+            $line = DB::transaction(function () use ($quotation, $method) {
+                $quotation->lines()->where('is_delivery', true)->delete();
+                $quotation->load('lines');
+
+                $line = app(\App\Services\DeliveryMethodService::class)->shippingLine(
+                    $method,
+                    $quotation->lines,
+                    (string) $quotation->currency_code,
+                    (string) ($quotation->base_currency_code ?: $quotation->currency_code),
+                    (float) ($quotation->exchange_rate ?: 1),
+                );
+
+                $quotationDate = $quotation->quotation_date?->toDateString();
+                [$line] = app(\App\Services\SalesLineTaxResolver::class)->applyToLines(
+                    [$line],
+                    $quotationDate,
+                    $quotation->customer_id !== null ? (int) $quotation->customer_id : null,
+                );
+
+                $pricing = app(\App\Services\PricingService::class);
+                $pricingContext = $pricing->documentContext([
+                    'customer_id' => $quotation->customer_id,
+                    'date' => $quotationDate,
+                    'currency_code' => $quotation->currency_code,
+                    'exchange_rate' => $quotation->exchange_rate,
+                    'base_currency_code' => $quotation->base_currency_code,
+                ]);
+                $priced = $pricing->priceLineArray($method->product, $line, $pricingContext, 'carried');
+
+                $quotation->lines()->create(array_merge([
+                    'line_type' => 'product',
+                    'sequence' => ((int) $quotation->lines->max('sequence')) + 1,
+                    'product_id' => $line['product_id'],
+                    'description' => $line['description'],
+                    'quantity' => $line['quantity'],
+                    'unit_price' => $line['unit_price'],
+                    'tax_rate' => $line['tax_rate'],
+                    'tax_inclusive' => (bool) $line['tax_inclusive'],
+                    'tax_rule_id' => $line['tax_rule_id'],
+                    'tax_code' => $line['tax_code'],
+                    'tax_treatment' => $line['tax_treatment'],
+                    'discount_amount' => 0,
+                    'is_optional' => false,
+                    'is_delivery' => true,
+                ], $priced));
+
+                $quotation->update([
+                    'delivery_method_id' => $method->id,
+                    'shipping_method' => $method->name,
+                ]);
+                $quotation->refresh();
+                $quotation->calculateTotals();
+
+                return $line;
+            });
+        } catch (\App\Exceptions\PricingException|\InvalidArgumentException $e) {
+            return response()->json(['message' => 'Failed to add shipping', 'error' => $e->getMessage()], 422);
+        }
+
+        // Issue #646: the total changed — an approval raised for the old
+        // state no longer covers it.
+        $this->approvalGate->invalidateStaleApprovals(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+            Auth::user(),
+        );
+
+        $this->logQuotationChatter(
+            $quotation,
+            'shipping_added',
+            "Added shipping ({$method->name}) to quotation {$quotation->quotation_number}",
+            ['delivery_method_id' => $method->id, 'amount' => (float) $line['unit_price']],
+        );
+
+        return response()->json([
+            'message' => 'Shipping added',
+            'data' => $quotation->fresh(['customer', 'lines.product', 'deliveryMethod']),
+        ]);
     }
 
     public function destroy($id)

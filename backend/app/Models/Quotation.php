@@ -84,6 +84,8 @@ class Quotation extends Model implements WorkflowSubject
         // Issue #408: commitment (promised) date + shipping policy.
         'commitment_date',
         'shipping_policy',
+        // Issue #409: the delivery method whose shipping line is on the quote.
+        'delivery_method_id',
         'status',
         'subtotal',
         'tax_amount',
@@ -226,6 +228,12 @@ class Quotation extends Model implements WorkflowSubject
     public function shippingContact(): BelongsTo
     {
         return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'shipping_contact_id');
+    }
+
+    /** Issue #409: the delivery method that priced the shipping line. */
+    public function deliveryMethod(): BelongsTo
+    {
+        return $this->belongsTo(DeliveryMethod::class);
     }
 
     public static function generateQuotationNumber(): string

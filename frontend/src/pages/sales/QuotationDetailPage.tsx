@@ -239,6 +239,38 @@ export function QuotationDetailPage() {
     },
   })
 
+  // Issue #409: "Add shipping" — the server prices the delivery method's
+  // shipping line and taxes it through the line tax resolver.
+  const [shippingDialogOpen, setShippingDialogOpen] = useState(false)
+  const [deliveryMethodId, setDeliveryMethodId] = useState('')
+  const deliveryMethodsQuery = useQuery({
+    queryKey: ['delivery-methods', 'active'],
+    queryFn: async () => {
+      const response = await api.get('/sales/delivery-methods', { params: { active_only: 1 } })
+      return (response.data?.data ?? []) as Array<{ id: number; name: string; pricing_type: string }>
+    },
+    enabled: shippingDialogOpen,
+  })
+  const addShippingMutation = useMutation({
+    mutationFn: async (methodId: number) => {
+      const response = await api.post(`/quotations/${id}/shipping`, { delivery_method_id: methodId })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] })
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      setShippingDialogOpen(false)
+      toast({ title: 'Shipping added' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to add shipping',
+        description: error.response?.data?.message || error.response?.data?.error || 'An error occurred',
+      })
+    },
+  })
+
   const createDeliveryOrderMutation = useMutation({
     mutationFn: async () => {
       const response = await api.post(`/quotations/${id}/create-delivery-order`)
@@ -566,6 +598,18 @@ export function QuotationDetailPage() {
               Edit
             </HeaderActionButton>
           )}
+          {quotation.status === 'draft' && canManageQuotation && (
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:delivery-bold-duotone"
+              onClick={() => {
+                setDeliveryMethodId('')
+                setShippingDialogOpen(true)
+              }}
+            >
+              Add shipping
+            </HeaderActionButton>
+          )}
           {quotation.status === 'cancelled' && (
             <HeaderActionButton
               variant="outline"
@@ -693,6 +737,49 @@ export function QuotationDetailPage() {
               disabled={sendMutation.isPending || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(sendToEmail.trim())}
             >
               {sendMutation.isPending ? 'Sending...' : 'Send'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Issue #409: pick a delivery method; re-adding replaces the line. */}
+      <Dialog open={shippingDialogOpen} onOpenChange={setShippingDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add shipping</DialogTitle>
+            <DialogDescription>
+              Adds the delivery method's shipping line (replacing any existing one). Its price comes from the
+              method and its tax from the tax engine at the quotation date.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="quotation-delivery-method">Delivery method</Label>
+            <select
+              id="quotation-delivery-method"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={deliveryMethodId}
+              onChange={(e) => setDeliveryMethodId(e.target.value)}
+            >
+              <option value="">Select a delivery method</option>
+              {(deliveryMethodsQuery.data ?? []).map((method) => (
+                <option key={method.id} value={String(method.id)}>
+                  {method.name}
+                </option>
+              ))}
+            </select>
+            {deliveryMethodsQuery.isSuccess && (deliveryMethodsQuery.data ?? []).length === 0 && (
+              <p className="text-xs text-muted-foreground">No active delivery methods are set up.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShippingDialogOpen(false)} disabled={addShippingMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => addShippingMutation.mutate(Number(deliveryMethodId))}
+              disabled={addShippingMutation.isPending || deliveryMethodId === ''}
+            >
+              {addShippingMutation.isPending ? 'Adding...' : 'Add shipping'}
             </Button>
           </DialogFooter>
         </DialogContent>

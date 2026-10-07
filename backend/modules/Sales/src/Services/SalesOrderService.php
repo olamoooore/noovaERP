@@ -233,8 +233,13 @@ class SalesOrderService
             ? \App\Models\Product::find($lineData['product_id'])
             : null;
 
+        // Issue #409: a shipping line's price comes from its delivery method;
+        // round-tripped without an explicit intent it is carried, never
+        // re-priced from the shipping product's list price.
         $priceMode = $lineData['price_mode']
-            ?? (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+            ?? (! empty($lineData['is_delivery'])
+                ? 'carried'
+                : (((float) ($lineData['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto'));
 
         // Issue #135: a line entered in a non-base UOM must be converted
         // to base units before it can reach stock/COGS. The base-unit
@@ -325,6 +330,8 @@ class SalesOrderService
             'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
             'source_line_type' => $lineData['source_line_type'] ?? null,
             'source_line_id' => $lineData['source_line_id'] ?? null,
+            // Issue #409: the shipping line added from a delivery method.
+            'is_delivery' => ($lineData['line_type'] ?? 'product') === 'product' && ! empty($lineData['is_delivery']),
         ], array_filter([
             'unit_price' => array_key_exists('unit_price', $priced) ? $priced['unit_price'] : null,
             'base_unit_price' => $priced['base_unit_price'] ?? null,
@@ -335,6 +342,65 @@ class SalesOrderService
         $line->save();
 
         return $line;
+    }
+
+    /**
+     * Issue #409: "Add shipping" on a DRAFT order — replace any existing
+     * shipping line with the delivery method's line. The line goes through
+     * the same path as every typed line: SalesLineTaxResolver (#302) at the
+     * order date, then createPricedLine() (PricingService, carried mode with a
+     * delivery-method trace) against the order's own currency snapshot.
+     */
+    public function applyDeliveryMethod(SalesOrder $order, \App\Models\DeliveryMethod $method): SalesOrder
+    {
+        if (! $order->isDraft()) {
+            throw new \DomainException('Shipping can only be added to a draft sales order.');
+        }
+
+        return DB::transaction(function () use ($order, $method) {
+            $order->lines()->where('is_delivery', true)->delete();
+            $order->load('lines');
+
+            $line = app(\App\Services\DeliveryMethodService::class)->shippingLine(
+                $method,
+                $order->lines,
+                (string) $order->currency_code,
+                (string) ($order->base_currency_code ?: $order->currency_code),
+                (float) ($order->exchange_rate ?: 1),
+            );
+            $line['sequence'] = ((int) $order->lines->max('sequence')) + 1;
+
+            $orderDate = $order->order_date?->toDateString();
+            [$line] = app(\App\Services\SalesLineTaxResolver::class)->applyToLines(
+                [$line],
+                $orderDate,
+                $order->customer_id !== null ? (int) $order->customer_id : null,
+                $order->legal_entity_id !== null ? (int) $order->legal_entity_id : null,
+            );
+
+            $pricing = app(\App\Services\PricingService::class);
+            $pricingContext = $pricing->documentContext([
+                'customer_id' => $order->customer_id,
+                'legal_entity_id' => $order->legal_entity_id,
+                'date' => $orderDate,
+                'currency_code' => $order->currency_code,
+                'exchange_rate' => $order->exchange_rate,
+                'base_currency_code' => $order->base_currency_code,
+            ]);
+
+            $this->createPricedLine($order, $line, (int) $line['sequence'], $pricing, $pricingContext, $orderDate);
+
+            $order->update(['delivery_method_id' => $method->id]);
+            $order->refresh();
+            $order->calculateTotals();
+
+            $this->logChatter($order, 'shipping_added', "Added shipping ({$method->name}) to sales order {$order->sales_order_number}", [
+                'delivery_method_id' => $method->id,
+                'amount' => (float) $line['unit_price'],
+            ]);
+
+            return $order->fresh(['customer', 'lines.product']);
+        });
     }
 
     /**

@@ -40,6 +40,8 @@ class QuotationLine extends Model
         // Issue #338: an optional product the customer may add; excluded
         // from totals, the released order and invoices until selected.
         'is_optional',
+        // Issue #409: the shipping line added from a delivery method.
+        'is_delivery',
     ];
 
     protected $casts = [
@@ -56,6 +58,7 @@ class QuotationLine extends Model
         'discount_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
         'is_optional' => 'boolean',
+        'is_delivery' => 'boolean',
     ];
 
     protected static function boot()

@@ -60,6 +60,8 @@ class SalesOrder extends Model implements WorkflowSubject
         // Issue #140: legal entity the order belongs to (backfilled and set at
         // creation from the customer's entity).
         'legal_entity_id',
+        // Issue #409: the delivery method (printed as the DO carrier).
+        'delivery_method_id',
         'channel',
         'status',
         // Issue #407: a confirmed order can be locked against amendments and
@@ -175,6 +177,12 @@ class SalesOrder extends Model implements WorkflowSubject
     public function customer(): BelongsTo
     {
         return $this->belongsTo(\App\Models\Customer::class);
+    }
+
+    /** Issue #409: the delivery method that priced the shipping line. */
+    public function deliveryMethod(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\DeliveryMethod::class);
     }
 
     public function lines(): HasMany

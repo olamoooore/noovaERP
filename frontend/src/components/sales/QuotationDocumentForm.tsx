@@ -462,6 +462,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       // A saved price is carried verbatim: the engine may preview a new price
       // for a changed date/list but the server only stores the sent value.
       price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
+      // Issue #409: keep the shipping-line marker through an edit.
+      ...(line.is_delivery ? { is_delivery: true } : {}),
     }))
     setLines(mappedLines.length > 0 ? mappedLines : [emptySalesDocumentLine()])
     setHydrated(true)
@@ -749,6 +751,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
           override_reason: line.override_reason ?? undefined,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
+          // Issue #409: the shipping line round-trips its marker.
+          ...(line.is_delivery ? { is_delivery: true } : {}),
         })),
     }
 

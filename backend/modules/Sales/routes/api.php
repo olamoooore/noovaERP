@@ -36,6 +36,21 @@ Route::middleware([
         Route::get('/sales/dashboard/action-queues', [\Modules\Sales\Http\Controllers\SalesActionQueueController::class, 'index'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('reports.view|sales.view'));
 
+        // Issue #409: delivery-method master. Reuses existing literals only:
+        // readable by anyone who can view quotations or orders (the "Add
+        // shipping" pickers); writes are master data under settings.write,
+        // the same gate as the payment-method master (#545).
+        Route::get('/sales/delivery-methods', [\App\Http\Controllers\Api\DeliveryMethodController::class, 'index'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('sales.view|quotations.view'));
+        Route::post('/sales/delivery-methods', [\App\Http\Controllers\Api\DeliveryMethodController::class, 'store'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('settings.write'));
+        Route::put('/sales/delivery-methods/{id}', [\App\Http\Controllers\Api\DeliveryMethodController::class, 'update'])
+            ->whereNumber('id')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('settings.write'));
+        Route::delete('/sales/delivery-methods/{id}', [\App\Http\Controllers\Api\DeliveryMethodController::class, 'destroy'])
+            ->whereNumber('id')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('settings.write'));
+
         // Sales Orders — Core lifecycle (read vs. write split so each action
         // requires the correct one of the platform's seeded sales.view/sales.write permissions)
         Route::apiResource('sales/orders', SalesOrderController::class)
@@ -63,6 +78,9 @@ Route::middleware([
             Route::post('/sales/orders/{id}/down-payment-invoice', [SalesOrderController::class, 'downPaymentInvoice']);
             // Issue #154: the credit-note path the cancel error points at.
             Route::post('/sales/orders/{id}/credit-note', [SalesOrderController::class, 'creditNote']);
+            // Issue #409: "Add shipping" on a draft order (same sales.write
+            // gate as editing the order; no new permission).
+            Route::post('/sales/orders/{id}/shipping', [SalesOrderController::class, 'addShipping']);
             // Issue #152: blanket order writes/releases require sales.write.
             Route::post('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'store']);
             Route::post('/sales/blanket-orders/{blanketOrder}/release', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'release']);

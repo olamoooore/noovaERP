@@ -32,6 +32,8 @@ export interface SalesDocumentLine {
   pricing_trace?: Record<string, any> | null
   pricing_currency?: string | null
   pricing_base_currency?: string | null
+  /** Issue #409: the shipping line added from a delivery method. */
+  is_delivery?: boolean
 }
 
 export const emptySalesDocumentLine = (): SalesDocumentLine => ({

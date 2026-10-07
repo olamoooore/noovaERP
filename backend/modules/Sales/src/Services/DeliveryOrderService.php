@@ -454,7 +454,9 @@ class DeliveryOrderService
             // the delivery order unless the caller supplied its own date.
             'expected_date' => $data['expected_date'] ?? $order->commitment_date?->toDateString(),
             'payment_terms' => $data['payment_terms'] ?? null,
-            'carrier' => $data['carrier'] ?? null,
+            // Issue #409: the order's delivery method is printed as the DO
+            // carrier unless the caller named one.
+            'carrier' => $data['carrier'] ?? $order->deliveryMethod?->name,
             'tracking_number' => $data['tracking_number'] ?? null,
             'shipping_address' => $data['shipping_address'] ?? null,
             'shipping_address_overridden' => ! empty($data['shipping_address']),

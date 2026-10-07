@@ -84,6 +84,8 @@ class QuotationReleaseService
                     'department_id' => $line->department_id,
                     // Issue #332: the accepted line's analytic distribution.
                     'analytic_distribution' => $line->analytic_distribution,
+                    // Issue #409: the shipping line stays marked on the order.
+                    'is_delivery' => (bool) $line->is_delivery,
                 ], fn ($v) => $v !== null);
             })->toArray();
 
@@ -117,6 +119,9 @@ class QuotationReleaseService
                 // (and from there to its invoices).
                 'incoterm_code' => $quotation->incoterm_code,
                 'incoterm_place' => $quotation->incoterm_place,
+                // Issue #409: the accepted delivery method travels with the
+                // order (and from there is printed on its delivery orders).
+                'delivery_method_id' => $quotation->delivery_method_id,
                 // Issue #321: the accepted payment term travels with the order
                 // (and from there sets the invoice due date).
                 'payment_term_id' => $quotation->payment_term_id,
