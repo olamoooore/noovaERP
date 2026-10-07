@@ -28,7 +28,7 @@ final class UobGiroAdviceParser extends AbstractAdviceParser
             $table,
         ) === 1) {
             if (preg_match_all(
-                '/(\d{2}\/\d{2}\/\d{4})\s+(\d{4}\/\d{2}\/\d{3})\s+([\d,]+(?:\.\d{2})?)\s+([A-Z]{3})/',
+                '/(\d{2}\/\d{2}\/\d{4})\s+(\d{4}\/\d{2}\/\d{3})\s+([\d,]+(?:\.\d{2})?)\s+([A-Za-z]{3})/',
                 $table[1],
                 $rows,
                 PREG_SET_ORDER,
@@ -45,7 +45,7 @@ final class UobGiroAdviceParser extends AbstractAdviceParser
         }
 
         // OCR commonly prints the currency as SCD/SGD before the amount.
-        $total = $this->money($this->first('/S(?:GD|CD)\s*([\d,]+(?:\.\d{2})?)/i', $text));
+        $total = $this->money($this->first('/S(?:GD|CD)\s*([\d.,]+)/i', $text));
 
         return new ParsedAdvice(
             bankCode: $this->bankCode(),

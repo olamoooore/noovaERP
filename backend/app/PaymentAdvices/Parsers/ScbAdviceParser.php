@@ -53,7 +53,25 @@ final class ScbAdviceParser extends AbstractAdviceParser
             }
         }
 
-        $total = $this->money($this->first('/(?:Invoice Total|Remittance amount|REMITTANCE AMOUNT)\s*\n?\s*([\d,]+\.\d{2})/i', $header.$text));
+        // Single-line rows (Tesseract keeps the table cells on one line):
+        // reference, date, description, amount.
+        if ($lines === [] && preg_match_all(
+            '/(\d{4}\s*\/\s*\d{2}\s*\/\s*\d{2,3})\s+(\d{2}\/\d{2}\/\d{4}|\d{1,2}-[A-Za-z]{3}-\d{4})\s+(.+?)\s+([\d,]+(?:\.\d{1,2})?)\s*$/im',
+            $table,
+            $rows,
+            PREG_SET_ORDER,
+        ) !== false) {
+            foreach ($rows as $row) {
+                $lines[] = [
+                    'invoice_number' => preg_replace('/\s+/', '', $row[1]),
+                    'amount' => $this->money($row[4]),
+                    'date' => $this->isoDate($row[2]),
+                    'description' => $this->cleanLabel($row[3]),
+                ];
+            }
+        }
+
+        $total = $this->money($this->first('/(?:Invoice Total|Remittance amount|REMITTANCE AMOUNT)\s*:?\s*\n?\s*([\d,]+\.\d{2})/i', $header.$text));
         $payer = $this->first('/instructed by\s+(.+?)\./i', $text)
             ?? $this->first('/REMITTER NAME\s*\n\s*(.+)/i', $text);
 

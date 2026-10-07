@@ -32,7 +32,15 @@ abstract class AbstractAdviceParser
             return null;
         }
 
-        $normalized = str_replace([',', ' '], '', $value);
+        $normalized = str_replace(' ', '', trim($value));
+
+        // European grouping can leak from OCR ("8.938,00"): thousands dots and
+        // a decimal comma — convert before stripping separators.
+        if (preg_match('/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/', $normalized) === 1) {
+            $normalized = str_replace(['.', ','], ['', '.'], $normalized);
+        } else {
+            $normalized = str_replace(',', '', $normalized);
+        }
 
         return is_numeric($normalized) ? round((float) $normalized, 2) : null;
     }
