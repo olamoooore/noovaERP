@@ -56,6 +56,15 @@ class SalesSettings
 
     public const QUOTATION_DEFAULT_TERMS = 'sales.quotation.default_terms';
 
+    // Issue #550: what the customer must do to accept a quotation online.
+    public const QUOTATION_REQUIRE_SIGNATURE = 'sales.quotation.require_signature';
+
+    public const QUOTATION_REQUIRE_PAYMENT = 'sales.quotation.require_payment';
+
+    public const QUOTATION_PREPAYMENT_PERCENT = 'sales.quotation.prepayment_percent';
+
+    public const DEFAULT_QUOTATION_PREPAYMENT_PERCENT = 100.0;
+
     /** Same key SalesOrderService has read since #407. */
     public const AUTO_LOCK_ON_CONFIRM = 'sales.orders.auto_lock_on_confirm';
 
@@ -224,6 +233,37 @@ class SalesSettings
     public function quotationDefaultTerms(): ?string
     {
         return $this->text(self::QUOTATION_DEFAULT_TERMS, null);
+    }
+
+    /**
+     * Issue #550: a drawn signature is required to accept a quotation in the
+     * customer portal. Off by default: the quotation portal has always
+     * accepted without one (unlike the invoice portal's own setting).
+     */
+    public function quotationRequireSignature(): bool
+    {
+        return $this->bool(self::QUOTATION_REQUIRE_SIGNATURE, false);
+    }
+
+    /**
+     * Issue #550: portal acceptance records the customer's agreement but does
+     * not confirm the quotation until the prepayment has been received.
+     */
+    public function quotationRequirePayment(): bool
+    {
+        return $this->bool(self::QUOTATION_REQUIRE_PAYMENT, false);
+    }
+
+    /** Issue #550: share of the quotation total due up front (0 < % <= 100). */
+    public function quotationPrepaymentPercent(): float
+    {
+        $raw = Setting::getValue(self::QUOTATION_PREPAYMENT_PERCENT);
+
+        if (! is_numeric($raw) || (float) $raw <= 0 || (float) $raw > 100) {
+            return self::DEFAULT_QUOTATION_PREPAYMENT_PERCENT;
+        }
+
+        return round((float) $raw, 2);
     }
 
     /** Issue #545 / #407: lock a sales order as part of confirming it. */

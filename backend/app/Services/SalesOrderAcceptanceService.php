@@ -124,6 +124,34 @@ class SalesOrderAcceptanceService
             'signer_name' => $quotation->signer_name,
             'signer_email' => $quotation->signer_email,
             'accepted_at' => optional($quotation->accepted_at)->toIso8601String(),
+            // Issue #550: what the portal must collect before accepting.
+            ...$this->quotationRequirements($quotation),
+        ];
+    }
+
+    /**
+     * Issue #550: the quotation's online-acceptance requirements. Each value
+     * is the one stamped on the quotation at creation (or edited on it); a
+     * quotation created before #550 (NULL) falls back to the tenant's Sales
+     * Settings → Quotations value.
+     *
+     * @return array{require_signature: bool, require_payment: bool, prepayment_percent: float, prepayment_amount: float}
+     */
+    public function quotationRequirements(\App\Models\Quotation $quotation): array
+    {
+        $settings = app(SalesSettings::class);
+
+        $requireSignature = $quotation->require_signature ?? $settings->quotationRequireSignature();
+        $requirePayment = $quotation->require_payment ?? $settings->quotationRequirePayment();
+        $percent = $quotation->prepayment_percent !== null
+            ? (float) $quotation->prepayment_percent
+            : $settings->quotationPrepaymentPercent();
+
+        return [
+            'require_signature' => (bool) $requireSignature,
+            'require_payment' => (bool) $requirePayment,
+            'prepayment_percent' => $percent,
+            'prepayment_amount' => $requirePayment ? round((float) $quotation->total * $percent / 100, 2) : 0.0,
         ];
     }
 
@@ -214,6 +242,8 @@ class SalesOrderAcceptanceService
 
         $fromStatus = (string) $quotation->status;
 
+        $requirements = $this->quotationRequirements($quotation);
+
         $quotation->update([
             'accepted_at' => now(),
             'signer_name' => $signerName,
@@ -223,6 +253,38 @@ class SalesOrderAcceptanceService
         ]);
 
         $accepted = $quotation->fresh();
+
+        // Issue #550: a quotation that requires payment is NOT confirmed by
+        // the customer's acceptance alone. The agreement is recorded and the
+        // quotation stays open until the prepayment is received and the
+        // salesperson confirms it (online collection is not wired yet).
+        if ($requirements['require_payment']) {
+            $this->logChatter(
+                $accepted,
+                'customer_accepted',
+                "Customer accepted quotation {$accepted->quotation_number} via the portal — awaiting prepayment of "
+                    .number_format($requirements['prepayment_amount'], 2).' '.$accepted->currency_code,
+                [
+                    'signer_name' => $signerName,
+                    'signer_email' => $signerEmail,
+                    'ip' => $ip,
+                    'acceptance_source' => self::SOURCE_PORTAL,
+                    'requires_payment' => true,
+                    'prepayment_percent' => $requirements['prepayment_percent'],
+                    'prepayment_amount' => $requirements['prepayment_amount'],
+                ],
+            );
+
+            return [
+                'quotation' => $accepted,
+                'requires_approval' => false,
+                'requires_payment' => true,
+                'prepayment_percent' => $requirements['prepayment_percent'],
+                'prepayment_amount' => $requirements['prepayment_amount'],
+                'approval_request' => null,
+                'already_accepted' => false,
+            ];
+        }
 
         $actor = $this->resolveApprovalActor($accepted);
 
@@ -270,6 +332,7 @@ class SalesOrderAcceptanceService
         return [
             'quotation' => $result['quotation'],
             'requires_approval' => $result['requires_approval'],
+            'requires_payment' => false,
             'approval_request' => $result['approval_request'],
             'already_accepted' => false,
         ];

@@ -114,6 +114,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [shippingPolicy, setShippingPolicy] = useState<'asap' | 'when_all_ready'>('asap')
   const [notes, setNotes] = useState('')
   const [terms, setTerms] = useState('')
+  // Issue #550: per-quotation online acceptance requirements. null = not
+  // touched, so the server stamps the tenant's Sales Settings value.
+  const [requireSignature, setRequireSignature] = useState<boolean | null>(null)
+  const [requirePayment, setRequirePayment] = useState<boolean | null>(null)
   const [discountAmount, setDiscountAmount] = useState<number | ''>('')
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed')
   const [lines, setLines] = useState<SalesDocumentLine[]>([emptySalesDocumentLine()])
@@ -393,6 +397,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setShippingPolicy(quotation.shipping_policy === 'when_all_ready' ? 'when_all_ready' : 'asap')
     setNotes(quotation.notes || '')
     setTerms(quotation.terms || '')
+    setRequireSignature(typeof quotation.require_signature === 'boolean' ? quotation.require_signature : null)
+    setRequirePayment(typeof quotation.require_payment === 'boolean' ? quotation.require_payment : null)
     setDiscountMode(quotation.discount_type === 'percentage' ? 'percentage' : 'fixed')
     setDiscountAmount(quotation.discount_value != null ? Number(quotation.discount_value) : (quotation.discount_amount ? Number(quotation.discount_amount) : ''))
     setCustomerReference(quotation.customer_reference || '')
@@ -715,6 +721,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
       terms: terms || null,
+      ...(requireSignature !== null ? { require_signature: requireSignature } : {}),
+      ...(requirePayment !== null ? { require_payment: requirePayment } : {}),
       discount_amount: documentDiscountAmount || 0,
       // FR-2.3 step 1: explicit list selection wins over applicability.
       ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
@@ -1452,6 +1460,28 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     className={SALES_TEXTAREA}
                     placeholder="Payment terms..."
                   />
+                </div>
+                {/* Issue #550: overrides of Sales Settings → Quotations. */}
+                <div className="space-y-2">
+                  <span className="block text-xs font-medium">Online acceptance</span>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label="Require online signature"
+                      checked={requireSignature ?? Boolean((salesDefaults as any)?.quotation?.require_signature)}
+                      onChange={(event) => setRequireSignature(event.target.checked)}
+                    />
+                    Require signature
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label="Require online payment"
+                      checked={requirePayment ?? Boolean((salesDefaults as any)?.quotation?.require_payment)}
+                      onChange={(event) => setRequirePayment(event.target.checked)}
+                    />
+                    Require prepayment before confirmation
+                  </label>
                 </div>
               </section>
 

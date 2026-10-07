@@ -85,6 +85,10 @@ export interface SalesSettings {
   quotation: ReviewerConfig & {
     default_validity_days?: number
     default_terms?: string
+    // Issue #550: online acceptance requirements for new quotations.
+    require_signature?: boolean
+    require_payment?: boolean
+    prepayment_percent?: number
   }
   sales_order: ReviewerConfig & {
     auto_lock_on_confirm?: boolean
@@ -150,6 +154,9 @@ export const emptySalesSettings: SalesSettings = {
     reviewer_roles: [],
     default_validity_days: 30,
     default_terms: '',
+    require_signature: false,
+    require_payment: false,
+    prepayment_percent: 100,
   },
   sales_order: {
     reviewer_user_ids: [],
@@ -1717,7 +1724,10 @@ export function DeliverySettings() {
 
 // ─── Quotations (Issue #545) ────────────────────────────────────────────────
 
-type QuotationSectionFields = Pick<SalesSettings['quotation'], 'default_validity_days' | 'default_terms'>
+type QuotationSectionFields = Pick<
+  SalesSettings['quotation'],
+  'default_validity_days' | 'default_terms' | 'require_signature' | 'require_payment' | 'prepayment_percent'
+>
 
 export function QuotationSettings() {
   const { data, isLoading } = useSalesSettings()
@@ -1770,6 +1780,46 @@ export function QuotationSettings() {
             Filled in on a new quotation when its terms are left blank.
           </p>
         </div>
+
+        <SettingsRow
+          title="Require online signature"
+          description="Customers must draw a signature to accept a quotation online. New quotations start with this; each quotation can override it."
+        >
+          <Switch
+            aria-label="Require online signature"
+            checked={Boolean(quotation.require_signature)}
+            onCheckedChange={(v) => setLocal({ ...local, require_signature: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Require online payment"
+          description="Online acceptance records the customer's agreement, but the quotation is confirmed only after the prepayment is received. Each quotation can override it."
+        >
+          <Switch
+            aria-label="Require online payment"
+            checked={Boolean(quotation.require_payment)}
+            onCheckedChange={(v) => setLocal({ ...local, require_payment: v })}
+          />
+        </SettingsRow>
+
+        {quotation.require_payment && (
+          <SettingsRow title="Prepayment" description="Share of the quotation total to be paid up front.">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                step="0.01"
+                aria-label="Prepayment percent"
+                value={quotation.prepayment_percent ?? 100}
+                onChange={(e) => setLocal({ ...local, prepayment_percent: Number(e.target.value) })}
+                className="w-24 text-center"
+              />
+              <span className="text-sm text-muted-foreground">%</span>
+            </div>
+          </SettingsRow>
+        )}
       </CardContent>
       <SettingsSaveBar
         hasChanges={Object.keys(local).length > 0}

@@ -148,6 +148,14 @@ class SalesOrderAcceptanceController extends Controller
             return response()->json(['error' => 'This quotation is no longer open for acceptance.'], 410);
         }
 
+        // Issue #550: a drawn signature is required when the quotation (or,
+        // for one created before #550, the tenant's Sales Settings) says so.
+        if ($this->service->quotationRequirements($quotation)['require_signature']) {
+            $request->validate([
+                'signature' => ['required', 'string', 'max:1048576', 'starts_with:data:image/'],
+            ]);
+        }
+
         try {
             $result = $this->service->acceptQuotation(
                 $quotation,
@@ -160,6 +168,25 @@ class SalesOrderAcceptanceController extends Controller
 
             $accepted = $result['quotation'];
 
+            // Issue #550: accepted, but not confirmed until the prepayment
+            // is received (HTTP 202, like a pending approval).
+            if ($result['requires_payment'] ?? false) {
+                return response()->json([
+                    'message' => 'Quotation accepted. It will be confirmed once the prepayment has been received.',
+                    'order_number' => $accepted->quotation_number,
+                    'quotation_number' => $accepted->quotation_number,
+                    'status' => $accepted->status,
+                    'requires_approval' => false,
+                    'requires_payment' => true,
+                    'prepayment_percent' => $result['prepayment_percent'],
+                    'prepayment_amount' => $result['prepayment_amount'],
+                    'currency_code' => $accepted->currency_code,
+                    'sales_order_id' => null,
+                    'signer_name' => $validated['signer_name'],
+                    'accepted_at' => optional($accepted->accepted_at)->toIso8601String(),
+                ], 202);
+            }
+
             return response()->json([
                 'message' => $result['requires_approval']
                     ? 'Quotation accepted. It now awaits internal approval before it can be confirmed.'
@@ -168,6 +195,7 @@ class SalesOrderAcceptanceController extends Controller
                 'quotation_number' => $accepted->quotation_number,
                 'status' => $accepted->status,
                 'requires_approval' => $result['requires_approval'],
+                'requires_payment' => false,
                 'sales_order_id' => $accepted->sales_order_id !== null ? (int) $accepted->sales_order_id : null,
                 'signer_name' => $validated['signer_name'],
                 'accepted_at' => optional($accepted->accepted_at)->toIso8601String(),

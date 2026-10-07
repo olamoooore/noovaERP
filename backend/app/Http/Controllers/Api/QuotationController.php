@@ -340,7 +340,27 @@ class QuotationController extends Controller
             'price_list_id' => 'nullable|integer',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
+            // Issue #550: per-quotation overrides of the tenant's online
+            // acceptance requirements (Sales Settings → Quotations).
+            'require_signature' => 'nullable|boolean',
+            'require_payment' => 'nullable|boolean',
+            'prepayment_percent' => 'nullable|numeric|gt:0|max:100',
         ]);
+
+        // Issue #550: Sales Settings → Quotations, applied server-side. An
+        // absent valid_until takes the default validity (0 = no expiry); an
+        // explicit null is the user clearing it. Days run from the quotation
+        // date, but never from a past date, so an API-created quotation is
+        // not born expired. Blank acceptance requirements take the tenant's.
+        $salesSettings = app(\App\Services\SalesSettings::class);
+        if (! array_key_exists('valid_until', $validated)
+            && ($validityDays = $salesSettings->quotationDefaultValidityDays()) > 0) {
+            $quotationDay = \Illuminate\Support\Carbon::parse($validated['quotation_date'] ?? now()->toDateString())->startOfDay();
+            $validated['valid_until'] = $quotationDay->max(now()->startOfDay())->addDays($validityDays)->toDateString();
+        }
+        $validated['require_signature'] = (bool) ($validated['require_signature'] ?? $salesSettings->quotationRequireSignature());
+        $validated['require_payment'] = (bool) ($validated['require_payment'] ?? $salesSettings->quotationRequirePayment());
+        $validated['prepayment_percent'] = (float) ($validated['prepayment_percent'] ?? $salesSettings->quotationPrepaymentPercent());
 
         // Issue #553: when the tenant enabled "default salesperson = current
         // user" (and/or a per-user default team), stamp the blank fields on
@@ -434,6 +454,10 @@ class QuotationController extends Controller
                     'exchange_rate' => $pricingContext['exchange_rate'],
                     'base_currency_code' => $pricingContext['base_currency'],
                     'created_by' => Auth::id(),
+                    // Issue #550: acceptance requirements.
+                    'require_signature' => $validated['require_signature'],
+                    'require_payment' => $validated['require_payment'],
+                    'prepayment_percent' => $validated['prepayment_percent'],
                 ], fn ($v) => $v !== null);
 
                 $quotation = Quotation::create($data);
@@ -718,6 +742,11 @@ class QuotationController extends Controller
             'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // Issue #550: per-quotation acceptance requirements (NULL = the
+            // tenant's Sales Settings value).
+            'require_signature' => 'nullable|boolean',
+            'require_payment' => 'nullable|boolean',
+            'prepayment_percent' => 'nullable|numeric|gt:0|max:100',
         ]);
 
         if (array_key_exists('discount_amount', $validated) && ! array_key_exists('discount_value', $validated)) {

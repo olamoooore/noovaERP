@@ -837,6 +837,10 @@ class CompanySettingsController extends Controller
                 'quotation' => [
                     'default_validity_days' => app(\App\Services\SalesSettings::class)->quotationDefaultValidityDays(),
                     'default_terms' => app(\App\Services\SalesSettings::class)->quotationDefaultTerms() ?? '',
+                    // Issue #550: online acceptance requirements.
+                    'require_signature' => app(\App\Services\SalesSettings::class)->quotationRequireSignature(),
+                    'require_payment' => app(\App\Services\SalesSettings::class)->quotationRequirePayment(),
+                    'prepayment_percent' => app(\App\Services\SalesSettings::class)->quotationPrepaymentPercent(),
                 ],
                 'tax' => $this->salesTaxDefaults(),
             ],
@@ -957,6 +961,10 @@ class CompanySettingsController extends Controller
                     // Issue #545: Quotations section.
                     'default_validity_days' => app(\App\Services\SalesSettings::class)->quotationDefaultValidityDays(),
                     'default_terms' => app(\App\Services\SalesSettings::class)->quotationDefaultTerms() ?? '',
+                    // Issue #550: online acceptance requirements.
+                    'require_signature' => app(\App\Services\SalesSettings::class)->quotationRequireSignature(),
+                    'require_payment' => app(\App\Services\SalesSettings::class)->quotationRequirePayment(),
+                    'prepayment_percent' => app(\App\Services\SalesSettings::class)->quotationPrepaymentPercent(),
                 ],
                 'sales_order' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.sales_order.reviewer_user_ids', []))),
@@ -1071,6 +1079,9 @@ class CompanySettingsController extends Controller
             // Issue #545: Quotations and Sales Orders sections.
             'quotation.default_validity_days' => 'nullable|integer|min:0|max:365',
             'quotation.default_terms' => 'nullable|string|max:1000',
+            'quotation.require_signature' => 'nullable|boolean',
+            'quotation.require_payment' => 'nullable|boolean',
+            'quotation.prepayment_percent' => 'nullable|numeric|gt:0|max:100',
             'sales_order.auto_lock_on_confirm' => 'nullable|boolean',
             'sales_order.default_invoicing_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::INVOICING_POLICIES)],
             // Issue #326: invoice credit-limit policy.
