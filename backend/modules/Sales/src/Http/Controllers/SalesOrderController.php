@@ -222,6 +222,9 @@ class SalesOrderController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
+            // #310 (X10): an explicit treatment chosen on the line (a non-charging
+            // one books 0% and keeps its classification for the returns).
+            'lines.*.tax_treatment' => 'nullable|in:'.implode(',', \App\Services\SalesLineTaxResolver::LINE_TREATMENTS),
             // Issue #409: the shipping line round-trips its marker.
             'lines.*.is_delivery' => 'nullable|boolean',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
@@ -448,6 +451,9 @@ class SalesOrderController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
+            // #310 (X10): an explicit treatment chosen on the line (a non-charging
+            // one books 0% and keeps its classification for the returns).
+            'lines.*.tax_treatment' => 'nullable|in:'.implode(',', \App\Services\SalesLineTaxResolver::LINE_TREATMENTS),
             // Issue #409: the shipping line round-trips its marker.
             'lines.*.is_delivery' => 'nullable|boolean',
             'lines.*.tax_inclusive' => 'nullable|boolean',
@@ -590,6 +596,7 @@ class SalesOrderController extends Controller
             if ($existing !== null) {
                 $touchesTax = array_key_exists('tax_rate', $line)
                     || array_key_exists('tax_rule_id', $line)
+                    || array_key_exists('tax_treatment', $line)
                     || array_key_exists('product_id', $line);
 
                 if (! $touchesTax) {

@@ -201,8 +201,18 @@ class TaxDeterminationService
                 $taxableBase = round((float) $line->line_total - $taxAmount, 2);
             }
 
+            // #310 (X10): a 0% line the document explicitly classified as
+            // exempt or out-of-scope (a tax code or treatment picked on the
+            // line, persisted at save) keeps that classification — it must
+            // never fall into the zero-rated bucket (F5 box 2 instead of 3).
+            // Zero-rated and unclassified 0% lines keep today's ladder.
+            $lineTreatment = ($taxRate <= 0 && in_array((string) $line->tax_treatment, ['exempt', 'out_of_scope'], true))
+                ? (string) $line->tax_treatment
+                : null;
+
             $treatment = match (true) {
                 $taxRate > 0 => 'standard_rated',
+                $lineTreatment !== null => $lineTreatment,
                 // A document-level manual override always beats the tenant default.
                 ($overrides['treatment'] ?? null) === 'exempt' || $customerExempt => 'exempt',
                 ($overrides['treatment'] ?? null) !== null => 'zero_rated',
@@ -224,11 +234,22 @@ class TaxDeterminationService
             // #309 (X9): a customer exemption outranks the product rule's
             // identity — an exempt 0% line must stay EXEMPT, not borrow a
             // zero-rated rule's treatment.
-            $exemptionOutranksRule = $customerExempt && $taxRate <= 0;
+            $exemptionOutranksRule = ($customerExempt && $taxRate <= 0) || $lineTreatment !== null;
             if ($resolved && ! $exemptionOutranksRule && ($line->tax_rate === null || $usesLocalizedDefault) && $rateMatches) {
                 $taxCode = $resolved['tax_code'];
                 $treatment = $resolved['treatment'];
                 $taxId = $resolved['tax_id'] ?? null;
+            }
+
+            // #310: the explicitly classified line carries its own identity —
+            // the rule picked/adopted at save, else a treatment-specific
+            // synthetic code so it never shares a code (and so a single trail
+            // row) with a zero-rated line.
+            if ($lineTreatment !== null) {
+                $taxCode = ($line->tax_code !== null && $line->tax_code !== '')
+                    ? (string) $line->tax_code
+                    : strtoupper("{$jurisdiction}-{$regime}-".str_replace('_', '-', $lineTreatment));
+                $taxId = $line->tax_rule_id !== null ? (int) $line->tax_rule_id : null;
             }
 
             $taxLines[] = [
@@ -533,7 +554,9 @@ class TaxDeterminationService
             // G-27 (#274): group by rate as well — two lines sharing a tax
             // code at different rates must not collapse into one row that
             // silently keeps the first rate.
-            $groupKey = $code.'|'.number_format((float) $line['tax_rate'], 4, '.', '');
+            // #310: and by treatment — an exempt and a zero-rated 0% line
+            // are different supplies on the return.
+            $groupKey = $code.'|'.number_format((float) $line['tax_rate'], 4, '.', '').'|'.((float) $line['tax_rate'] > 0 ? '' : (string) ($line['treatment'] ?? ''));
 
             if (! isset($groups[$groupKey])) {
                 $groups[$groupKey] = [

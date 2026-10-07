@@ -35,6 +35,7 @@ import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { SalesLineColumnVisibility, SalesLineColumnMenu } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog';
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment';
+import { treatmentLabel } from '@/lib/salesLineTax';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -751,7 +752,15 @@ export const CustomerInvoiceDetail: React.FC = () => {
                       <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                       <TableCell className="text-right">{normalizeQuantity(line.quantity)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
-                      <TableCell className="text-right">{line.tax_rate}%</TableCell>
+                      <TableCell className="text-right">
+                        {line.tax_rate}%
+                        {/* #310: the line's tax treatment / code as booked. */}
+                        {treatmentLabel(line.tax_treatment) && (
+                          <span className="block text-[11px] text-muted-foreground">
+                            {treatmentLabel(line.tax_treatment)}{line.tax_code ? ` · ${line.tax_code}` : ''}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
                       </>}

@@ -24,6 +24,7 @@ import api from '@/lib/api'
 import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
 import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
 import { resolveLineTaxRate } from '@/lib/lineTax';
+import { applyLineTaxChoice, buildLineTaxChoices, lineTaxChoiceValue, lineTaxIdentityPayload, savedLineTaxChoice, type SalesTaxCodeOption } from '@/lib/salesLineTax';
 import { computeDocumentTotals } from '@/lib/documentTotals';
 import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
 import {
@@ -114,6 +115,10 @@ interface InvoiceLine {
   quantity: number | '';
   unit_price: number | '';
   tax_rate: number | '';
+  // #310 (X10): the tax code / treatment chosen on the line (Standard-rated,
+  // Zero-rated, Exempt, Out-of-scope); unset = the server resolves the tax.
+  tax_rule_id?: number | null;
+  tax_treatment?: string | null;
   discount_amount: number | '';
   // MRD pricelist-multicurrency FR-6.2/FR-6.3: pricing intent travels with
   // the line — 'auto' lets the server resolve (and re-resolve) from the
@@ -413,6 +418,15 @@ export const CreateInvoicePage: React.FC = () => {
 
   const [customerId, setCustomerId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => todayDateOnly());
+  // #310: the output tax codes in force on the invoice date (labels and rates
+  // come from the tenant's rules) plus the non-charging treatments.
+  const { data: taxCodeOptions = [] } = useQuery<SalesTaxCodeOption[]>({
+    queryKey: ['sales-tax-codes', invoiceDate],
+    placeholderData: (previous) => previous,
+    queryFn: async () => (await api.get('/sales/tax-preview', { params: { date: invoiceDate || undefined } }))?.data?.data?.options ?? [],
+    staleTime: 5 * 60 * 1000,
+  });
+  const lineTaxChoices = React.useMemo(() => buildLineTaxChoices(taxCodeOptions), [taxCodeOptions]);
   const [paymentTerms, setPaymentTerms] = useState(30);
   // Issue #324: the payment term picked from the payment-terms master. When
   // set, the due date (and any instalment schedule) comes from the master's
@@ -909,6 +923,7 @@ export const CreateInvoicePage: React.FC = () => {
       quantity: (normalizeQuantity(line.quantity ?? 1) || 1) as number,
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
+      ...savedLineTaxChoice(line),
       discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
       // #1006: keep the FOC flag and its source link through the edit.
       is_foc: Boolean(line.is_foc),
@@ -1773,6 +1788,7 @@ export const CreateInvoicePage: React.FC = () => {
           quantity: line.quantity === '' ? 0 : (Number(normalizeQuantity(line.quantity)) || 0),
           unit_price: line.unit_price === '' ? 0 : Number(line.unit_price),
           tax_rate: line.tax_rate === '' ? 0 : Number(line.tax_rate),
+          ...lineTaxIdentityPayload(line),
           discount_amount: line.discount_amount === '' ? 0 : Number(line.discount_amount),
         })),
     };
@@ -2056,6 +2072,7 @@ export const CreateInvoicePage: React.FC = () => {
           price_mode: line.price_mode ?? undefined,
           override_reason: line.override_reason ?? undefined,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
+          ...lineTaxIdentityPayload(line),
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
           // #1006: FOC flag + the index of its paid line in this array.
           ...focPayloadFields(sentLines, line),
@@ -3261,6 +3278,9 @@ export const CreateInvoicePage: React.FC = () => {
                                   updated[index].sku = (product as any).sku || '';
                                   updated[index].tracking_method = (product as any).tracking_method || 'none';
                                   updated[index].tax_rate = resolveLineTaxRate(product, defaultTaxRate);
+                                  // #310: a new product drops the old line's tax choice.
+                                  updated[index].tax_rule_id = null;
+                                  updated[index].tax_treatment = null;
                                   // #287: a row product-pick must take the SAME pricing
                                   // path as updateLine() — mark the line 'auto' and run
                                   // the price-list resolver so the customer list price +
@@ -3436,7 +3456,7 @@ export const CreateInvoicePage: React.FC = () => {
                             </div>
                           </FieldSlot>
                         </td>
-                        {visibleLineColumns.tax_rate && <td data-label="Tax %" className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                        {visibleLineColumns.tax_rate && <td data-label="Tax %" className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
                           <FieldSlot name={lineFieldKey(index, 'tax_rate')}>
                             <div className={LINE_CELL_BOX}>
                               <input
@@ -3446,10 +3466,27 @@ export const CreateInvoicePage: React.FC = () => {
                                 step="0.01"
                                 placeholder="0"
                                 value={line.tax_rate === '' ? '' : line.tax_rate}
-                                onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
+                                onChange={(event) => {
+                                  const value = event.target.value === '' ? '' : parseFloat(event.target.value);
+                                  // #310: a typed rate replaces any picked tax code / treatment.
+                                  setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, tax_rate: value, tax_rule_id: null, tax_treatment: null } : item));
+                                }}
                                 className={LINE_INPUT_NUMERIC}
                               />
                             </div>
+                            <select
+                              aria-label="Tax code"
+                              title="Tax code / treatment"
+                              value={lineTaxChoiceValue(line)}
+                              onChange={(event) => {
+                                const patch = applyLineTaxChoice(event.target.value, lineTaxChoices);
+                                setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+                              }}
+                              className="mt-1 w-full truncate bg-transparent text-[11px] text-muted-foreground focus:outline-none"
+                            >
+                              <option value="">Auto</option>
+                              {lineTaxChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                            </select>
                           </FieldSlot>
                         </td>}
                         <td data-label="Total" className={cn(LINE_CELL, 'w-[7.5rem] min-w-[6.5rem]')}>

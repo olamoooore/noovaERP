@@ -23,6 +23,9 @@ use Illuminate\Validation\ValidationException;
  *  1. An explicit override — a tax rule id chosen on the line — wins. It must
  *     be an active output (or both) rule in force on the document date;
  *     anything else is refused with a validation error, never booked.
+ *  1b. An explicit non-charging treatment (zero-rated / exempt /
+ *     out-of-scope, #310) books 0% with that treatment — adopting a 0% rule
+ *     declaring it when one is in force; a positive rate with it is refused.
  *  2. An explicit 0% stays explicit (#304 X4: a zero-rated supply is the
  *     document's choice). It adopts the engine identity only when the engine
  *     also resolves 0% (e.g. an exempt product or a zero-rated rule).
@@ -44,6 +47,15 @@ use Illuminate\Validation\ValidationException;
  */
 class SalesLineTaxResolver
 {
+    /**
+     * #310: the treatments a line may carry explicitly without a charging
+     * rule — the classifications the statutory returns report separately.
+     */
+    public const NON_CHARGING_TREATMENTS = ['zero_rated', 'exempt', 'out_of_scope'];
+
+    /** #310: every treatment a sales line may be given explicitly. */
+    public const LINE_TREATMENTS = ['standard_rated', 'zero_rated', 'exempt', 'out_of_scope'];
+
     public function __construct(
         private readonly TaxEngineService $engine,
         private readonly TaxResolutionService $resolution,
@@ -52,7 +64,7 @@ class SalesLineTaxResolver
     ) {}
 
     /**
-     * @param  array<string, mixed>  $line  request line (product_id, variant_id, line_type, tax_rate, tax_rule_id, tax_inclusive)
+     * @param  array<string, mixed>  $line  request line (product_id, variant_id, line_type, tax_rate, tax_rule_id, tax_treatment, tax_inclusive)
      * @param  string|null  $date  the document date (tax point); today when null
      * @param  string  $errorKey  validation key for an invalid explicit rule, e.g. "lines.0.tax_rule_id"
      * @param  array{registered: bool, jurisdiction: string, export: bool}|null  $context  document context (see TaxDeterminationService::salesLineContext); null = no entity/customer context
@@ -99,13 +111,23 @@ class SalesLineTaxResolver
             return $this->fromExplicitRule((int) $line['tax_rule_id'], $date, $explicitInclusive, $errorKey);
         }
 
+        $sentRate = array_key_exists('tax_rate', $line) && $line['tax_rate'] !== null && $line['tax_rate'] !== ''
+            ? (float) $line['tax_rate']
+            : null;
+
+        // 1b. #310 (X10): an explicit non-charging treatment chosen on the
+        // line (zero-rated / exempt / out-of-scope). It is the document's
+        // classification of the supply and outranks the engine, so an exempt
+        // sale is never reported as zero-rated. Standard-rated is not a
+        // choice here — it is whatever charging rule the ladder resolves.
+        $explicitTreatment = $line['tax_treatment'] ?? null;
+        if (in_array($explicitTreatment, self::NON_CHARGING_TREATMENTS, true)) {
+            return $this->fromExplicitTreatment($explicitTreatment, $sentRate, $date, $jurisdiction, $explicitInclusive, $errorKey);
+        }
+
         $product = ! empty($line['product_id']) ? Product::find($line['product_id']) : null;
         $variant = ($product && ! empty($line['variant_id']))
             ? ProductVariant::query()->whereKey($line['variant_id'])->where('product_id', $product->id)->first()
-            : null;
-
-        $sentRate = array_key_exists('tax_rate', $line) && $line['tax_rate'] !== null && $line['tax_rate'] !== ''
-            ? (float) $line['tax_rate']
             : null;
 
         // Export (#740 AC3): the buyer's jurisdiction differs from the
@@ -281,6 +303,50 @@ class SalesLineTaxResolver
         }
 
         return $this->fromRule($rule, $explicitInclusive, 'explicit_rule');
+    }
+
+    /**
+     * #310: a line explicitly classified zero-rated, exempt or out-of-scope
+     * books no tax. It adopts the identity of an active 0% output rule in
+     * force on the date that declares exactly that treatment (e.g. the SG
+     * pack's SG-GST-EXEMPT) when one exists; otherwise it carries the
+     * treatment without a rule. A positive rate contradicts the treatment
+     * and is refused rather than silently dropped.
+     *
+     * @return array{tax_rate: float, tax_inclusive: bool, tax_rule_id: int|null, tax_code: string|null, tax_treatment: string|null, tax_source: string}
+     *
+     * @throws ValidationException
+     */
+    private function fromExplicitTreatment(string $treatment, ?float $sentRate, string $date, string $jurisdiction, ?bool $explicitInclusive, string $errorKey): array
+    {
+        if ($sentRate !== null && $sentRate > 0.0) {
+            $treatmentKey = str_ends_with($errorKey, 'tax_rule_id')
+                ? substr($errorKey, 0, -strlen('tax_rule_id')).'tax_treatment'
+                : $errorKey;
+
+            throw ValidationException::withMessages([
+                $treatmentKey => "A line classified as {$treatment} cannot charge tax ({$sentRate}% sent); set the tax rate to 0 or choose a standard-rated tax code.",
+            ]);
+        }
+
+        $jurisdiction = strtoupper($jurisdiction);
+        $rule = $this->engine->selectableRules($date, 'output')
+            ->filter(fn (Tax $tax) => abs((float) $tax->rate) < 0.005)
+            ->filter(fn (Tax $tax) => $tax->jurisdiction === null || $tax->jurisdiction === '' || strtoupper((string) $tax->jurisdiction) === $jurisdiction)
+            ->first(fn (Tax $tax) => $this->engine->ruleIdentity($tax, 'output')['treatment'] === $treatment);
+
+        if ($rule !== null) {
+            return $this->fromRule($rule, $explicitInclusive ?? false, 'explicit_treatment');
+        }
+
+        return [
+            'tax_rate' => 0.0,
+            'tax_inclusive' => (bool) ($explicitInclusive ?? false),
+            'tax_rule_id' => null,
+            'tax_code' => null,
+            'tax_treatment' => $treatment,
+            'tax_source' => 'explicit_treatment',
+        ];
     }
 
     /**

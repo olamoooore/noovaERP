@@ -340,6 +340,9 @@ class QuotationController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
+            // #310 (X10): an explicit treatment chosen on the line (a non-charging
+            // one books 0% and keeps its classification for the returns).
+            'lines.*.tax_treatment' => 'nullable|in:'.implode(',', \App\Services\SalesLineTaxResolver::LINE_TREATMENTS),
             'lines.*.tax_inclusive' => 'nullable|boolean',
             // Issue #409: the shipping line round-trips its marker.
             'lines.*.is_delivery' => 'nullable|boolean',
@@ -820,6 +823,9 @@ class QuotationController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             // #302: an explicit tax code (rule) overrides the engine.
             'lines.*.tax_rule_id' => 'nullable|integer',
+            // #310 (X10): an explicit treatment chosen on the line (a non-charging
+            // one books 0% and keeps its classification for the returns).
+            'lines.*.tax_treatment' => 'nullable|in:'.implode(',', \App\Services\SalesLineTaxResolver::LINE_TREATMENTS),
             'lines.*.tax_inclusive' => 'nullable|boolean',
             // Issue #409: the shipping line round-trips its marker.
             'lines.*.is_delivery' => 'nullable|boolean',
