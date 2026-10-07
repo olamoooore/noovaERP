@@ -58,7 +58,7 @@ class PaymentAdviceReconciliationTest extends TenantTestCase
 
     private function fixture(string $name): string
     {
-        return base_path('tests/fixtures/payment-advices/'.$name);
+        return base_path('tests/Fixtures/payment-advices/'.$name);
     }
 
     private function upload(string $fileName, ?string $fixturePath = null, string $mime = 'image/jpeg'): \Illuminate\Testing\TestResponse

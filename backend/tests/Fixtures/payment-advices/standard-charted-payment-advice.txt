@@ -1,0 +1,38 @@
+C
+Q
+:
+Straight2Bank
+Standard Chartered
+PAYEE ADVICE
+Date : 24/04/2025
+SCB Ref : SG00331Q0240177
+Customer Ref : B1933/E107
+To: ACME PTE LTD
+Invoice Total
+1,090.00
+- Benef. Charge
+0.00
+- Discount
+0.00
+UTR Reference
+SB10502504233781
+Dear Sir / Madam (s).
+have on 23/04/2025 made a payment to your account XXXXxx2662 at UNITED OVERSEAS BANK LIMITED for SGD 1,090
+instructed by THOMSON MEDICAL PTE. LT
+Should you not receive the paymemt in time, please contact THOMSON MEDICAL PTE. LTD. at 6562550311 for further
+Remittance Advice
+This section includes details as supplied by THOMSON MEDICAL PTE. LTD.
+Payment Details :
+Reference
+Date
+Description
+Amount (SCD )
+2024/12/017
+12/12/2024
+B1933/E107
+545.00
+2024/12/016
+12/12/2024
+B1933/E107
+545.00
+Page 1
