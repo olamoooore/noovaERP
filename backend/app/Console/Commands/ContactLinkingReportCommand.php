@@ -6,6 +6,7 @@ use App\Console\Concerns\IteratesTenants;
 use App\Models\Tenant;
 use App\Services\ContactLinkingPlanner;
 use App\Support\ReportRedactor;
+use App\Support\SpreadsheetCell;
 use Illuminate\Console\Command;
 
 /**
@@ -20,7 +21,8 @@ class ContactLinkingReportCommand extends Command
     protected $signature = 'contacts:linking-report
         {--tenant= : Report a single tenant id instead of every tenant}
         {--json= : Also write the full report (every row) to this file}
-        {--redact : Replace names, emails, phones and address text in the JSON file (personal data)}';
+        {--redact : Replace names, emails, phones and address text in the JSON file and review sheet (personal data)}
+        {--review-sheet= : Also write a CSV review sheet: one row per planned customer and contact, with its fingerprint, allowed decisions and empty decision columns}';
 
     protected $description = 'Report-only plan for linking customers and their contacts to the Contact Master (ADR-003B W6)';
 
@@ -49,7 +51,75 @@ class ContactLinkingReportCommand extends Command
             $this->info("Full report written to {$path}");
         }
 
+        if ($sheet = $this->option('review-sheet')) {
+            $this->writeReviewSheet($sheet, (bool) $this->option('redact'));
+            $this->info("Review sheet written to {$sheet}");
+        }
+
         return $exit;
+    }
+
+    /**
+     * W6 step 3 review sheet. The future linking run reads the decision
+     * columns and checks each row's fingerprint (source and target).
+     */
+    private function writeReviewSheet(string $path, bool $redact): void
+    {
+        $handle = fopen($path, 'w');
+        fputcsv($handle, ['tenant_id', 'kind', 'row_id', 'fingerprint', 'name', 'action', 'reason', 'targets', 'depends_on', 'allowed_decisions', 'proposed_decision', 'decision', 'decision_target', 'decided_by', 'decided_at', 'note']);
+        foreach ($this->reports as $report) {
+            // A dependent row is proposed only when everything it depends on
+            // is proposed to create/link/keep (rows are written in run order).
+            $proposals = [];
+            foreach (['organisation' => $report['organisations'], 'person' => $report['people']] as $kind => $rows) {
+                foreach ($rows as $row) {
+                    [$allowed, $proposed] = $this->decisionsFor($row);
+                    $dependsOn = $row['depends_on'] ?? [];
+                    foreach ($dependsOn as $dependency) {
+                        if (! in_array($proposals[$dependency] ?? '', ['create', 'link', 'keep'], true)) {
+                            $proposed = '';
+                        }
+                    }
+                    $rowId = $kind === 'organisation' ? $row['customer_id'] : $row['customer_contact_id'];
+                    $proposals[$kind.':'.$rowId] = $proposed;
+                    fputcsv($handle, [
+                        $report['tenant_id'],
+                        $kind,
+                        $rowId,
+                        $row['fingerprint'],
+                        $redact ? ReportRedactor::MARK : SpreadsheetCell::escape($kind === 'organisation' ? $row['customer_name'] : $row['name']),
+                        $row['action'],
+                        $row['reason'] ?? '',
+                        implode('|', ContactLinkingPlanner::targetIds($row)),
+                        implode('|', $dependsOn),
+                        implode('|', $allowed),
+                        $proposed,
+                        '', '', '', '', '',
+                    ]);
+                }
+            }
+        }
+        fclose($handle);
+    }
+
+    /**
+     * Allowed decisions per action/reason, and the proposal ('' = a person
+     * must decide).
+     *
+     * @return array{0: list<string>, 1: string}
+     */
+    private function decisionsFor(array $row): array
+    {
+        return match (true) {
+            $row['action'] === ContactLinkingPlanner::ACTION_KEEP_MERGED_CUSTOMER => [['keep'], 'keep'],
+            ($row['reason'] ?? null) === 'linked_to_merged_duplicate' => [['survivor', 'skip'], ''],
+            ($row['reason'] ?? null) === 'linked_contact_deleted' => [['restore', 'create', 'skip'], ''],
+            $row['action'] === ContactLinkingPlanner::ACTION_CREATE_ORGANISATION,
+            $row['action'] === ContactLinkingPlanner::ACTION_CREATE_PERSON => [['create', 'skip'], 'create'],
+            $row['action'] === ContactLinkingPlanner::ACTION_CREATE_PERSON_WITH_CANDIDATE => [['create', 'link', 'skip'], 'create'],
+            $row['action'] === ContactLinkingPlanner::ACTION_AUTO_LINK => [['link', 'create', 'skip'], 'link'],
+            default => [['create', 'link', 'skip'], ''],
+        };
     }
 
     private function reportTenant(ContactLinkingPlanner $planner, string $tenantId): int

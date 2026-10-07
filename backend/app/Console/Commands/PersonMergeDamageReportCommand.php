@@ -6,6 +6,7 @@ use App\Console\Concerns\IteratesTenants;
 use App\Models\Tenant;
 use App\Services\PersonMergeDamagePlanner;
 use App\Support\ReportRedactor;
+use App\Support\SpreadsheetCell;
 use Illuminate\Console\Command;
 
 /**
@@ -77,8 +78,8 @@ class PersonMergeDamageReportCommand extends Command
                     fputcsv($handle, [
                         $report['tenant_id'], $person['person_id'], $person['identity_fingerprint'],
                         $link['customer_contact_id'], $link['link_fingerprint'], $link['customer_id'],
-                        $redact ? ReportRedactor::MARK : $this->cell($link['name']),
-                        $redact ? ReportRedactor::MARK : $this->cell($person['person_name']),
+                        $redact ? ReportRedactor::MARK : SpreadsheetCell::escape($link['name']),
+                        $redact ? ReportRedactor::MARK : SpreadsheetCell::escape($person['person_name']),
                         $link['status'], $link['bug_signature'] ? 'yes' : 'no', $proposed,
                         '', '', '', '',
                     ]);
@@ -86,18 +87,6 @@ class PersonMergeDamageReportCommand extends Command
             }
         }
         fclose($handle);
-    }
-
-    /**
-     * Free text (names) is opened in a spreadsheet by reviewers: a value
-     * starting with = + - @ or a tab/CR would run as a formula, so it is
-     * prefixed with an apostrophe (CSV/formula injection).
-     */
-    private function cell(?string $value): string
-    {
-        $value = (string) $value;
-
-        return $value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true) ? "'".$value : $value;
     }
 
     private function reportTenant(PersonMergeDamagePlanner $planner, string $tenantId): int
