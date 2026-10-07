@@ -215,7 +215,8 @@ class PostingEngine implements PostingEngineInterface
             ]);
 
             return PostingResult::failure(
-                'Posting blocked: '.($eligibilityResult->blockingReason?->value ?? 'UNKNOWN')
+                'Posting blocked: '.($eligibilityResult->blockingReason?->value ?? 'UNKNOWN'),
+                $eligibilityResult->blockingReason?->value,
             );
         }
 
@@ -236,25 +237,17 @@ class PostingEngine implements PostingEngineInterface
                 // AFTER gate evaluation must still reject the posting (no
                 // lost update between a concurrent close and this commit).
                 if ($this->postingIsTaxRelevant($request)) {
-                    $commitPeriod = date('Y-m', strtotime($request->postingDate));
+                    // Takes the shared period lock (held until this commit)
+                    // so a concurrent close waits for this posting, then
+                    // re-reads the locks. Scope = entity + regime, as the gate.
+                    $determination = $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null);
 
-                    $lockedAtCommit = DB::table('tax_period_locks')
-                        ->where('period', $commitPeriod)
-                        ->where('tenant_id', (int) $tenantId)
-                        ->where(function ($q) use ($request) {
-                            $q->whereNull('legal_entity_id');
-
-                            if ($request->legalEntityId) {
-                                $q->orWhere('legal_entity_id', (int) $request->legalEntityId);
-                            }
-                        })
-                        ->exists();
-
-                    if ($lockedAtCommit) {
-                        throw new \RuntimeException(
-                            'TAX_PERIOD_LOCKED: tax period '.$commitPeriod.' was closed while this posting was in flight'
-                        );
-                    }
+                    app(\App\Services\TaxPeriodClosingService::class)->assertOpenForPosting(
+                        date('Y-m', strtotime($request->postingDate)),
+                        (int) $tenantId,
+                        $request->legalEntityId ? (int) $request->legalEntityId : null,
+                        is_array($determination) && is_string($determination['jurisdiction'] ?? null) ? $determination['jurisdiction'] : null,
+                    );
                 }
 
                 // Idempotency pre-check inside the transaction to avoid orphan postings.
@@ -443,7 +436,10 @@ class PostingEngine implements PostingEngineInterface
                 'error' => $e->getMessage(),
             ]);
 
-            return PostingResult::failure('Posting failed: '.$e->getMessage());
+            return PostingResult::failure(
+                'Posting failed: '.$e->getMessage(),
+                $e instanceof \App\Accounting\Exceptions\TaxPeriodLockedException ? $e::REASON_CODE : null,
+            );
         }
     }
 

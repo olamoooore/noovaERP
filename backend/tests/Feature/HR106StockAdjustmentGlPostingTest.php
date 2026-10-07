@@ -187,10 +187,13 @@ class HR106StockAdjustmentGlPostingTest extends TenantTestCase
         $this->assertSame(200.00, round((float) $inventoryLine->credit, 2));
     }
 
-    public function test_increasing_adjustment_debits_inventory_and_credits_gain(): void
+    public function test_increasing_adjustment_with_an_explicit_mapping_posts_to_that_account(): void
     {
         $this->seedLevel(2);
-        $reason = $this->reason('increase');
+
+        // #1017 decision (2026-10-07, option A): increases have no default gain
+        // account; a tenant-configured explicit mapping still posts.
+        $reason = $this->reason('increase', 'cogs');
 
         // Set stock to 5 → delta +3 × 25.00 = 75.00
         $movement = app(StockAdjustmentService::class)->adjust(
@@ -205,14 +208,14 @@ class HR106StockAdjustmentGlPostingTest extends TenantTestCase
         $mappingService = app(AccountMappingService::class);
 
         $inventoryLine = $this->lineFor($lines, $mappingService->resolveId('inventory'));
-        $gainLine = $this->lineFor($lines, $mappingService->resolveId('inventory_adjustment_gain'));
+        $mappedLine = $this->lineFor($lines, $mappingService->resolveId('cogs'));
 
-        $this->assertNotNull($gainLine, 'Increases must credit the inventory adjustment gain account');
+        $this->assertNotNull($mappedLine, 'An explicit increase mapping must be honoured');
         $this->assertSame(75.00, round((float) $inventoryLine->debit, 2));
-        $this->assertSame(75.00, round((float) $gainLine->credit, 2));
+        $this->assertSame(75.00, round((float) $mappedLine->credit, 2));
     }
 
-    public function test_stock_in_posts_inventory_gain(): void
+    public function test_stock_in_without_a_gain_mapping_changes_stock_without_a_journal_entry(): void
     {
         $this->seedLevel(0);
         $reason = $this->reason('increase');
@@ -225,11 +228,18 @@ class HR106StockAdjustmentGlPostingTest extends TenantTestCase
             'opening count'
         );
 
-        $lines = $this->journalEntryLinesFor($movement->id);
-        $mappingService = app(AccountMappingService::class);
+        // #1017 decision (2026-10-07, option A): the receipt succeeds and no
+        // gain posting is attempted when the reason has no explicit mapping.
+        $this->assertSame(4, (int) StockLevel::where('product_id', $this->product->id)
+            ->where('warehouse_id', $this->warehouse->id)
+            ->value('quantity'));
 
-        $this->assertSame(100.00, round((float) $this->lineFor($lines, $mappingService->resolveId('inventory'))->debit, 2));
-        $this->assertSame(100.00, round((float) $this->lineFor($lines, $mappingService->resolveId('inventory_adjustment_gain'))->credit, 2));
+        $this->assertNull(
+            JournalEntryLink::where('source_document_type', 'stock_adjustment')
+                ->where('source_document_id', $movement->id)
+                ->first(),
+            'An unmapped stock increase must not create a journal entry.'
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────

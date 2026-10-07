@@ -63,6 +63,8 @@ type SalesOrderLineExtras = {
   income_account_id?: number | null
   project_id?: number | null
   department_id?: number | null
+  /** Issue #332: analytic distribution (account + %) — kept verbatim on edit. */
+  analytic_distribution?: Array<{ analytic_account_id: number; percentage: number }> | null
   invoicing_policy?: string | null
 }
 
@@ -184,6 +186,12 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         income_account_id: line.income_account_id ?? null,
         project_id: line.project_id ?? null,
         department_id: line.department_id ?? null,
+        analytic_distribution: Array.isArray(line.analytic_distribution) && line.analytic_distribution.length > 0
+          ? line.analytic_distribution.map((share: { analytic_account_id: number; percentage: number }) => ({
+              analytic_account_id: share.analytic_account_id,
+              percentage: Number(share.percentage),
+            }))
+          : null,
         invoicing_policy: line.invoicing_policy ?? null,
       }))
     setLines(mapped.length > 0 ? mapped : [emptySalesDocumentLine()])
@@ -372,6 +380,9 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         ...(line.income_account_id ? { income_account_id: line.income_account_id } : {}),
         ...(line.project_id ? { project_id: line.project_id } : {}),
         ...(line.department_id ? { department_id: line.department_id } : {}),
+        ...(line.analytic_distribution && line.analytic_distribution.length > 0
+          ? { analytic_distribution: line.analytic_distribution }
+          : {}),
         ...(line.invoicing_policy ? { invoicing_policy: line.invoicing_policy } : {}),
       })),
     }

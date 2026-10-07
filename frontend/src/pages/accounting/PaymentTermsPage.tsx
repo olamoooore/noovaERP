@@ -47,7 +47,18 @@ interface PaymentTerm {
   is_active: boolean;
   description?: string;
   usage_count?: number;
+  // Issue #324: optional instalments (percent of total or the balance).
+  lines?: InstalmentLine[];
 }
+
+interface InstalmentLine {
+  value_type: 'percent' | 'balance';
+  value?: number | string | null;
+  days: number;
+  delay_type: 'net_days' | 'end_of_month';
+}
+
+type PaymentTermPayload = Omit<Partial<PaymentTerm>, 'lines'> & { lines?: InstalmentLine[] };
 
 export default function PaymentTermsPage() {
   const navigate = useNavigate();
@@ -56,6 +67,9 @@ export default function PaymentTermsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTerm, setEditingTerm] = useState<PaymentTerm | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [instalmentLines, setInstalmentLines] = useState<InstalmentLine[]>([]);
+  const updateInstalment = (index: number, patch: Partial<InstalmentLine>) =>
+    setInstalmentLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
 
   // Fetch payment terms
   const { data: terms = [], isLoading } = useQuery({
@@ -69,7 +83,7 @@ export default function PaymentTermsPage() {
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: async (data: Partial<PaymentTerm>) => {
+    mutationFn: async (data: PaymentTermPayload) => {
       const response = await api.post('/accounting/payment-terms', data);
       return response.data;
     },
@@ -93,7 +107,7 @@ export default function PaymentTermsPage() {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<PaymentTerm> }) => {
+    mutationFn: async ({ id, data }: { id: number; data: PaymentTermPayload }) => {
       const response = await api.put(`/accounting/payment-terms/${id}`, data);
       return response.data;
     },
@@ -171,6 +185,13 @@ export default function PaymentTermsPage() {
       discount_percentage: parseFloat(formData.get('discount_percentage') as string) || 0,
       discount_days: parseInt(formData.get('discount_days') as string) || 0,
       description: formData.get('description') as string,
+      // Issue #324: [] clears the instalments (single due date).
+      lines: instalmentLines.map((line) => ({
+        value_type: line.value_type,
+        value: line.value_type === 'percent' ? Number(line.value) || 0 : null,
+        days: Number(line.days) || 0,
+        delay_type: line.delay_type,
+      })),
     };
 
     if (editingTerm) {
@@ -182,6 +203,12 @@ export default function PaymentTermsPage() {
 
   const handleEdit = (term: PaymentTerm) => {
     setEditingTerm(term);
+    setInstalmentLines((term.lines ?? []).map((line) => ({
+      value_type: line.value_type,
+      value: line.value_type === 'percent' ? Number(line.value) : null,
+      days: Number(line.days) || 0,
+      delay_type: line.delay_type ?? 'net_days',
+    })));
     setIsDialogOpen(true);
   };
 
@@ -214,6 +241,11 @@ export default function PaymentTermsPage() {
   };
 
   const getTermDescription = (term: PaymentTerm) => {
+    if ((term.lines?.length ?? 0) > 0) {
+      return term.lines!
+        .map((line) => `${line.value_type === 'balance' ? 'Balance' : `${Number(line.value)}%`} ${line.delay_type === 'end_of_month' ? `EOM + ${line.days}` : `+${line.days}`} days`)
+        .join(', ');
+    }
     if (term.type === 'immediate') {
       return 'Payment due immediately';
     }
@@ -266,6 +298,7 @@ export default function PaymentTermsPage() {
           <Button
             onClick={() => {
               setEditingTerm(null);
+              setInstalmentLines([]);
               setIsDialogOpen(true);
             }}
           >
@@ -451,6 +484,86 @@ export default function PaymentTermsPage() {
                   min="0"
                 />
               </div>
+            </div>
+
+            {/* Issue #324: instalments — each a % of the total or the
+                balance, due N days after the invoice date or month end. */}
+            <div className="space-y-2" data-testid="payment-term-instalments">
+              <div className="flex items-center justify-between">
+                <Label>Instalments</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInstalmentLines((current) => [
+                    ...current,
+                    { value_type: current.some((line) => line.value_type === 'balance') ? 'percent' : 'balance', value: null, days: 0, delay_type: 'net_days' },
+                  ])}
+                >
+                  <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-1" />
+                  Add instalment
+                </Button>
+              </div>
+              {instalmentLines.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No instalments — the whole amount is due on the date above.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {instalmentLines.map((line, index) => (
+                    <div key={index} className="grid grid-cols-[1fr_1fr_1fr_1.3fr_auto] items-center gap-2">
+                      <select
+                        aria-label={`Instalment ${index + 1} type`}
+                        value={line.value_type}
+                        onChange={(e) => updateInstalment(index, { value_type: e.target.value as InstalmentLine['value_type'] })}
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="percent">Percent</option>
+                        <option value="balance">Balance</option>
+                      </select>
+                      <Input
+                        aria-label={`Instalment ${index + 1} percent`}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        disabled={line.value_type === 'balance'}
+                        value={line.value_type === 'balance' ? '' : (line.value ?? '')}
+                        placeholder={line.value_type === 'balance' ? 'Rest' : '%'}
+                        onChange={(e) => updateInstalment(index, { value: e.target.value })}
+                      />
+                      <Input
+                        aria-label={`Instalment ${index + 1} days`}
+                        type="number"
+                        min="0"
+                        value={line.days}
+                        onChange={(e) => updateInstalment(index, { days: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                      />
+                      <select
+                        aria-label={`Instalment ${index + 1} counted from`}
+                        value={line.delay_type}
+                        onChange={(e) => updateInstalment(index, { delay_type: e.target.value as InstalmentLine['delay_type'] })}
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="net_days">days after invoice</option>
+                        <option value="end_of_month">days after month end</option>
+                      </select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Remove instalment ${index + 1}`}
+                        onClick={() => setInstalmentLines((current) => current.filter((_, i) => i !== index))}
+                      >
+                        <Icon icon="solar:trash-bin-linear" className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">
+                    Percentages plus one balance line must cover 100% of the invoice.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

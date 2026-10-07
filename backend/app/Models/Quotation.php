@@ -132,6 +132,11 @@ class Quotation extends Model implements WorkflowSubject
         'shipping_address_snapshot',
         'sales_order_id',
         'created_by',
+        // Issue #550: per-quotation acceptance requirements (stamped from
+        // Sales Settings on create; NULL falls back to the tenant setting).
+        'require_signature',
+        'require_payment',
+        'prepayment_percent',
         // Issue #178: rejection/replacement revision chain.
         'correction_group_id',
         'version_number',
@@ -173,6 +178,10 @@ class Quotation extends Model implements WorkflowSubject
         'accepted_at' => 'datetime',
         // Issue #896: optimistic-concurrency token.
         'lock_version' => 'integer',
+        // Issue #550
+        'require_signature' => 'boolean',
+        'require_payment' => 'boolean',
+        'prepayment_percent' => 'decimal:2',
     ];
 
     public function customer(): BelongsTo

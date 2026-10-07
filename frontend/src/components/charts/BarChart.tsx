@@ -28,6 +28,8 @@ interface BarChartProps {
   showGrid?: boolean;
   showLegend?: boolean;
   formatYAxis?: 'currency' | 'number' | 'percent';
+  /** ISO currency for 'currency' formatting (e.g. the report's base currency); defaults to the tenant setting. */
+  currency?: string;
   stacked?: boolean;
   horizontal?: boolean;
   /**
@@ -53,6 +55,7 @@ export const BarChart: React.FC<BarChartProps> = ({
   showGrid = true,
   showLegend = true,
   formatYAxis = 'number',
+  currency,
   stacked = false,
   horizontal = false,
   truncateLabels = 16,
@@ -60,7 +63,7 @@ export const BarChart: React.FC<BarChartProps> = ({
   isDark = false,
 }) => {
   const theme = getChartTheme(isDark);
-  const tickFormatter = makeAxisTickFormatter(formatYAxis, maxAbsOf(data, yKeys));
+  const tickFormatter = makeAxisTickFormatter(formatYAxis, maxAbsOf(data, yKeys), currency);
   const angled = xAxisAngle !== 0;
   const categoryTick = (value: any) =>
     truncateLabels > 0 ? truncateLabel(value, truncateLabels) : String(value ?? '');
@@ -143,7 +146,7 @@ export const BarChart: React.FC<BarChartProps> = ({
 
         <Tooltip
           cursor={{ fill: 'rgba(148, 163, 184, 0.10)', radius: 8 }}
-          content={<ChartTooltip valueFormat={formatYAxis} />}
+          content={<ChartTooltip valueFormat={formatYAxis} currency={currency} />}
         />
         {legendVisible && (
           <Legend

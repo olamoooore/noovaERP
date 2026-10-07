@@ -55,6 +55,56 @@ class BlockRendererTest extends TestCase
         $this->assertStringContainsString('<th', $html);
     }
 
+    /** #1004: sanitized rich text renders for product descriptions and note/section rows. */
+    public function test_renders_rich_text_description_and_note_section_html(): void
+    {
+        $data = (new InvoiceDataSource)->sample();
+        $data['lines'] = [
+            [
+                'line_type' => 'product',
+                'index' => 1,
+                'description' => 'Plain fallback',
+                'description_html' => '<b>Styled product</b>',
+                'line_total' => 100,
+            ],
+            [
+                'line_type' => 'section',
+                'index' => null,
+                'description' => 'Section',
+                'description_html' => '<u>Styled section</u>',
+            ],
+            [
+                'line_type' => 'note',
+                'index' => null,
+                'description' => 'Note',
+                'description_html' => '<span style="color:#065f46">Styled note</span>',
+            ],
+            [
+                'line_type' => 'product',
+                'index' => 2,
+                'description' => 'Untagged & escaped',
+                'line_total' => 50,
+            ],
+        ];
+
+        $html = $this->renderer()->render(
+            $this->template([[
+                'type' => 'table', 'source' => 'lines',
+                'columns' => [
+                    ['label' => 'Description', 'field' => 'description'],
+                    ['label' => 'Amount', 'field' => 'line_total', 'format' => 'money'],
+                ],
+            ]]),
+            $data,
+        )['html'];
+
+        $this->assertStringContainsString('<b>Styled product</b>', $html);
+        $this->assertStringContainsString('<u>Styled section</u>', $html);
+        $this->assertStringContainsString('color:#065f46', $html);
+        // A line without HTML keeps the escaped plain text.
+        $this->assertStringContainsString('Untagged &amp; escaped', $html);
+    }
+
     public function test_renders_note_and_section_as_full_width_rows_without_index_cells(): void
     {
         $data = (new InvoiceDataSource)->sample();

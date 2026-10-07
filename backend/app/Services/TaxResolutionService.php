@@ -33,7 +33,13 @@ class TaxResolutionService
      * audit code uses the same canonical `{jurisdiction}-{regime}-{rate}`
      * format as the engine's synthetic codes (was `VARIANT-900`).
      *
-     * @return array{rate: float, is_inclusive: bool, tax_code: string, tax_id: int|null, tax_name: string|null}
+     * #302: the optional $taxType (the country pack's line tax type for the
+     * product, e.g. sales vs service tax) narrows localized rule selection
+     * exactly as the posting-time determination does. The result also
+     * carries the engine's treatment/source so a sales line can persist its
+     * tax identity.
+     *
+     * @return array{rate: float, is_inclusive: bool, tax_code: string|null, tax_id: int|null, tax_name: string|null, treatment: string|null, source: string|null, unconfigured: bool, blocked: bool}
      */
     public function resolveTaxForProduct(
         Product $product,
@@ -41,11 +47,12 @@ class TaxResolutionService
         ?string $jurisdiction = null,
         string $direction = 'output',
         ?string $date = null,
+        ?string $taxType = null,
     ): array {
         // Variant rates remain an explicit item override, then all other
         // resolution is delegated to the shared localized engine.
         if ($variant && $variant->tax_rate !== null) {
-            $calculation = $this->engine->resolve($product, $jurisdiction, $direction, null, $date);
+            $calculation = $this->engine->resolve($product, $jurisdiction, $direction, $taxType, $date);
             $rate = (float) $variant->tax_rate;
 
             return [
@@ -54,10 +61,14 @@ class TaxResolutionService
                 'tax_code' => $this->canonicalCode($calculation, $rate),
                 'tax_id' => null,
                 'tax_name' => "Variant Tax {$variant->tax_rate}%",
+                'treatment' => $rate > 0 ? 'standard_rated' : ($calculation['treatment'] ?? null),
+                'source' => 'variant',
+                'unconfigured' => false,
+                'blocked' => false,
             ];
         }
 
-        $resolved = $this->engine->resolve($product, $jurisdiction, $direction, null, $date);
+        $resolved = $this->engine->resolve($product, $jurisdiction, $direction, $taxType, $date);
 
         return [
             'rate' => $resolved['rate'],
@@ -65,6 +76,10 @@ class TaxResolutionService
             'tax_code' => $resolved['tax_code'],
             'tax_id' => $resolved['tax_id'],
             'tax_name' => $resolved['tax_name'],
+            'treatment' => $resolved['treatment'] ?? null,
+            'source' => $resolved['source'] ?? null,
+            'unconfigured' => (bool) ($resolved['unconfigured'] ?? false),
+            'blocked' => (bool) ($resolved['blocked'] ?? false),
         ];
     }
 

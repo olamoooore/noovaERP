@@ -51,6 +51,8 @@ export interface CustomerBillingAddressRecord {
 export interface CustomerPayloadFields extends CustomerBillingAddressFields {
   credit_limit?: string | number | null
   payment_terms?: string | number | null
+  // Issue #324: default master payment term ('' / null = none).
+  payment_term_id?: string | number | null
 }
 
 const BILLING_ADDRESS_FIELDS = [
@@ -94,6 +96,12 @@ export function buildCustomerPayload<T extends CustomerPayloadFields>(data: T) {
 
   payload.credit_limit = normalizeCreditLimit(data.credit_limit)
   payload.payment_terms = normalizePaymentTerms(data.payment_terms)
+  if ('payment_term_id' in data) {
+    const termId = Number(data.payment_term_id)
+    payload.payment_term_id = data.payment_term_id !== '' && data.payment_term_id != null && Number.isFinite(termId) && termId > 0
+      ? termId
+      : null
+  }
 
   return payload
 }
@@ -126,6 +134,8 @@ export interface CustomerFormValues {
   shipping_address: string
   credit_limit: string
   payment_terms: string
+  // Issue #324: default master payment term id ('' = none).
+  payment_term_id: string
   preferred_contact: string
   date_of_birth: string
   gender: string
@@ -158,6 +168,7 @@ export function emptyCustomerFormValues(overrides: Partial<CustomerFormValues> =
     shipping_address: '',
     credit_limit: '',
     payment_terms: '30',
+    payment_term_id: '',
     preferred_contact: 'email',
     date_of_birth: '',
     gender: '',
@@ -194,6 +205,7 @@ export interface CustomerFormSource {
   shipping_address?: string | null
   credit_limit?: string | number | null
   payment_terms?: string | number | null
+  payment_term_id?: string | number | null
   preferred_contact?: string | null
   date_of_birth?: string | null
   gender?: string | null
@@ -264,6 +276,7 @@ export function customerToFormValues(customer: CustomerFormSource = {}): Custome
     shipping_address: customer.shipping_address ?? '',
     credit_limit: customer.credit_limit === null || customer.credit_limit === undefined ? '' : String(customer.credit_limit),
     payment_terms: customer.payment_terms === null || customer.payment_terms === undefined ? '30' : String(customer.payment_terms),
+    payment_term_id: customer.payment_term_id === null || customer.payment_term_id === undefined ? '' : String(customer.payment_term_id),
     preferred_contact: (PREFERRED_CONTACT_METHODS as readonly string[]).includes(preferredContact) ? preferredContact : 'email',
     date_of_birth: (customer.date_of_birth ?? '').slice(0, 10),
     gender: (CUSTOMER_GENDERS as readonly string[]).includes(gender) ? gender : '',

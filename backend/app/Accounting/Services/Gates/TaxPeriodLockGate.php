@@ -5,7 +5,6 @@ namespace App\Accounting\Services\Gates;
 use App\Accounting\Contracts\AuthorityGate;
 use App\Accounting\DTOs\GateEvaluationResult;
 use App\Accounting\Enums\ReasonCode;
-use Illuminate\Support\Facades\DB;
 
 /**
  * MRD R7.4: a CLOSED TAX PERIOD is immutable evidence. Tax-bearing postings
@@ -70,21 +69,19 @@ class TaxPeriodLockGate implements AuthorityGate
 
         $period = date('Y-m', strtotime($postingDate));
 
-        // #278: entity-scoped locks — a tenant-wide lock (NULL entity) blocks
-        // everything; an entity lock blocks only that entity's postings.
+        // #278: locks are scoped per legal entity (NULL = tenant-wide) and
+        // per regime (NULL = every regime). The posting's regime is the
+        // jurisdiction of its tax determination; unknown → any lock blocks.
         $entityId = $context['legal_entity_id'] ?? null;
+        $determination = $context['tax_determination_result'] ?? null;
+        $regime = is_array($determination) ? ($determination['jurisdiction'] ?? null) : null;
 
-        $locked = DB::table('tax_period_locks')
-            ->where('period', $period)
-            ->when($tenantId, fn ($q) => $q->where('tenant_id', (int) $tenantId))
-            ->where(function ($q) use ($entityId) {
-                $q->whereNull('legal_entity_id');
-
-                if ($entityId !== null) {
-                    $q->orWhere('legal_entity_id', (int) $entityId);
-                }
-            })
-            ->exists();
+        $locked = app(\App\Services\TaxPeriodClosingService::class)->isPeriodLocked(
+            $period,
+            (int) $tenantId,
+            $entityId !== null ? (int) $entityId : null,
+            is_string($regime) ? $regime : null,
+        );
 
         if ($locked) {
             return GateEvaluationResult::block(

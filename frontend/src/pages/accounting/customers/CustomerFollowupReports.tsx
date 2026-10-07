@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { Icon } from '@iconify/react';
@@ -9,10 +9,45 @@ import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+
+/** Issue #328: overdue = everything past the current bucket. */
+const overdueAmount = (customer: any): number =>
+  (parseFloat(customer.days_1_30) || 0) +
+  (parseFloat(customer.days_31_60) || 0) +
+  (parseFloat(customer.days_61_90) || 0) +
+  (parseFloat(customer.days_90_plus) || 0);
 
 export const CustomerFollowupReports: React.FC = () => {
   const [agingPeriod, setAgingPeriod] = useState('all');
   const navigate = useNavigate();
+  const { toast } = useToast();
+
+  // Issue #328: manual follow-up — one reminder per overdue invoice of the
+  // customer, on the customer's preferred channel (skips are reported).
+  const reminderMutation = useMutation({
+    mutationFn: async (customerId: number) => {
+      const response = await api.post(`/customers/${customerId}/followup-reminders`);
+      return response.data;
+    },
+    onSuccess: (result: any) => {
+      const skipped = (result?.data?.results ?? []).filter((r: any) => r.outcome !== 'sent');
+      toast({
+        title: result?.message ?? 'Reminders sent',
+        description: skipped.length > 0
+          ? skipped.map((r: any) => `${r.invoice_number}: ${r.reason ?? r.outcome}`).join('; ')
+          : undefined,
+        variant: (result?.data?.sent ?? 0) > 0 ? 'default' : 'destructive',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Reminder not sent',
+        description: error.response?.data?.message || 'Please try again.',
+      });
+    },
+  });
 
   // Fetch aged receivables data
   const { data: agedReceivables, isLoading } = useQuery({
@@ -210,6 +245,17 @@ export const CustomerFollowupReports: React.FC = () => {
                             <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4 mr-1" />
                             Statement
                           </Button>
+                          {overdueAmount(customer) > 0 && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={reminderMutation.isPending}
+                              onClick={() => reminderMutation.mutate(customer.customer_id)}
+                            >
+                              <Icon icon="solar:letter-bold-duotone" className="h-4 w-4 mr-1" />
+                              Send Reminder
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"
@@ -260,7 +306,13 @@ export const CustomerFollowupReports: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    <HeaderActionButton icon="solar:letter-bold-duotone" size="sm" variant="destructive">
+                    <HeaderActionButton
+                      icon="solar:letter-bold-duotone"
+                      size="sm"
+                      variant="destructive"
+                      disabled={reminderMutation.isPending}
+                      onClick={() => reminderMutation.mutate(customer.customer_id)}
+                    >
                       Send Reminder
                     </HeaderActionButton>
                   </div>

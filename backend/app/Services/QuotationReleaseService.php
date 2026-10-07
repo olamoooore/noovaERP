@@ -68,6 +68,10 @@ class QuotationReleaseService
                     'tax_rate' => $line->tax_rate,
                     // #303 (X3): the accepted price mode travels with the line.
                     'tax_inclusive' => (bool) $line->tax_inclusive,
+                    // #302: the quoted line's tax identity travels with its rate.
+                    'tax_rule_id' => $line->tax_rule_id,
+                    'tax_code' => $line->tax_code,
+                    'tax_treatment' => $line->tax_treatment,
                     'discount_amount' => $line->discount_amount,
                     // Issue #884 (UX2): the accepted line income account and
                     // analytic dimensions travel with the order (and from
@@ -75,6 +79,8 @@ class QuotationReleaseService
                     'income_account_id' => $line->income_account_id,
                     'project_id' => $line->project_id,
                     'department_id' => $line->department_id,
+                    // Issue #332: the accepted line's analytic distribution.
+                    'analytic_distribution' => $line->analytic_distribution,
                 ], fn ($v) => $v !== null);
             })->toArray();
 

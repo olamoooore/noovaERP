@@ -135,7 +135,12 @@ class InvoiceActivityService
             InvoiceActivityLog::EVENT_EXPIRED => "Approval expired{$ref}",
             InvoiceActivityLog::EVENT_POSTED => "Posted{$ref} to GL",
             InvoiceActivityLog::EVENT_PAID => "Marked{$ref} as paid",
-            InvoiceActivityLog::EVENT_SENT => "Sent{$ref} to customer",
+            InvoiceActivityLog::EVENT_SENT => ($metadata['document_type'] ?? null) === \App\Models\InvoiceDelivery::DOCUMENT_REMINDER
+                ? "Sent payment reminder{$ref} to customer"
+                : "Sent{$ref} to customer",
+            // Issue #328: follow-ups that sent nothing, with the reason.
+            InvoiceActivityLog::EVENT_FOLLOWUP_SKIPPED => "Follow-up reminder{$ref} not sent: ".($metadata['reason'] ?? 'skipped'),
+            InvoiceActivityLog::EVENT_FOLLOWUP_ACTION_DUE => "Manual follow-up due{$ref}".(isset($metadata['followup_level']) ? " ({$metadata['followup_level']} days overdue level)" : ''),
             InvoiceActivityLog::EVENT_CANCELLED => "Cancelled{$ref}",
             InvoiceActivityLog::EVENT_VOIDED => "Voided{$ref}",
             InvoiceActivityLog::EVENT_EVIDENCE_ADDED => "Added evidence{$ref}",

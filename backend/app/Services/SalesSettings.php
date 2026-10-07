@@ -51,6 +51,70 @@ class SalesSettings
 
     public const DOCUMENT_TYPE_ON_SEND = 'sales.delivery.document_type_on_send';
 
+    // Issue #545 (SET-UX1): Quotation and Sales Order sections.
+    public const QUOTATION_DEFAULT_VALIDITY_DAYS = 'sales.quotation.default_validity_days';
+
+    public const QUOTATION_DEFAULT_TERMS = 'sales.quotation.default_terms';
+
+    // Issue #550: what the customer must do to accept a quotation online.
+    public const QUOTATION_REQUIRE_SIGNATURE = 'sales.quotation.require_signature';
+
+    public const QUOTATION_REQUIRE_PAYMENT = 'sales.quotation.require_payment';
+
+    public const QUOTATION_PREPAYMENT_PERCENT = 'sales.quotation.prepayment_percent';
+
+    public const DEFAULT_QUOTATION_PREPAYMENT_PERCENT = 100.0;
+
+    /** Same key SalesOrderService has read since #407. */
+    public const AUTO_LOCK_ON_CONFIRM = 'sales.orders.auto_lock_on_confirm';
+
+    public const DEFAULT_INVOICING_POLICY = 'sales.sales_order.default_invoicing_policy';
+
+    /** Issue #551: whether sales orders offer a pro-forma invoice. */
+    public const PROFORMA_ENABLED = 'sales.sales_order.proforma_enabled';
+
+    /** Issue #326: what a failed credit check does on invoice create / post. */
+    public const CREDIT_LIMIT_POLICY = 'sales.invoice.credit_limit_policy';
+
+    public const CREDIT_LIMIT_POLICY_BLOCK = 'block';
+
+    public const CREDIT_LIMIT_POLICY_WARN = 'warn';
+
+    public const CREDIT_LIMIT_POLICIES = [self::CREDIT_LIMIT_POLICY_BLOCK, self::CREDIT_LIMIT_POLICY_WARN];
+
+    public const INVOICING_POLICIES = ['ordered_qty', 'delivered_qty'];
+
+    /** Issue #328: the daily job sends follow-up reminders automatically. */
+    public const FOLLOWUP_AUTO_SEND = 'sales.followup.auto_send_enabled';
+
+    /** Issue #328: follow-up levels (days overdue -> template, action). */
+    public const FOLLOWUP_LEVELS = 'sales.followup.levels';
+
+    public const FOLLOWUP_ACTION_SEND = 'send';
+
+    public const FOLLOWUP_ACTION_MANUAL = 'manual';
+
+    public const FOLLOWUP_ACTIONS = [self::FOLLOWUP_ACTION_SEND, self::FOLLOWUP_ACTION_MANUAL];
+
+    /** The Communication module's system overdue-invoice template (SystemTemplateSeeder). */
+    public const DEFAULT_FOLLOWUP_TEMPLATE = 'invoice.overdue';
+
+    /**
+     * Issue #328: levels used until the tenant saves its own — one emailed
+     * reminder once an invoice is a day overdue (the follow-up report's
+     * overdue set starts there), with the system overdue template.
+     */
+    public const DEFAULT_FOLLOWUP_LEVELS = [
+        ['days' => 1, 'action' => self::FOLLOWUP_ACTION_SEND, 'template' => self::DEFAULT_FOLLOWUP_TEMPLATE],
+    ];
+
+    /**
+     * The quotation form has always pre-filled "valid until" 30 days out
+     * (DEFAULT_QUOTE_VALIDITY_DAYS in the frontend), so that stays the
+     * default; 0 means new quotations start without an expiry date.
+     */
+    public const DEFAULT_QUOTATION_VALIDITY_DAYS = 30;
+
     public const DEFAULT_APPROVAL_EXPIRY_DAYS = 7;
 
     public const DEFAULT_PAYMENT_TERMS = 30;
@@ -126,6 +190,9 @@ class SalesSettings
             'pricelist' => [
                 'display' => self::DEFAULT_PRICELIST_DISPLAY,
             ],
+            'followup' => [
+                'auto_send_enabled' => false,
+            ],
         ];
     }
 
@@ -177,6 +244,98 @@ class SalesSettings
         return $this->text(self::DEFAULT_TERMS, self::DEFAULT_TERMS_TEXT);
     }
 
+    /**
+     * Issue #545: days from the quotation date to the pre-filled "valid
+     * until" on a new quotation; 0 = no default expiry date.
+     */
+    public function quotationDefaultValidityDays(): int
+    {
+        $raw = Setting::getValue(self::QUOTATION_DEFAULT_VALIDITY_DAYS);
+
+        if (! is_numeric($raw) || (int) $raw < 0 || (int) $raw > 365) {
+            return self::DEFAULT_QUOTATION_VALIDITY_DAYS;
+        }
+
+        return (int) $raw;
+    }
+
+    /** Issue #545: default quotation terms; null when the tenant has none. */
+    public function quotationDefaultTerms(): ?string
+    {
+        return $this->text(self::QUOTATION_DEFAULT_TERMS, null);
+    }
+
+    /**
+     * Issue #550: a drawn signature is required to accept a quotation in the
+     * customer portal. Off by default: the quotation portal has always
+     * accepted without one (unlike the invoice portal's own setting).
+     */
+    public function quotationRequireSignature(): bool
+    {
+        return $this->bool(self::QUOTATION_REQUIRE_SIGNATURE, false);
+    }
+
+    /**
+     * Issue #550: portal acceptance records the customer's agreement but does
+     * not confirm the quotation until the prepayment has been received.
+     */
+    public function quotationRequirePayment(): bool
+    {
+        return $this->bool(self::QUOTATION_REQUIRE_PAYMENT, false);
+    }
+
+    /** Issue #550: share of the quotation total due up front (0 < % <= 100). */
+    public function quotationPrepaymentPercent(): float
+    {
+        $raw = Setting::getValue(self::QUOTATION_PREPAYMENT_PERCENT);
+
+        if (! is_numeric($raw) || (float) $raw <= 0 || (float) $raw > 100) {
+            return self::DEFAULT_QUOTATION_PREPAYMENT_PERCENT;
+        }
+
+        return round((float) $raw, 2);
+    }
+
+    /** Issue #545 / #407: lock a sales order as part of confirming it. */
+    public function autoLockOnConfirm(): bool
+    {
+        return $this->bool(self::AUTO_LOCK_ON_CONFIRM, false);
+    }
+
+    /**
+     * Issue #551: pro-forma invoices for sales orders. On by default — the
+     * pro-forma print action has been available since #405/#615.
+     */
+    public function proformaInvoiceEnabled(): bool
+    {
+        return $this->bool(self::PROFORMA_ENABLED, true);
+    }
+
+    /**
+     * Issue #545: invoicing policy for a new sales order line that does not
+     * name one (ordered_qty bills what was ordered, delivered_qty bills what
+     * was delivered).
+     */
+    public function defaultInvoicingPolicy(): string
+    {
+        $value = Setting::getValue(self::DEFAULT_INVOICING_POLICY);
+
+        return is_string($value) && in_array($value, self::INVOICING_POLICIES, true) ? $value : 'ordered_qty';
+    }
+
+    /**
+     * Issue #326: `block` (default) refuses an invoice create/post that fails
+     * the credit check; `warn` lets it through with the verdict attached.
+     * Block is the default because direct invoices were already refused by
+     * their backing sales order's credit check before this setting existed.
+     */
+    public function invoiceCreditLimitPolicy(): string
+    {
+        $value = Setting::getValue(self::CREDIT_LIMIT_POLICY);
+
+        return is_string($value) && in_array($value, self::CREDIT_LIMIT_POLICIES, true) ? $value : self::CREDIT_LIMIT_POLICY_BLOCK;
+    }
+
     public function acceptanceEnabled(): bool
     {
         return $this->bool(self::ACCEPTANCE_ENABLED, true);
@@ -219,6 +378,53 @@ class SalesSettings
         $value = Setting::getValue(self::DOCUMENT_TYPE_ON_SEND);
 
         return is_string($value) && in_array($value, self::SENDABLE_DOCUMENT_TYPES, true) ? $value : null;
+    }
+
+    /**
+     * Issue #328: automatic follow-up reminders. Off by default so no tenant
+     * starts emailing customers without choosing to.
+     */
+    public function followupAutoSendEnabled(): bool
+    {
+        return $this->bool(self::FOLLOWUP_AUTO_SEND, false);
+    }
+
+    /**
+     * Issue #328: the follow-up levels, ascending by days overdue. Invalid
+     * rows are dropped; a tenant with no valid level gets the default one.
+     *
+     * @return list<array{days: int, action: string, template: string}>
+     */
+    public function followupLevels(): array
+    {
+        $raw = Setting::getValue(self::FOLLOWUP_LEVELS);
+        $levels = [];
+
+        foreach (is_array($raw) ? $raw : [] as $level) {
+            if (! is_array($level) || ! is_numeric($level['days'] ?? null) || (int) $level['days'] < 1) {
+                continue;
+            }
+
+            $action = $level['action'] ?? self::FOLLOWUP_ACTION_SEND;
+            $template = is_string($level['template'] ?? null) && trim($level['template']) !== ''
+                ? trim($level['template'])
+                : self::DEFAULT_FOLLOWUP_TEMPLATE;
+
+            // One level per day threshold; the last one saved wins.
+            $levels[(int) $level['days']] = [
+                'days' => (int) $level['days'],
+                'action' => in_array($action, self::FOLLOWUP_ACTIONS, true) ? $action : self::FOLLOWUP_ACTION_SEND,
+                'template' => $template,
+            ];
+        }
+
+        if ($levels === []) {
+            return self::DEFAULT_FOLLOWUP_LEVELS;
+        }
+
+        ksort($levels);
+
+        return array_values($levels);
     }
 
     private function bool(string $key, bool $default): bool

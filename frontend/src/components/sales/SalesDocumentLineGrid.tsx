@@ -1,6 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
-import { cn } from '@/lib/utils'
+import { cn, normalizeQuantity } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/useBreakpoint'
 import { Button } from '@/components/ui/button'
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
@@ -533,6 +533,9 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
               const parsed = parseFloat(raw)
               if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
             }}
+            onBlur={() => {
+              if (line.quantity !== '') updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number)
+            }}
             className={LINE_INPUT_NUMERIC_TOKEN}
           />
         </FieldSlot>
@@ -765,6 +768,9 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
                                 if (raw === '') { updateLine(index, 'quantity', ''); return }
                                 const parsed = parseFloat(raw)
                                 if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
+                              }}
+                              onBlur={() => {
+                                if (line.quantity !== '') updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number)
                               }}
                               className={LINE_INPUT_NUMERIC_TOKEN}
                             />

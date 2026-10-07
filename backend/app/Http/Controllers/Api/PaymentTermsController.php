@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentTerm;
+use App\Models\PaymentTermLine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -40,7 +41,7 @@ class PaymentTermsController extends Controller
             });
         }
 
-        $terms = $query->orderBy('name')->get();
+        $terms = $query->with('lines')->orderBy('name')->get();
 
         // Add usage count for each term
         $terms->each(function ($term) {
@@ -55,7 +56,7 @@ class PaymentTermsController extends Controller
      */
     public function show($id)
     {
-        $term = PaymentTerm::findOrFail($id);
+        $term = PaymentTerm::with('lines')->findOrFail($id);
         $term->usage_count = $this->getUsageCount($id);
 
         return response()->json($term);
@@ -75,10 +76,14 @@ class PaymentTermsController extends Controller
             'discount_days' => 'nullable|integer|min:0',
             'description' => 'nullable|string',
             'is_default' => 'nullable|boolean',
-        ]);
+        ] + self::instalmentRules());
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        if ($error = $this->instalmentError($request->input('lines'))) {
+            return response()->json(['errors' => ['lines' => [$error]]], 422);
         }
 
         // Validate discount configuration
@@ -99,21 +104,29 @@ class PaymentTermsController extends Controller
             PaymentTerm::where('is_default', true)->update(['is_default' => false]);
         }
 
-        $term = PaymentTerm::create([
-            'name' => $request->name,
-            'code' => $request->code,
-            'type' => $request->type,
-            'days' => $request->days,
-            'discount_percentage' => $request->discount_percentage,
-            'discount_days' => $request->discount_days,
-            'description' => $request->description,
-            'is_default' => $request->is_default ?? false,
-            'is_active' => true,
-        ]);
+        $term = DB::transaction(function () use ($request) {
+            $term = PaymentTerm::create([
+                'name' => $request->name,
+                'code' => $request->code,
+                'type' => $request->type,
+                'days' => $request->days,
+                // The columns are NOT NULL DEFAULT 0 — an omitted discount
+                // is "no discount", not NULL.
+                'discount_percentage' => $request->discount_percentage ?? 0,
+                'discount_days' => $request->discount_days ?? 0,
+                'description' => $request->description,
+                'is_default' => $request->is_default ?? false,
+                'is_active' => true,
+            ]);
+
+            $this->syncInstalments($term, $request->input('lines'));
+
+            return $term;
+        });
 
         return response()->json([
             'message' => 'Payment term created successfully',
-            'term' => $term,
+            'term' => $term->load('lines'),
         ], 201);
     }
 
@@ -134,10 +147,14 @@ class PaymentTermsController extends Controller
             'description' => 'nullable|string',
             'is_default' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
-        ]);
+        ] + self::instalmentRules());
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        if ($error = $this->instalmentError($request->input('lines'))) {
+            return response()->json(['errors' => ['lines' => [$error]]], 422);
         }
 
         // Validate discount configuration
@@ -167,14 +184,23 @@ class PaymentTermsController extends Controller
                 ->update(['is_default' => false]);
         }
 
-        $term->update($request->only([
-            'name', 'code', 'type', 'days', 'discount_percentage',
-            'discount_days', 'description', 'is_default', 'is_active',
-        ]));
+        DB::transaction(function () use ($request, $term) {
+            $term->update($request->only([
+                'name', 'code', 'type', 'days', 'discount_percentage',
+                'discount_days', 'description', 'is_default', 'is_active',
+            ]));
+
+            // Issue #324: `lines` replaces the instalments when sent ([] clears
+            // them); omitted keeps the current ones. Issued invoices keep
+            // their own schedule snapshot.
+            if ($request->has('lines')) {
+                $this->syncInstalments($term, $request->input('lines') ?? []);
+            }
+        });
 
         return response()->json([
             'message' => 'Payment term updated successfully',
-            'term' => $term->fresh(),
+            'term' => $term->fresh('lines'),
         ]);
     }
 
@@ -214,7 +240,7 @@ class PaymentTermsController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $term = PaymentTerm::findOrFail($request->payment_term_id);
+        $term = PaymentTerm::with('lines')->findOrFail($request->payment_term_id);
         $dueDate = $term->calculateDueDate($request->invoice_date);
         $discountDueDate = $term->calculateDiscountDueDate($request->invoice_date);
 
@@ -222,6 +248,8 @@ class PaymentTermsController extends Controller
             'due_date' => $dueDate->format('Y-m-d'),
             'discount_due_date' => $discountDueDate ? $discountDueDate->format('Y-m-d') : null,
             'discount_percentage' => $term->discount_percentage,
+            // Issue #324: the instalment schedule (empty = single due date).
+            'instalments' => $term->instalmentSchedule($request->invoice_date),
         ]);
     }
 
@@ -268,6 +296,85 @@ class PaymentTermsController extends Controller
     }
 
     /**
+     * Issue #324: validation rules for the optional instalment lines.
+     *
+     * @return array<string, mixed>
+     */
+    private static function instalmentRules(): array
+    {
+        return [
+            'lines' => 'nullable|array|max:24',
+            'lines.*.value_type' => 'required|in:'.implode(',', PaymentTermLine::VALUE_TYPES),
+            'lines.*.value' => 'nullable|numeric|min:0|max:100',
+            'lines.*.days' => 'required|integer|min:0|max:3650',
+            'lines.*.delay_type' => 'nullable|in:'.implode(',', PaymentTermLine::DELAY_TYPES),
+        ];
+    }
+
+    /**
+     * Instalments must cover exactly 100% of the document: at most one
+     * balance line, percentages that do not exceed 100, and — without a
+     * balance line — percentages that add up to exactly 100.
+     */
+    private function instalmentError(mixed $lines): ?string
+    {
+        if (! is_array($lines) || $lines === []) {
+            return null;
+        }
+
+        $balanceLines = 0;
+        $percentTotal = 0.0;
+        foreach ($lines as $line) {
+            if (($line['value_type'] ?? null) === PaymentTermLine::VALUE_BALANCE) {
+                $balanceLines++;
+
+                continue;
+            }
+
+            $value = (float) ($line['value'] ?? 0);
+            if ($value <= 0) {
+                return 'Each percentage instalment needs a value above 0.';
+            }
+            $percentTotal += $value;
+        }
+
+        if ($balanceLines > 1) {
+            return 'Only one instalment can take the balance.';
+        }
+
+        $percentTotal = round($percentTotal, 4);
+        if ($percentTotal > 100) {
+            return 'Instalment percentages cannot exceed 100%.';
+        }
+
+        if ($balanceLines === 0 && abs($percentTotal - 100) > 0.0001) {
+            return 'Instalment percentages must add up to 100% (or add a balance line).';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>|null  $lines
+     */
+    private function syncInstalments(PaymentTerm $term, ?array $lines): void
+    {
+        $term->lines()->delete();
+
+        foreach (array_values($lines ?? []) as $index => $line) {
+            $isBalance = ($line['value_type'] ?? null) === PaymentTermLine::VALUE_BALANCE;
+
+            $term->lines()->create([
+                'sequence' => $index + 1,
+                'value_type' => $isBalance ? PaymentTermLine::VALUE_BALANCE : PaymentTermLine::VALUE_PERCENT,
+                'value' => $isBalance ? 0 : (float) ($line['value'] ?? 0),
+                'days' => (int) ($line['days'] ?? 0),
+                'delay_type' => $line['delay_type'] ?? 'net_days',
+            ]);
+        }
+    }
+
+    /**
      * Get usage count for a payment term
      */
     protected function getUsageCount($termId): int
@@ -279,6 +386,13 @@ class PaymentTermsController extends Controller
             $count += DB::table('customers')
                 ->where('payment_terms', $termId)
                 ->count();
+
+            // Issue #324: customers that default to this master term.
+            if (DB::getSchemaBuilder()->hasColumn('customers', 'payment_term_id')) {
+                $count += DB::table('customers')
+                    ->where('payment_term_id', $termId)
+                    ->count();
+            }
         }
 
         // Check vendors table

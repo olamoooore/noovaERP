@@ -835,6 +835,44 @@ class TaxDeterminationService
     }
 
     /**
+     * #302: the document-level tax context a sales line is resolved in at
+     * save — the same rules determineForInvoice() applies at posting:
+     * the seller jurisdiction comes from the legal entity's active
+     * registration (#740 T4), an entity without one charges no tax (AC2),
+     * and a buyer in another jurisdiction makes the supply an export (AC3).
+     * When no legal entity is given, the request's entity context is used,
+     * exactly as legalEntityForInvoice() falls back to it.
+     *
+     * @return array{registered: bool, jurisdiction: string, export: bool}
+     */
+    public function salesLineContext(?int $legalEntityId, ?int $customerId, string $date): array
+    {
+        if ($legalEntityId === null) {
+            $attribute = request()->attributes->get('legal_entity_id');
+            $legalEntityId = $attribute !== null ? (int) $attribute : null;
+        }
+
+        $registration = $legalEntityId !== null ? $this->activeRegistration($legalEntityId, $date) : null;
+
+        if ($legalEntityId !== null && $registration === null) {
+            return ['registered' => false, 'jurisdiction' => $this->engine->tenantJurisdiction(), 'export' => false];
+        }
+
+        $customerJurisdiction = $this->jurisdictionForCustomer($customerId);
+        $jurisdiction = ($registration !== null && $registration->jurisdiction !== null && $registration->jurisdiction !== '')
+            ? strtoupper((string) $registration->jurisdiction)
+            : ($customerJurisdiction ?? $this->engine->tenantJurisdiction());
+
+        return [
+            'registered' => true,
+            'jurisdiction' => strtoupper($jurisdiction),
+            'export' => $registration !== null
+                && $customerJurisdiction !== null
+                && strtoupper($customerJurisdiction) !== strtoupper($jurisdiction),
+        ];
+    }
+
+    /**
      * #740 T4: the entity's tax registration active on the transaction date
      * (status active, effective window, jurisdiction present). Latest
      * effective_from wins when several match.

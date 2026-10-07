@@ -66,6 +66,10 @@ class SalesOrderController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'sales_order');
+
         $search = $request->filled('search') ? trim((string) $request->search) : '';
         if ($search !== '') {
             app(DocumentWideSearchService::class)->apply($query, $search, $this->wideSearchConfig());
@@ -170,6 +174,9 @@ class SalesOrderController extends Controller
             // Issue #408: editable promise date + partial-delivery policy.
             'commitment_date' => 'nullable|date',
             'shipping_policy' => ['nullable', \Illuminate\Validation\Rule::in(SalesOrder::SHIPPING_POLICIES)],
+            // Issue #324: payment term from the payment-terms master; the
+            // customer's default term applies when omitted.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             // Issue #333: Incoterms are length-bounded free text — the
             // platform has no authoritative code list to validate against.
             'incoterm_code' => 'nullable|string|max:20',
@@ -200,6 +207,8 @@ class SalesOrderController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) overrides the engine.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
@@ -207,6 +216,8 @@ class SalesOrderController extends Controller
             // Issue #884 (UX2): optional line analytic dimensions.
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.source_line_type' => 'nullable|string|max:60',
             'lines.*.source_line_id' => 'nullable|integer',
             'channel_reference.channel' => 'nullable|in:pos,ecommerce,admin',
@@ -215,9 +226,14 @@ class SalesOrderController extends Controller
             'channel_reference.raw_document_ids' => 'nullable|array',
         ]);
 
+        // #302 (X1): line tax is resolved on the server through the tax engine
+        // at the order date (an explicit tax rule override is honoured); a
+        // rule that cannot apply is a 422 before anything is written.
+        $validated['lines'] = $this->resolveLineTax($validated['lines'], $validated['order_date'] ?? null, (int) $validated['customer_id']);
+
         try {
             // Issue #685: sales-UoM prices are converted to stock-unit prices.
-            $validated['lines'] = $this->convertSalesUomPrices($validated['lines']);
+            $validated['lines'] = $this->applyDefaultInvoicingPolicy($this->convertSalesUomPrices($validated['lines']));
 
             // Issue #381: stock-tracked lines need a warehouse to reserve and
             // allocate against; default to the tenant's default warehouse.
@@ -234,6 +250,26 @@ class SalesOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to create sales order', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Issue #545: a line entered on the sales order form without its own
+     * invoicing policy takes the tenant default (Sales Settings → Sales
+     * Orders). Applied on the sales-order API only: orders the service builds
+     * directly (quotation release, recurring, POS/web sync) keep the policy
+     * their source carries.
+     */
+    private function applyDefaultInvoicingPolicy(array $lines): array
+    {
+        $default = app(\App\Services\SalesSettings::class)->defaultInvoicingPolicy();
+
+        return array_map(static function (array $line) use ($default): array {
+            if (empty($line['invoicing_policy'])) {
+                $line['invoicing_policy'] = $default;
+            }
+
+            return $line;
+        }, $lines);
     }
 
     /**
@@ -359,6 +395,8 @@ class SalesOrderController extends Controller
             // Issue #408: editable promise date + partial-delivery policy.
             'commitment_date' => 'nullable|date',
             'shipping_policy' => ['nullable', \Illuminate\Validation\Rule::in(SalesOrder::SHIPPING_POLICIES)],
+            // Issue #324: payment term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             // Issue #333: Incoterms are length-bounded free text.
             'incoterm_code' => 'nullable|string|max:20',
             'incoterm_place' => 'nullable|string|max:255',
@@ -387,14 +425,24 @@ class SalesOrderController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) overrides the engine.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.invoicing_policy' => 'nullable|in:ordered_qty,delivered_qty',
         ]);
+
+        // #302 (X1): line tax is resolved on the server through the tax engine
+        // at the order date; the sent % is not booked as final.
+        if (isset($validated['lines']) && is_array($validated['lines'])) {
+            $validated['lines'] = $this->resolveLineTax($validated['lines'], $order->order_date?->toDateString(), (int) ($validated['customer_id'] ?? $order->customer_id), $order);
+        }
 
         // Issue #407: unlocked confirmed orders take the amendment path; the
         // audited diff and the delivery/invoice remainders are produced there.
@@ -403,7 +451,7 @@ class SalesOrderController extends Controller
         }
 
         $lines = isset($validated['lines']) && is_array($validated['lines'])
-            ? $this->convertSalesUomPrices($validated['lines'])
+            ? $this->applyDefaultInvoicingPolicy($this->convertSalesUomPrices($validated['lines']))
             : null;
         unset($validated['lines']);
 
@@ -492,6 +540,64 @@ class SalesOrderController extends Controller
         );
 
         return response()->json($order->fresh(['customer', 'lines.product']));
+    }
+
+    /**
+     * #302 (X1): resolve each submitted line's tax through the shared sales
+     * line tax resolver. A partial edit of an existing line (addressed by id)
+     * is re-resolved only when it changes the tax or the product; the
+     * product of the stored line is used when the payload omits it.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveLineTax(array $lines, ?string $date, ?int $customerId, ?SalesOrder $order = null): array
+    {
+        $resolver = app(\App\Services\SalesLineTaxResolver::class);
+        $context = $resolver->context(
+            $date,
+            $customerId,
+            $order?->legal_entity_id !== null ? (int) $order->legal_entity_id : null,
+        );
+
+        foreach ($lines as $index => $line) {
+            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) {
+                continue;
+            }
+
+            $subject = $line;
+            $existing = ($order !== null && ! empty($line['id']))
+                ? $order->lines()->whereKey((int) $line['id'])->first()
+                : null;
+
+            if ($existing !== null) {
+                $touchesTax = array_key_exists('tax_rate', $line)
+                    || array_key_exists('tax_rule_id', $line)
+                    || array_key_exists('product_id', $line);
+
+                if (! $touchesTax) {
+                    continue;
+                }
+
+                $subject += [
+                    'product_id' => $existing->product_id,
+                    'variant_id' => $existing->variant_id,
+                    'line_type' => $existing->line_type,
+                ];
+            }
+
+            $resolved = $resolver->resolve($subject, $date, "lines.{$index}.tax_rule_id", $context);
+
+            $lines[$index] = array_merge($line, [
+                'tax_rate' => $resolved['tax_rate'],
+                'tax_inclusive' => $resolved['tax_inclusive'],
+                'tax_rule_id' => $resolved['tax_rule_id'],
+                'tax_code' => $resolved['tax_code'],
+                'tax_treatment' => $resolved['tax_treatment'],
+            ]);
+        }
+
+        return $lines;
     }
 
     /**

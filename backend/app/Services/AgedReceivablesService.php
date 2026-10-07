@@ -29,7 +29,7 @@ class AgedReceivablesService
             ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('balance', '>', 0)
             ->notSuperseded()
-            ->get(['id', 'balance', 'due_date', 'invoice_date', 'currency_code', 'exchange_rate']);
+            ->get(['id', 'total', 'balance', 'due_date', 'invoice_date', 'currency_code', 'exchange_rate', 'payment_schedule']);
 
         $baseCurrency = DB::table('company_settings')->orderBy('id')->value('base_currency') ?: 'USD';
         $today = Carbon::today();
@@ -44,17 +44,25 @@ class AgedReceivablesService
             // Base-currency equivalent via the invoice's snapshot rate, the
             // same convention the aging report uses for its by_currency view.
             $rate = (float) ($invoice->exchange_rate ?? 1.0);
-            $amount = (float) $invoice->balance * $rate;
-            $outstanding += $amount;
+            $outstanding += (float) $invoice->balance * $rate;
 
-            $due = $invoice->due_date ? Carbon::parse($invoice->due_date) : null;
+            // Issue #324: an instalment invoice is overdue only for the
+            // instalments whose own due date has passed.
+            $isOverdue = false;
+            foreach ($invoice->agingPortions() as $portion) {
+                $amount = (float) $portion['amount'] * $rate;
+                $due = $portion['due_date'] ? Carbon::parse($portion['due_date']) : null;
 
-            if ($due && $due->lt($today)) {
-                $overdue += $amount;
+                if ($due && $due->lt($today)) {
+                    $overdue += $amount;
+                    $isOverdue = true;
+                    $oldestOverdueDays = max($oldestOverdueDays, (int) $due->diffInDays($today));
+                } else {
+                    $current += $amount;
+                }
+            }
+            if ($isOverdue) {
                 $overdueCount++;
-                $oldestOverdueDays = max($oldestOverdueDays, (int) $due->diffInDays($today));
-            } else {
-                $current += $amount;
             }
         }
 
@@ -139,8 +147,6 @@ class AgedReceivablesService
 
         foreach ($invoices as $invoice) {
             $customerId = $invoice->customer_id;
-            $bucket = $this->calculateAgingBucket($invoice);
-            $amount = (float) $invoice->balance;
 
             if (! isset($customerData[$customerId])) {
                 // Null-safe: even with withTrashed(), guard against a genuinely
@@ -161,8 +167,11 @@ class AgedReceivablesService
                 ];
             }
 
-            $customerData[$customerId][$bucket] += $amount;
-            $customerData[$customerId]['total'] += $amount;
+            // Issue #324: each open instalment ages by its own due date.
+            foreach ($this->agingPortions($invoice) as $portion) {
+                $customerData[$customerId][$portion['bucket']] += $portion['amount'];
+                $customerData[$customerId]['total'] += $portion['amount'];
+            }
         }
 
         // Convert to array and apply filters
@@ -262,23 +271,93 @@ class AgedReceivablesService
     }
 
     /**
-     * Calculate aging bucket for an invoice
+     * Issue #328: the overdue set the follow-up report shows — the same open
+     * invoices as the aging report (same statuses, live balance, not
+     * superseded), aged by the same portions — with each invoice's days
+     * overdue (its oldest overdue portion) and overdue amount.
+     *
+     * @return list<array{invoice: Invoice, days_overdue: int, overdue_amount: float}>
+     */
+    public function overdueInvoices(?int $customerId = null, ?int $invoiceId = null): array
+    {
+        $query = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
+            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+            ->where('balance', '>', 0)
+            ->notSuperseded()
+            ->orderBy('due_date')
+            ->orderBy('id');
+
+        if ($customerId !== null) {
+            $query->where('customer_id', $customerId);
+        }
+
+        if ($invoiceId !== null) {
+            $query->whereKey($invoiceId);
+        }
+
+        $now = Carbon::now();
+        $overdue = [];
+
+        foreach ($query->get() as $invoice) {
+            $days = 0;
+            $amount = 0.0;
+
+            foreach ($this->agingPortions($invoice) as $portion) {
+                if ($portion['bucket'] === 'current') {
+                    continue;
+                }
+
+                $days = max($days, (int) abs($now->diffInDays($portion['due_date'], false)));
+                $amount += $portion['amount'];
+            }
+
+            if ($amount > 0 && $days > 0) {
+                $overdue[] = [
+                    'invoice' => $invoice,
+                    'days_overdue' => $days,
+                    'overdue_amount' => round($amount, 2),
+                ];
+            }
+        }
+
+        return $overdue;
+    }
+
+    /**
+     * Issue #324: the invoice's open balance split into ageing portions — one
+     * per outstanding instalment (a single portion on the invoice due date
+     * when the invoice has no instalment schedule).
+     *
+     * @return list<array{due_date: Carbon, amount: float, bucket: string}>
+     */
+    private function agingPortions(Invoice $invoice): array
+    {
+        $portions = [];
+        foreach ($invoice->agingPortions() as $portion) {
+            $dueDate = $portion['due_date']
+                ? Carbon::parse($portion['due_date'])
+                // If no due date, use invoice date plus default payment terms (30 days)
+                : Carbon::parse($invoice->invoice_date)->addDays($invoice->customer->payment_terms ?? 30);
+
+            $portions[] = [
+                'due_date' => $dueDate,
+                'amount' => (float) $portion['amount'],
+                'bucket' => $this->bucketForDueDate($dueDate),
+            ];
+        }
+
+        return $portions;
+    }
+
+    /**
+     * Aging bucket for a due date
      *
      * @return string Bucket name (current, days_1_30, days_31_60, days_61_90, days_90_plus)
      */
-    private function calculateAgingBucket(Invoice $invoice): string
+    private function bucketForDueDate(Carbon $dueDate): string
     {
-        $dueDate = $invoice->due_date;
-
-        // If no due date, use invoice date plus default payment terms (30 days)
-        if (! $dueDate) {
-            $paymentTerms = $invoice->customer->payment_terms ?? 30;
-            $dueDate = Carbon::parse($invoice->invoice_date)->addDays($paymentTerms);
-        }
-
         // Calculate days overdue
         $now = Carbon::now();
-        $dueDate = Carbon::parse($dueDate);
 
         if ($now->lessThan($dueDate)) {
             // Not yet due
@@ -320,17 +399,15 @@ class AgedReceivablesService
         $filteredInvoices = [];
 
         foreach ($invoices as $invoice) {
-            $invoiceBucket = $this->calculateAgingBucket($invoice);
-
-            if ($invoiceBucket === $bucket) {
-                $dueDate = $invoice->due_date;
-                if (! $dueDate) {
-                    $paymentTerms = $invoice->customer->payment_terms ?? 30;
-                    $dueDate = Carbon::parse($invoice->invoice_date)->addDays($paymentTerms);
+            // Issue #324: an instalment invoice appears in every bucket one of
+            // its open instalments falls in, with that instalment's amount.
+            foreach ($this->agingPortions($invoice) as $portion) {
+                if ($portion['bucket'] !== $bucket) {
+                    continue;
                 }
 
                 $now = Carbon::now();
-                $dueDateCarbon = Carbon::parse($dueDate);
+                $dueDateCarbon = $portion['due_date'];
                 $daysOverdue = $now->greaterThan($dueDateCarbon) ? abs($now->diffInDays($dueDateCarbon, false)) : 0;
 
                 $filteredInvoices[] = [
@@ -341,7 +418,7 @@ class AgedReceivablesService
                     'days_overdue' => $daysOverdue,
                     'total' => round((float) $invoice->total, 2),
                     'paid_amount' => round((float) $invoice->paid_amount, 2),
-                    'balance' => round((float) $invoice->balance, 2),
+                    'balance' => round($portion['amount'], 2),
                     'status' => $invoice->status,
                 ];
             }

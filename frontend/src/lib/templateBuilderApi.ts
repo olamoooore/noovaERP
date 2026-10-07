@@ -29,6 +29,17 @@ export interface PreviewPayload {
   mode?: string
   sample_data?: Record<string, unknown>
   document_type?: string
+  metadata?: Record<string, unknown> | null
+  /** Issue #620: render the draft against this real document instead of sample data. */
+  document_id?: string
+}
+
+/** Issue #620: a recent real document the editor preview can render against. */
+export interface PreviewDocumentOption {
+  id: string
+  number: string
+  date: string | null
+  label: string
 }
 
 export const templateBuilderApi = {
@@ -71,6 +82,12 @@ export const templateBuilderApi = {
 
   preview: (id: string, payload: PreviewPayload) =>
     api.post<{ html: string; warnings: string[] }>(`${BASE}/templates/${id}/preview`, payload).then((r) => r.data),
+
+  /** Issue #620: recent documents of the template's type the user may preview against. */
+  previewDocuments: (id: string) =>
+    api
+      .get<{ data: PreviewDocumentOption[]; document_type: string }>(`${BASE}/templates/${id}/preview-documents`)
+      .then((r) => r.data.data),
 
   validate: (def: { mode: string; layout_config?: unknown; html?: string }) =>
     api.post<{ valid: boolean; errors: string[] }>(`${BASE}/templates/validate`, def).then((r) => r.data),

@@ -16,6 +16,13 @@ class SalesOrderRecurrence extends Model implements WorkflowSubject
 
     public const INTERVALS = ['monthly', 'quarterly', 'annual'];
 
+    /** Issue #330: what each cycle generates. */
+    public const DOCUMENT_ORDER = 'order';
+
+    public const DOCUMENT_INVOICE = 'invoice';
+
+    public const DOCUMENT_TYPES = [self::DOCUMENT_ORDER, self::DOCUMENT_INVOICE];
+
     protected $fillable = [
         'tenant_id',
         'sales_order_id',
@@ -30,6 +37,13 @@ class SalesOrderRecurrence extends Model implements WorkflowSubject
         'last_generated_at',
         'generated_order_ids',
         'created_by',
+        // Issue #330: invoice generation + auto-post / auto-send.
+        'document_type',
+        'auto_post',
+        'auto_send',
+        'generated_invoice_ids',
+        'last_error',
+        'last_error_at',
     ];
 
     protected $casts = [
@@ -38,6 +52,10 @@ class SalesOrderRecurrence extends Model implements WorkflowSubject
         'next_run_date' => 'date',
         'last_generated_at' => 'datetime',
         'generated_order_ids' => 'array',
+        'generated_invoice_ids' => 'array',
+        'auto_post' => 'boolean',
+        'auto_send' => 'boolean',
+        'last_error_at' => 'datetime',
         'cycles_generated' => 'integer',
         'max_cycles' => 'integer',
     ];
@@ -45,6 +63,11 @@ class SalesOrderRecurrence extends Model implements WorkflowSubject
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class);
+    }
+
+    public function generatesInvoices(): bool
+    {
+        return $this->document_type === self::DOCUMENT_INVOICE;
     }
 
     public function isDueOn(Carbon $date): bool

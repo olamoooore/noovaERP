@@ -11,6 +11,8 @@ import type {
   ReorderData,
   InventoryAgingData,
   InventoryTurnoverData,
+  SalesRecordsData,
+  SalesRecordsFilters,
   SalesByProductData,
   SalesByCustomerData,
   SalesTrendsData,
@@ -18,6 +20,8 @@ import type {
   SalesReconciliationData,
   SalesPivotData,
   UnbilledDeliveriesData,
+  SalesDrilldownData,
+  SalesDrilldownTarget,
   MedicalCasePerformanceData,
   MedicalCaseDateField,
   PivotDimension,
@@ -510,7 +514,24 @@ class ReportApiClient {
         '/reports/inventory/reorder',
         { params: filters }
       );
-      return response.data.data;
+      // The endpoint returns a ReportData envelope ({ data: rows }); map the
+      // service rows to the table shape (#1020 product name + short description).
+      const payload = response.data.data as unknown as { data?: any[]; items?: any[] };
+      const rows = Array.isArray(payload?.data) ? payload.data : (payload?.items ?? []);
+      return {
+        items: rows.map((row: any) => ({
+          product_id: row.product_id ?? row.id,
+          product_name: row.product_name ?? row.name,
+          short_description: row.short_description ?? null,
+          sku: row.sku,
+          current_stock: row.current_stock,
+          reorder_level: row.reorder_level,
+          effective_threshold: row.effective_threshold ?? null,
+          suggested_quantity: row.suggested_quantity ?? row.suggested_order_quantity,
+          supplier_name: row.supplier_name ?? row.last_supplier ?? undefined,
+          last_purchase_price: row.last_purchase_price,
+        })),
+      };
     } catch (error) {
       this.handleError(error, 'Failed to fetch Reorder report');
       throw error;
@@ -575,6 +596,23 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales by Product');
+      throw error;
+    }
+  }
+
+  /**
+   * #1020: Sales Records — the client's sheet layout (invoice rows with
+   * Qty/S$ column pairs for item code/brand/supplier/customer/category).
+   */
+  async getSalesRecords(filters: SalesRecordsFilters): Promise<SalesRecordsData> {
+    try {
+      const response = await api.get<ApiResponse<SalesRecordsData>>(
+        '/reports/sales-records',
+        { params: filters }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales Records');
       throw error;
     }
   }
@@ -677,6 +715,33 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales Pivot');
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #596: the source documents behind one report row, read with the
+   * same #593 filters as the row. The endpoint takes no comparison window
+   * (422), and `interval` only for a period row.
+   */
+  async getSalesDrilldown(filters: ReportFilters, target: SalesDrilldownTarget): Promise<SalesDrilldownData> {
+    const params: ReportFilters & Record<string, unknown> = { ...this.salesParams(filters) };
+    delete params.comparison;
+    delete params.compare_start_date;
+    delete params.compare_end_date;
+    params.dimension = target.dimension;
+    params.key = target.key;
+    if (target.dimension === 'period') {
+      params.interval = target.interval ?? 'day';
+    }
+    try {
+      const response = await api.get<ApiResponse<SalesDrilldownData>>(
+        '/analytics/sales/drilldown',
+        { params }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales drill-down');
       throw error;
     }
   }

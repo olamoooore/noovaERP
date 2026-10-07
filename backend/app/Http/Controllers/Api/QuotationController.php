@@ -223,6 +223,10 @@ class QuotationController extends Controller
             $query->whereIn('id', $request->input('document_ids', []));
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'quotation');
+
         if ($request->filled('start_date')) {
             $query->whereDate('quotation_date', '>=', $request->start_date);
         }
@@ -312,6 +316,8 @@ class QuotationController extends Controller
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -327,6 +333,8 @@ class QuotationController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) overrides the engine.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
             // FR-5.2: header currency + explicit price list selection.
@@ -334,7 +342,27 @@ class QuotationController extends Controller
             'price_list_id' => 'nullable|integer',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
+            // Issue #550: per-quotation overrides of the tenant's online
+            // acceptance requirements (Sales Settings → Quotations).
+            'require_signature' => 'nullable|boolean',
+            'require_payment' => 'nullable|boolean',
+            'prepayment_percent' => 'nullable|numeric|gt:0|max:100',
         ]);
+
+        // Issue #550: Sales Settings → Quotations, applied server-side. An
+        // absent valid_until takes the default validity (0 = no expiry); an
+        // explicit null is the user clearing it. Days run from the quotation
+        // date, but never from a past date, so an API-created quotation is
+        // not born expired. Blank acceptance requirements take the tenant's.
+        $salesSettings = app(\App\Services\SalesSettings::class);
+        if (! array_key_exists('valid_until', $validated)
+            && ($validityDays = $salesSettings->quotationDefaultValidityDays()) > 0) {
+            $quotationDay = \Illuminate\Support\Carbon::parse($validated['quotation_date'] ?? now()->toDateString())->startOfDay();
+            $validated['valid_until'] = $quotationDay->max(now()->startOfDay())->addDays($validityDays)->toDateString();
+        }
+        $validated['require_signature'] = (bool) ($validated['require_signature'] ?? $salesSettings->quotationRequireSignature());
+        $validated['require_payment'] = (bool) ($validated['require_payment'] ?? $salesSettings->quotationRequirePayment());
+        $validated['prepayment_percent'] = (float) ($validated['prepayment_percent'] ?? $salesSettings->quotationPrepaymentPercent());
 
         // Issue #553: when the tenant enabled "default salesperson = current
         // user" (and/or a per-user default team), stamp the blank fields on
@@ -344,6 +372,13 @@ class QuotationController extends Controller
 
         // Issue #321: a master payment term also sets the printed credit terms.
         $validated = $this->applyPaymentTerm($validated);
+
+        // Issue #545: blank terms take the tenant's default quotation terms
+        // (Sales Settings → Quotations), as invoices do with theirs.
+        if (blank($validated['terms'] ?? null)
+            && ($defaultTerms = app(\App\Services\SalesSettings::class)->quotationDefaultTerms()) !== null) {
+            $validated['terms'] = $defaultTerms;
+        }
 
         // A supplied price without an explicit intent is legacy behaviour
         // (kept verbatim); the wired UI always sends price_mode.
@@ -356,6 +391,12 @@ class QuotationController extends Controller
                 ? 'legacy'
                 : 'auto';
         };
+
+        // #302 (X1): line tax is resolved on the server through the tax engine
+        // at the quotation date (an explicit tax rule override is honoured);
+        // a rule that cannot apply is a 422 before anything is written.
+        $validated['lines'] = app(\App\Services\SalesLineTaxResolver::class)
+            ->applyToLines($validated['lines'], $validated['quotation_date'] ?? null, (int) $validated['customer_id']);
 
         try {
             $pricing = app(\App\Services\PricingService::class);
@@ -415,6 +456,10 @@ class QuotationController extends Controller
                     'exchange_rate' => $pricingContext['exchange_rate'],
                     'base_currency_code' => $pricingContext['base_currency'],
                     'created_by' => Auth::id(),
+                    // Issue #550: acceptance requirements.
+                    'require_signature' => $validated['require_signature'],
+                    'require_payment' => $validated['require_payment'],
+                    'prepayment_percent' => $validated['prepayment_percent'],
                 ], fn ($v) => $v !== null);
 
                 $quotation = Quotation::create($data);
@@ -458,6 +503,7 @@ class QuotationController extends Controller
                         'income_account_id' => $lineData['income_account_id'] ?? null,
                         'project_id' => $lineData['project_id'] ?? null,
                         'department_id' => $lineData['department_id'] ?? null,
+                        'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
                         'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
                         'product_notes' => $lineData['product_notes'] ?? null,
@@ -471,6 +517,10 @@ class QuotationController extends Controller
                             ? (bool) $lineData['tax_inclusive']
                             : ($lineProduct !== null
                                 && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $validated['quotation_date'] ?? null)),
+                        // #302: the resolved tax identity persists with the line.
+                        'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+                        'tax_code' => $lineData['tax_code'] ?? null,
+                        'tax_treatment' => $lineData['tax_treatment'] ?? null,
                         'discount_amount' => $lineData['discount_amount'] ?? 0,
                     ], $priced));
                 }
@@ -530,7 +580,61 @@ class QuotationController extends Controller
         // "Someone else is editing" banner. Null when nobody holds the lock.
         $quotation->setAttribute('active_lock', $this->versionGuard->activeLockInfo('quotation', (int) $quotation->id));
 
+        // Issue #336 (Q12): the revisions created by reject / new revision
+        // (#178/#179) share one correction group — list them all so the
+        // detail page can show v1, v2 … and how the totals moved.
+        $quotation->setAttribute('version_history', $this->versionHistory($quotation));
+
         return response()->json($quotation);
+    }
+
+    /**
+     * Issue #336 (Q12): every version in the quotation's correction group, in
+     * version order, with the change in total against the previous version.
+     * A quotation that was never revised has no group and an empty history.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function versionHistory(Quotation $quotation): array
+    {
+        if (! $quotation->correction_group_id) {
+            return [];
+        }
+
+        $versions = Quotation::query()
+            ->where('correction_group_id', $quotation->correction_group_id)
+            ->orderBy('version_number')
+            ->orderBy('id')
+            ->get([
+                'id', 'quotation_number', 'version_number', 'status', 'is_active_version',
+                'subtotal', 'tax_amount', 'discount_amount', 'total',
+                'correction_reason_code', 'correction_reason_text', 'superseded_at', 'created_at',
+            ]);
+
+        $previousTotal = null;
+
+        return $versions->map(function (Quotation $version) use (&$previousTotal) {
+            $total = round((float) $version->total, 2);
+            $change = $previousTotal === null ? null : round($total - $previousTotal, 2);
+            $previousTotal = $total;
+
+            return [
+                'id' => (int) $version->id,
+                'quotation_number' => $version->quotation_number,
+                'version_number' => (int) ($version->version_number ?? 1),
+                'status' => $version->status,
+                'is_active_version' => (bool) $version->is_active_version,
+                'subtotal' => round((float) $version->subtotal, 2),
+                'tax_amount' => round((float) $version->tax_amount, 2),
+                'discount_amount' => round((float) $version->discount_amount, 2),
+                'total' => $total,
+                'total_change' => $change,
+                'correction_reason_code' => $version->correction_reason_code,
+                'correction_reason_text' => $version->correction_reason_text,
+                'superseded_at' => $version->superseded_at,
+                'created_at' => $version->created_at,
+            ];
+        })->values()->all();
     }
 
     /**
@@ -626,6 +730,8 @@ class QuotationController extends Controller
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required_with:lines|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -637,8 +743,15 @@ class QuotationController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) overrides the engine.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
+            // Issue #550: per-quotation acceptance requirements (NULL = the
+            // tenant's Sales Settings value).
+            'require_signature' => 'nullable|boolean',
+            'require_payment' => 'nullable|boolean',
+            'prepayment_percent' => 'nullable|numeric|gt:0|max:100',
         ]);
 
         if (array_key_exists('discount_amount', $validated) && ! array_key_exists('discount_value', $validated)) {
@@ -677,8 +790,16 @@ class QuotationController extends Controller
                         'base_currency_code' => $quotation->base_currency_code,
                     ]);
 
+                    // #302 (X1): edited lines re-resolve tax through the tax
+                    // engine at the quotation's (possibly updated) date.
+                    $editedLines = app(\App\Services\SalesLineTaxResolver::class)->applyToLines(
+                        array_map(fn ($line) => (array) $line, (array) $request->lines),
+                        $quotation->quotation_date?->toDateString(),
+                        $quotation->customer_id !== null ? (int) $quotation->customer_id : null,
+                    );
+
                     $quotation->lines()->delete();
-                    foreach ($request->lines as $lineIndex => $lineData) {
+                    foreach ($editedLines as $lineIndex => $lineData) {
                         $lineData = (array) $lineData;
                         $lineType = $lineData['line_type'] ?? 'product';
 
@@ -710,6 +831,7 @@ class QuotationController extends Controller
                             'income_account_id' => $lineData['income_account_id'] ?? null,
                             'project_id' => $lineData['project_id'] ?? null,
                             'department_id' => $lineData['department_id'] ?? null,
+                            'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
                             'model_number' => $lineData['model_number'] ?? null,
                             'description' => $lineData['description'] ?? '',
                             'product_notes' => $lineData['product_notes'] ?? null,
@@ -722,6 +844,10 @@ class QuotationController extends Controller
                                 ? (bool) $lineData['tax_inclusive']
                                 : ($lineProduct !== null
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $quotation->quotation_date?->toDateString())),
+                            // #302: the resolved tax identity persists with the line.
+                            'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+                            'tax_code' => $lineData['tax_code'] ?? null,
+                            'tax_treatment' => $lineData['tax_treatment'] ?? null,
                             'discount_amount' => $lineData['discount_amount'] ?? 0,
                         ], $priced));
                     }
@@ -1651,6 +1777,10 @@ class QuotationController extends Controller
                 $createData['base_currency_code'] = $importContext['base_currency'];
 
                 $quotation = Quotation::create($createData);
+
+                // #302 (X1): imported line tax resolves through the tax engine
+                // at the quotation date, exactly like the interactive create.
+                $lines = app(\App\Services\SalesLineTaxResolver::class)->applyToLines($lines, $quotationDate, (int) $customer->id);
 
                 foreach ($lines as $line) {
                     $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])

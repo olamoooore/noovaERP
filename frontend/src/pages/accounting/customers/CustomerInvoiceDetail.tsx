@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { formatDate, resolveImageUrl, formatCurrency } from '@/lib/utils';
+import { formatDate, resolveImageUrl, formatCurrency, normalizeQuantity } from '@/lib/utils';
 import api from '@/lib/api';
 import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
@@ -453,6 +453,38 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-sm text-muted-foreground mb-1">{isQuoteMode ? 'Valid Until' : 'Due Date'}</p>
               <p className="font-medium">{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</p>
             </div>
+            {/* Issue #324: master payment term and its instalment schedule. */}
+            {!isQuoteMode && invoice.payment_term?.name && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Payment Term</p>
+                <p className="font-medium">{invoice.payment_term.name}</p>
+              </div>
+            )}
+            {!isQuoteMode && Array.isArray(invoice.instalments) && invoice.instalments.length > 1 && (
+              <div className="col-span-full" data-testid="invoice-instalments">
+                <p className="text-sm text-muted-foreground mb-1">Instalments</p>
+                <table className="text-sm">
+                  <thead>
+                    <tr className="text-muted-foreground">
+                      <th className="pr-4 text-left font-medium">Due</th>
+                      <th className="pr-4 text-right font-medium">Amount</th>
+                      <th className="pr-4 text-right font-medium">Paid</th>
+                      <th className="text-right font-medium">Outstanding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.instalments.map((row: { sequence: number; due_date: string | null; amount: number; paid: number; outstanding: number }) => (
+                      <tr key={row.sequence}>
+                        <td className="pr-4">{row.due_date ? formatDate(row.due_date) : '—'}</td>
+                        <td className="pr-4 text-right">{formatCurrency(row.amount)}</td>
+                        <td className="pr-4 text-right">{formatCurrency(row.paid)}</td>
+                        <td className="text-right">{formatCurrency(row.outstanding)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground mb-1">Subtotal</p>
               <p className="font-medium">{formatCurrency(invoice.subtotal)}</p>
@@ -692,7 +724,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 {invoice.lines && invoice.lines.length > 0 ? (
                   invoice.lines.map((line: any, index: number) => (
                     <TableRow key={index}>
-                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
+                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4">{line.description_html ? <span dangerouslySetInnerHTML={{ __html: line.description_html }} /> : <span>{line.description}</span>}{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           {line.product?.image ? (
@@ -712,12 +744,12 @@ export const CustomerInvoiceDetail: React.FC = () => {
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
-                      <TableCell className="whitespace-pre-line align-top">{line.description || '-'}</TableCell>
+                      <TableCell className="whitespace-pre-line align-top">{line.description_html ? <span dangerouslySetInnerHTML={{ __html: line.description_html }} /> : (line.description || '-')}</TableCell>
                       <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
-                      <TableCell className="text-right">{line.quantity}</TableCell>
+                      <TableCell className="text-right">{normalizeQuantity(line.quantity)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>

@@ -9,6 +9,7 @@
  */
 
 import { addDays, format, isValid, parse, startOfISOWeek } from 'date-fns';
+import type { SalesDrilldownDocument } from '@/types/reports';
 
 /**
  * Issue #595: flat comparison fields the API adds to a row when a comparison
@@ -230,4 +231,21 @@ export const formatTrendPeriod = (period: string, interval?: string) => {
     return isValid(date) ? format(date, 'MMM yyyy') : period;
   }
   return period;
+};
+
+/**
+ * Issue #596: where a drilled source document opens. POS orders have no
+ * detail page, so they open the POS order list.
+ */
+export const drilldownDocumentLink = (doc: SalesDrilldownDocument): string => {
+  switch (doc.document_type) {
+    case 'invoice':
+      return `/invoices/${doc.document_id}`;
+    case 'credit_note':
+      return `/accounting/customers/credit-notes/${doc.document_id}`;
+    case 'sales_order':
+      return `/sales/orders/${doc.document_id}`;
+    default:
+      return '/pos/orders';
+  }
 };

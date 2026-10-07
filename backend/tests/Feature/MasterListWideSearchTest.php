@@ -6,6 +6,8 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductCustomField;
+use App\Models\ProductCustomFieldValue;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Vendor;
@@ -124,5 +126,64 @@ class MasterListWideSearchTest extends TenantTestCase
 
         $this->assertContains($product->id, $this->searchIds('/api/v1/products', 'HTx60'));
         $this->assertContains($product->id, $this->searchIds('/api/v1/products', 'htx60'));
+    }
+
+    public function test_product_search_matches_every_declared_field_including_metafields(): void
+    {
+        $brand = Brand::create(['name' => 'Zeiss Medical', 'slug' => 'zeiss-'.Str::random(4), 'is_active' => true]);
+        $category = ProductCategory::create(['name' => 'Surgical Instruments', 'slug' => 'surgical-'.Str::random(4)]);
+
+        $product = Product::factory()->create([
+            'name' => 'Precision Forceps',
+            'secondary_name' => 'Micro Grasper',
+            'sku' => 'SKU-XYZ-1',
+            'barcode' => 'BC-99887766',
+            'manufacturer_part_number' => 'MPN-4455',
+            'description' => 'Long description with Zirconium coating',
+            'short_description' => 'SD-ShortTag-77',
+            'attributes' => ['Model' => 'HTxM-9000', 'Material' => 'Titanium Alloy'],
+            'lot_number' => 'LOT-ALPHA-9',
+            'brand_id' => $brand->id,
+            'category_id' => $category->id,
+            'track_inventory' => false,
+        ]);
+
+        $customField = ProductCustomField::create([
+            'name' => 'Sterile Ref',
+            'slug' => 'sterile-ref-'.Str::random(4),
+            'type' => 'text',
+            'is_active' => true,
+        ]);
+        ProductCustomFieldValue::create([
+            'product_id' => $product->id,
+            'product_custom_field_id' => $customField->id,
+            'value' => 'CF-VAL-4242',
+        ]);
+
+        $terms = [
+            'name' => 'Precision',
+            'secondary name' => 'Micro Grasper',
+            'sku' => 'SKU-XYZ-1',
+            'barcode' => 'BC-99887766',
+            'manufacturer part' => 'MPN-4455',
+            'description' => 'Zirconium',
+            'short description' => 'SD-ShortTag-77',
+            'attribute model' => 'HTxM-9000',
+            'attribute value' => 'Titanium Alloy',
+            'lot number' => 'LOT-ALPHA-9',
+            'brand' => 'Zeiss Medical',
+            'category' => 'Surgical Instruments',
+            'custom field value' => 'CF-VAL-4242',
+        ];
+
+        foreach ($terms as $label => $term) {
+            $this->assertContains(
+                $product->id,
+                $this->searchIds('/api/v1/products', $term),
+                "Expected product to match {$label} term '{$term}'.",
+            );
+        }
+
+        $this->assertSame([], $this->searchIds('/api/v1/products', 'Nobody Zzz'));
     }
 }

@@ -26,7 +26,8 @@ interface Contact {
   company_name?: string
   email?: string
   phone?: string
-  // Address fields
+  // Contact Master link (customer contact records) and address fields.
+  core_contact_uuid?: string | null
   type?: string
   label?: string
   street?: string

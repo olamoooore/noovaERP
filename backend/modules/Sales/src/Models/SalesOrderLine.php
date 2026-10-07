@@ -17,6 +17,9 @@ class SalesOrderLine extends Model
         'model_number',
         'variant_id',
         'description',
+        // #1004: sanitized rich-text copy of the description (plain text stays
+        // in `description` for search/exports/e-invoice).
+        'description_html',
         'product_notes',
         'sku',
         'quantity',
@@ -40,6 +43,10 @@ class SalesOrderLine extends Model
         'discount_amount',
         'tax_rate',
         'tax_inclusive',
+        // #302: persisted tax identity resolved at save.
+        'tax_rule_id',
+        'tax_code',
+        'tax_treatment',
         'tax_amount',
         'line_total',
         'income_account_id',
@@ -47,6 +54,8 @@ class SalesOrderLine extends Model
         // quotation line onto the invoice line.
         'project_id',
         'department_id',
+        // Issue #332: [{analytic_account_id, percentage}] summing to 100.
+        'analytic_distribution',
         'source_line_type',
         'source_line_id',
     ];
@@ -57,6 +66,7 @@ class SalesOrderLine extends Model
     protected $appends = ['is_backordered'];
 
     protected $casts = [
+        'analytic_distribution' => 'array',
         'sequence' => 'integer',
         'quantity' => 'decimal:4',
         'quantity_allocated' => 'decimal:4',

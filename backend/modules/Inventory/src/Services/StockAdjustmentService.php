@@ -28,7 +28,9 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
  *
  * Valuation:
  *   - decrease: DEBIT  reason's mapping key (default inventory_shrinkage) / CREDIT inventory
- *   - increase: DEBIT  inventory / CREDIT reason's mapping key (default inventory_adjustment_gain)
+ *   - increase: DEBIT  inventory / CREDIT the reason's EXPLICIT mapping key only;
+ *               with no explicit mapping the increase is saved GL-silently
+ *               (#1017 decision 2026-10-07 — the gain default was removed)
  *   - amount   = |quantity delta| × products.cost
  *   - zero-cost products produce no journal entry (nothing to value)
  */
@@ -250,10 +252,11 @@ class StockAdjustmentService
 
         $isIncrease = $delta > 0;
 
-        // A stock increase has no gain account any more (7300 was removed), and
-        // the import path never posts at all. Skip the posting rather than
-        // throwing "Cannot resolve GL account" and failing the stock receipt.
-        if ($isIncrease && ! $reason?->glMappingKey(true)) {
+        // #1017 decision (2026-10-07, option A): a stock increase has no gain
+        // account any more (the 7300 mapping was removed). Only a reason with
+        // an EXPLICIT mapping posts an increase; otherwise the receipt is
+        // saved GL-silently instead of failing on account resolution.
+        if ($isIncrease && $reason?->glMappingKey(true) === null) {
             Log::info('StockAdjustmentService: stock increase not posted (no gain account configured)', [
                 'stock_movement_id' => $movement->id,
                 'product_id' => $movement->product_id,
@@ -264,10 +267,9 @@ class StockAdjustmentService
             return;
         }
 
-        $mappingKey = $reason?->glMappingKey($isIncrease)
-            ?? ($isIncrease
-                ? StockAdjustmentReason::DEFAULT_INCREASE_MAPPING_KEY
-                : StockAdjustmentReason::DEFAULT_DECREASE_MAPPING_KEY);
+        $mappingKey = $isIncrease
+            ? $reason->glMappingKey(true)
+            : ($reason?->glMappingKey(false) ?? StockAdjustmentReason::DEFAULT_DECREASE_MAPPING_KEY);
 
         $description = sprintf(
             'Stock %s — movement #%d, product #%d, %+g units @ %.2f',

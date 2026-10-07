@@ -27,6 +27,8 @@ interface LineChartProps {
   showGrid?: boolean;
   showLegend?: boolean;
   formatYAxis?: 'currency' | 'number' | 'percent';
+  /** ISO currency for 'currency' formatting (e.g. the report's base currency); defaults to the tenant setting. */
+  currency?: string;
   /**
    * Category labels longer than this are shortened on the axis; the tooltip
    * always shows the full label. Pass 0 to disable truncation.
@@ -51,12 +53,13 @@ export const LineChart: React.FC<LineChartProps> = ({
   showGrid = true,
   showLegend = true,
   formatYAxis = 'number',
+  currency,
   truncateLabels = 16,
   xAxisAngle = 0,
   isDark = false,
 }) => {
   const theme = getChartTheme(isDark);
-  const tickFormatter = makeAxisTickFormatter(formatYAxis, maxAbsOf(data, yKeys));
+  const tickFormatter = makeAxisTickFormatter(formatYAxis, maxAbsOf(data, yKeys), currency);
   const angled = xAxisAngle !== 0;
   const categoryTick = (value: any) =>
     truncateLabels > 0 ? truncateLabel(value, truncateLabels) : String(value ?? '');
@@ -107,7 +110,7 @@ export const LineChart: React.FC<LineChartProps> = ({
         />
         <Tooltip
           cursor={{ stroke: theme.colors.grid, strokeWidth: 1, strokeDasharray: '4 4' }}
-          content={<ChartTooltip valueFormat={formatYAxis} />}
+          content={<ChartTooltip valueFormat={formatYAxis} currency={currency} />}
         />
         {legendVisible && (
           <Legend

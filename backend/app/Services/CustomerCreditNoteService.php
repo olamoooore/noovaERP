@@ -569,6 +569,11 @@ class CustomerCreditNoteService
             ));
 
             if (! $result->success) {
+                // #278: a closed tax period is a governed refusal, not a fault.
+                if ($result->reasonCode === \App\Accounting\Exceptions\TaxPeriodLockedException::REASON_CODE) {
+                    throw new \App\Accounting\Exceptions\TaxPeriodLockedException($result->error);
+                }
+
                 throw new \Exception($result->error);
             }
 

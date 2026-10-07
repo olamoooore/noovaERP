@@ -15,9 +15,9 @@ class InventoryTurnoverService
      * - Days in Inventory = 365 / Turnover Ratio
      * - Fast vs Slow movers classification
      */
-    public function generate(Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
+    public function generate(Carbon $startDate, Carbon $endDate, ?int $categoryId = null, ?int $productId = null): array
     {
-        $products = $this->getProductsWithTurnover($startDate, $endDate, $categoryId);
+        $products = $this->getProductsWithTurnover($startDate, $endDate, $categoryId, $productId);
 
         return [
             'title' => 'Inventory Turnover Report',
@@ -35,7 +35,7 @@ class InventoryTurnoverService
     /**
      * Get products with turnover metrics
      */
-    protected function getProductsWithTurnover(Carbon $startDate, Carbon $endDate, ?int $categoryId): array
+    protected function getProductsWithTurnover(Carbon $startDate, Carbon $endDate, ?int $categoryId, ?int $productId = null): array
     {
         $days = $startDate->diffInDays($endDate);
         $stockLevelsExists = $this->tableExists('stock_levels');
@@ -46,9 +46,11 @@ class InventoryTurnoverService
                 'p.id',
                 'p.sku',
                 'p.name',
+                'p.short_description',
                 'p.cost',
                 'p.price',
-            ]);
+            ])
+            ->when($productId, fn ($q) => $q->where('p.id', $productId));
 
         if ($stockLevelsExists) {
             $query->leftJoin(
@@ -98,6 +100,7 @@ class InventoryTurnoverService
                 'id' => $product->id,
                 'sku' => $product->sku,
                 'name' => $product->name,
+                'short_description' => $product->short_description,
                 'category' => $product->category_name ?? null,
                 'current_stock' => (int) $product->stock_quantity,
                 'cost' => (float) $product->cost,
@@ -353,9 +356,9 @@ class InventoryTurnoverService
     /**
      * Get fast movers only
      */
-    public function getFastMovers(Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
+    public function getFastMovers(Carbon $startDate, Carbon $endDate, ?int $categoryId = null, ?int $productId = null): array
     {
-        $report = $this->generate($startDate, $endDate, $categoryId);
+        $report = $this->generate($startDate, $endDate, $categoryId, $productId);
 
         $report['data'] = array_filter($report['data'], fn ($item) => $item['is_fast_mover']);
         $report['title'] = 'Fast Moving Products';
@@ -366,9 +369,9 @@ class InventoryTurnoverService
     /**
      * Get slow movers only
      */
-    public function getSlowMovers(Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
+    public function getSlowMovers(Carbon $startDate, Carbon $endDate, ?int $categoryId = null, ?int $productId = null): array
     {
-        $report = $this->generate($startDate, $endDate, $categoryId);
+        $report = $this->generate($startDate, $endDate, $categoryId, $productId);
 
         $report['data'] = array_filter($report['data'], fn ($item) => $item['is_slow_mover']);
         $report['title'] = 'Slow Moving Products';
@@ -379,9 +382,9 @@ class InventoryTurnoverService
     /**
      * Get products by classification
      */
-    public function getByClassification(string $classification, Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
+    public function getByClassification(string $classification, Carbon $startDate, Carbon $endDate, ?int $categoryId = null, ?int $productId = null): array
     {
-        $report = $this->generate($startDate, $endDate, $categoryId);
+        $report = $this->generate($startDate, $endDate, $categoryId, $productId);
 
         $report['data'] = array_filter($report['data'], fn ($item) => $item['classification'] === $classification);
         $report['title'] = "{$classification} Moving Products";

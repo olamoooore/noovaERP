@@ -49,6 +49,11 @@ interface QuotationSnapshot {
   signer_name: string | null
   signer_email: string | null
   accepted_at: string | null
+  // Issue #550: what this quotation needs before it can be accepted online.
+  require_signature?: boolean
+  require_payment?: boolean
+  prepayment_percent?: number
+  prepayment_amount?: number
 }
 
 const currency = (n: number, code: string) =>
@@ -99,6 +104,15 @@ export default function QuotationAcceptancePage() {
       // Issue #334: an over-threshold quotation goes through the standard
       // internal approval flow first — tell the customer it is pending rather
       // than implying it is confirmed.
+      // Issue #550: a quotation that requires a prepayment is recorded as
+      // accepted but only confirmed once the payment has been received.
+      if (data?.requires_payment) {
+        toast({
+          title: 'Quotation accepted',
+          description: 'Thank you — it will be confirmed once your prepayment has been received.',
+        })
+        return
+      }
       if (data?.requires_approval) {
         toast({
           title: 'Quotation accepted',
@@ -125,6 +139,10 @@ export default function QuotationAcceptancePage() {
     }
     if (!agreed) {
       toast({ variant: 'destructive', title: 'Please confirm agreement' })
+      return
+    }
+    if (data?.require_signature && !signatureDataUrl) {
+      toast({ variant: 'destructive', title: 'Signature required', description: 'Please sign in the box above.' })
       return
     }
     acceptMutation.mutate()
@@ -305,7 +323,17 @@ export default function QuotationAcceptancePage() {
                   onChange={setSignatureDataUrl}
                   isDrawing={isDrawing}
                   setIsDrawing={setIsDrawing}
+                  required={Boolean(data.require_signature)}
                 />
+
+                {data.require_payment && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    A prepayment of{' '}
+                    <span className="font-semibold">{currency(data.prepayment_amount ?? 0, data.currency_code)}</span>
+                    {data.prepayment_percent != null && ` (${Number(data.prepayment_percent)}% of the total)`} is required.
+                    This quotation is confirmed once the prepayment has been received.
+                  </div>
+                )}
 
                 <div className="flex items-start gap-2">
                   <Checkbox
@@ -345,6 +373,11 @@ export default function QuotationAcceptancePage() {
                 {data.signer_name && `Signed by ${data.signer_name} `}
                 {data.accepted_at && `on ${formatDate(data.accepted_at)}`}
               </p>
+              {data.require_payment && data.status !== 'confirmed' && (
+                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                  Awaiting your prepayment of {currency(data.prepayment_amount ?? 0, data.currency_code)} before confirmation.
+                </p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -361,10 +394,12 @@ function SignaturePad({
   onChange,
   isDrawing,
   setIsDrawing,
+  required = false,
 }: {
   onChange: (dataUrl: string | null) => void
   isDrawing: boolean
   setIsDrawing: (v: boolean) => void
+  required?: boolean
 }) {
   const [canvasRef, setCanvasRef] = useState<HTMLCanvasElement | null>(null)
   const [hasContent, setHasContent] = useState(false)
@@ -415,7 +450,7 @@ function SignaturePad({
 
   return (
     <div className="space-y-2">
-      <Label>Signature</Label>
+      <Label>{required ? 'Signature (required)' : 'Signature'}</Label>
       <div className="rounded-md border bg-white">
         <canvas
           ref={setCanvasRef}

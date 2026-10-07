@@ -40,6 +40,7 @@ import {
   InvoiceLineDeliveryChip,
   type InvoiceDeliveryProgress,
 } from '@/components/sales/DocumentProgressChip'
+import { creditWarning } from '@/lib/creditCheck'
 
 interface Invoice {
   id: number
@@ -55,6 +56,16 @@ interface Invoice {
   }
   invoice_date: string
   due_date: string
+  // Issue #324: master payment term + instalment schedule.
+  payment_term?: { id: number; name: string } | null
+  instalments?: Array<{
+    sequence: number
+    due_date: string | null
+    percent: number
+    amount: number
+    paid: number
+    outstanding: number
+  }>
   status: 'draft' | 'posted' | 'sent' | 'paid' | 'partial' | 'overdue' | 'cancelled' | 'written_off'
   subtotal: number
   tax_amount: number
@@ -171,6 +182,13 @@ interface InvoiceLine {
   tax_amount: number
   discount_amount: number
   line_total: number
+  /** Issue #332: revenue split across analytic accounts (totals 100%). */
+  analytic_distribution?: Array<{
+    analytic_account_id: number
+    percentage: number
+    code?: string | null
+    name?: string | null
+  }> | null
 }
 
 interface Payment {
@@ -207,6 +225,21 @@ function formatAddress(address: string | null | undefined): string {
     // If not JSON, return as-is (plain text address)
     return address;
   }
+}
+
+/**
+ * Issue #328: whether the invoice has an overdue open balance — the invoice
+ * due date, or (instalment terms) any open instalment's due date, is past.
+ * The server re-checks with the follow-up report's overdue set.
+ */
+function isInvoiceOverdue(
+  invoice: Pick<Invoice, 'status' | 'balance' | 'due_date' | 'instalments'>,
+  today: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (!['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) || !(Number(invoice.balance) > 0)) return false
+  const open = (invoice.instalments ?? []).filter((row) => Number(row.outstanding) > 0)
+  if (open.length > 1) return open.some((row) => !!row.due_date && row.due_date.slice(0, 10) < today)
+  return !!invoice.due_date && invoice.due_date.slice(0, 10) < today
 }
 
 export function InvoiceDetailPage() {
@@ -297,10 +330,11 @@ export function InvoiceDetailPage() {
       const response = await api.post(`/invoices/${id}/post`)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] })
       queryClient.invalidateQueries({ queryKey: ['invoice-preflight', id] })
-      toast({ title: 'Invoice posted successfully' })
+      // Issue #326: a post under the `warn` credit policy carries the verdict.
+      toast({ title: 'Invoice posted successfully', description: creditWarning(data) })
     },
     onError: (error: any) => {
       const message = error.response?.data?.message || 'An error occurred'
@@ -439,6 +473,32 @@ export function InvoiceDetailPage() {
       toast({
         variant: 'destructive',
         title: channel === 'whatsapp' ? 'Failed to send via WhatsApp' : 'Failed to email invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  // Issue #328: manual follow-up reminder for an overdue invoice. The
+  // server picks the follow-up level/template and honours the customer's
+  // communication preferences (a skip comes back with its reason).
+  const reminderMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/followup-reminder`)
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      const sent = data?.data?.outcome === 'sent'
+      toast({
+        variant: sent ? 'default' : 'destructive',
+        title: sent ? 'Payment reminder sent' : 'Reminder not sent',
+        description: sent ? undefined : data?.data?.reason ?? data?.message,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Reminder not sent',
         description: error.response?.data?.message || 'An error occurred',
       })
     },
@@ -784,6 +844,18 @@ export function InvoiceDetailPage() {
                 Write off
               </HeaderActionButton>
             )}
+            {/* Issue #328: follow-up reminder once the invoice is overdue. */}
+            {hasPermission('invoices.send') && isInvoiceOverdue(invoice) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:bell-bing-bold-duotone"
+                loading={reminderMutation.isPending}
+                disabled={reminderMutation.isPending}
+                onClick={() => reminderMutation.mutate()}
+              >
+                Send reminder
+              </HeaderActionButton>
+            )}
             {/* #618: one print/send menu shared with every sales document. */}
             <PrintSendMenu
               documentType="invoice"
@@ -1001,7 +1073,33 @@ export function InvoiceDetailPage() {
                   <span className="text-muted-foreground">Due Date:</span>
                   <span>{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</span>
                 </div>
+                {invoice.payment_term?.name && (
+                  <div className="flex justify-between gap-8">
+                    <span className="text-muted-foreground">Payment Term:</span>
+                    <span>{invoice.payment_term.name}</span>
+                  </div>
+                )}
               </div>
+              {(invoice.instalments?.length ?? 0) > 1 && (
+                <table className="mt-3 ml-auto text-xs" data-testid="invoice-instalments">
+                  <thead>
+                    <tr className="text-muted-foreground">
+                      <th className="px-2 text-left font-medium">Instalment due</th>
+                      <th className="px-2 text-right font-medium">Amount</th>
+                      <th className="px-2 text-right font-medium">Outstanding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.instalments!.map((row) => (
+                      <tr key={row.sequence}>
+                        <td className="px-2 text-left">{row.due_date ? formatDate(row.due_date) : '—'}</td>
+                        <td className="px-2 text-right">{money(Number(row.amount))}</td>
+                        <td className="px-2 text-right">{money(Number(row.outstanding))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
@@ -1104,7 +1202,17 @@ export function InvoiceDetailPage() {
                         '-'
                       )}
                     </TableCell>
-                    <TableCell>{line.description || '-'}</TableCell>
+                    <TableCell>
+                      <div>{line.description || '-'}</div>
+                      {line.analytic_distribution && line.analytic_distribution.length > 0 && (
+                        <div className="mt-1 text-xs text-muted-foreground" data-testid={`invoice-line-analytic-${line.id}`}>
+                          Analytic:{' '}
+                          {line.analytic_distribution
+                            .map((share) => `${share.name || share.code || `#${share.analytic_account_id}`} ${Number(share.percentage)}%`)
+                            .join(' · ')}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>

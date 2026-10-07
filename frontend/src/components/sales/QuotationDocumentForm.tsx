@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
 import { Icon } from '@iconify/react'
 import { addCalendarDays, diffCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
-import { followValidUntil } from '@/lib/quotationDates'
+import { DEFAULT_QUOTE_VALIDITY_DAYS, followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast'
 import { useDensity } from '@/hooks/useDensity'
 import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils'
@@ -115,6 +115,10 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
   const [shippingPolicy, setShippingPolicy] = useState<'asap' | 'when_all_ready'>('asap')
   const [notes, setNotes] = useState('')
   const [terms, setTerms] = useState('')
+  // Issue #550: per-quotation online acceptance requirements. null = not
+  // touched, so the server stamps the tenant's Sales Settings value.
+  const [requireSignature, setRequireSignature] = useState<boolean | null>(null)
+  const [requirePayment, setRequirePayment] = useState<boolean | null>(null)
   const [discountAmount, setDiscountAmount] = useState<number | ''>('')
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed')
   const [lines, setLines] = useState<SalesDocumentLine[]>([emptySalesDocumentLine()])
@@ -202,6 +206,15 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     staleTime: 60_000,
   })
   const fieldProfile = String((salesDefaults as any)?.invoice?.field_profile ?? 'medical')
+  // Issue #545: Sales Settings → Quotations. Valid Until follows the quote
+  // date by the tenant's validity days (0 = no default expiry); until the
+  // defaults resolve the historical 30 days is kept.
+  const rawValidityDays = Number((salesDefaults as any)?.quotation?.default_validity_days)
+  const tenantValidityDays = Number.isFinite(rawValidityDays) && rawValidityDays >= 0
+    ? rawValidityDays
+    : DEFAULT_QUOTE_VALIDITY_DAYS
+  const quotationDefaultsAppliedRef = useRef(false)
+  const draftRestoredRef = useRef(false)
 
   // Issue #321: master data for the header pickers.
   const { data: paymentTermRows = [] } = useQuery({
@@ -272,6 +285,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       // The restored values are the user's own: the customer auto-fill must
       // not overwrite them when the restored customer's detail loads.
       autofilledCustomerRef.current = draft.customerId
+      draftRestoredRef.current = true
       setTags(draft.tags)
       setCustomerId(draft.customerId)
       setQuotationDate(draft.quotationDate)
@@ -384,6 +398,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     setShippingPolicy(quotation.shipping_policy === 'when_all_ready' ? 'when_all_ready' : 'asap')
     setNotes(quotation.notes || '')
     setTerms(quotation.terms || '')
+    setRequireSignature(typeof quotation.require_signature === 'boolean' ? quotation.require_signature : null)
+    setRequirePayment(typeof quotation.require_payment === 'boolean' ? quotation.require_payment : null)
     setDiscountMode(quotation.discount_type === 'percentage' ? 'percentage' : 'fixed')
     setDiscountAmount(quotation.discount_value != null ? Number(quotation.discount_value) : (quotation.discount_amount ? Number(quotation.discount_amount) : ''))
     setCustomerReference(quotation.customer_reference || '')
@@ -469,13 +485,17 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     // #321: prefer the master payment term matching the customer's day count;
     // without one the day count is kept as text (no term is invented).
     const days = Number(customerDetail.payment_terms)
-    const matchingTerm = Number.isFinite(days) && days >= 0
+    // #324: the customer's own default master term wins over a day-count match.
+    const customerDefaultTerm = customerDetail.payment_term_id
+      ? paymentTermRows.find((term) => term.id === Number(customerDetail.payment_term_id))
+      : undefined
+    const matchingTerm = customerDefaultTerm ?? (Number.isFinite(days) && days >= 0
       ? paymentTermRows.find((term) => term.is_active !== false && (
         days === 0
           ? term.type === 'immediate' || (term.type === 'net_days' && Number(term.days) === 0)
           : term.type === 'net_days' && Number(term.days) === days
       ))
-      : undefined
+      : undefined)
     const nextCreditTerms = matchingTerm
       ? matchingTerm.name
       : Number.isFinite(days) && days >= 0 ? (days > 0 ? `Net ${days} days` : 'Due on receipt') : ''
@@ -563,12 +583,33 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     notes ? 'notes' : null,
   ].filter(Boolean).join(' · ')
 
+  // Issue #545: a NEW quotation takes the tenant's quotation defaults once
+  // they load — never in edit mode, after a restored draft, or over a value
+  // the user already entered.
+  useEffect(() => {
+    if (mode !== 'create' || !salesDefaults || quotationDefaultsAppliedRef.current) return
+    quotationDefaultsAppliedRef.current = true
+    if (draftRestoredRef.current) return
+    if (!validUntilManuallyEdited) {
+      setValidUntil(tenantValidityDays > 0 ? addCalendarDays(quotationDate, tenantValidityDays) : '')
+    }
+    const defaultTerms = String((salesDefaults as any)?.quotation?.default_terms ?? '')
+    if (defaultTerms) {
+      setTerms((current) => current || defaultTerms)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, salesDefaults])
+
   // #297 (Q11): changing the quote date moves Valid Until with it (unless the
   // operator edited Valid Until themselves) and re-runs auto pricing against
   // the new date.
   const handleQuotationDateChange = (value: string) => {
     setQuotationDate(value)
-    setValidUntil(followValidUntil(value, validUntil, validUntilManuallyEdited))
+    setValidUntil(
+      tenantValidityDays > 0
+        ? followValidUntil(value, validUntil, validUntilManuallyEdited, tenantValidityDays)
+        : validUntil,
+    )
     // #299 (F7): the price list is date-effective — re-resolve auto lines for
     // the new date (state has not updated yet, so pass it explicitly).
     void resolvePricingForLines(lines, { dateOverride: value })
@@ -687,6 +728,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
       terms: terms || null,
+      ...(requireSignature !== null ? { require_signature: requireSignature } : {}),
+      ...(requirePayment !== null ? { require_payment: requirePayment } : {}),
       discount_amount: documentDiscountAmount || 0,
       // FR-2.3 step 1: explicit list selection wins over applicability.
       ...(priceListId ? { price_list_id: Number(priceListId) } : {}),
@@ -858,6 +901,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 <FieldSlot name="valid_until">
                   <input
                     type="date"
+                    aria-label="Valid until"
                     value={validUntil}
                     onChange={(event) => handleValidUntilChange(event.target.value)}
                     className={SALES_CONTROL}
@@ -1423,6 +1467,28 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                     className={SALES_TEXTAREA}
                     placeholder="Payment terms..."
                   />
+                </div>
+                {/* Issue #550: overrides of Sales Settings → Quotations. */}
+                <div className="space-y-2">
+                  <span className="block text-xs font-medium">Online acceptance</span>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label="Require online signature"
+                      checked={requireSignature ?? Boolean((salesDefaults as any)?.quotation?.require_signature)}
+                      onChange={(event) => setRequireSignature(event.target.checked)}
+                    />
+                    Require signature
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label="Require online payment"
+                      checked={requirePayment ?? Boolean((salesDefaults as any)?.quotation?.require_payment)}
+                      onChange={(event) => setRequirePayment(event.target.checked)}
+                    />
+                    Require prepayment before confirmation
+                  </label>
                 </div>
               </section>
 

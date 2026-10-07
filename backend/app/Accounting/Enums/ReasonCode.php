@@ -27,6 +27,9 @@ enum ReasonCode: string
     case TAX_RESULT_STALE = 'TAX_RESULT_STALE';
     case TAX_RESULT_INVALIDATED = 'TAX_RESULT_INVALIDATED';
     case TAX_PERIOD_LOCKED = 'TAX_PERIOD_LOCKED';
+    // #278 F4: Financial Close refused because the ACC-009 tax-readiness
+    // fact is not ready under a BLOCKING close dependency policy.
+    case TAX_READINESS_BLOCKED = 'TAX_READINESS_BLOCKED';
 
     // Control Account
     case CONTROL_ACCOUNT_SOURCE_NOT_ALLOWED = 'CONTROL_ACCOUNT_SOURCE_NOT_ALLOWED';
@@ -91,7 +94,7 @@ enum ReasonCode: string
             self::APPROVAL_REQUIRED, self::APPROVAL_REJECTED, self::WORKFLOW_AMBIGUOUS,
             self::WORKFLOW_NOT_FOUND, self::WORKFLOW_DEPENDENCY_UNAVAILABLE => 'WORKFLOW',
             self::TAX_TOTAL_INCONSISTENT, self::TAX_RESULT_MISSING, self::TAX_RESULT_STALE,
-            self::TAX_RESULT_INVALIDATED, self::TAX_PERIOD_LOCKED => 'TAX',
+            self::TAX_RESULT_INVALIDATED, self::TAX_PERIOD_LOCKED, self::TAX_READINESS_BLOCKED => 'TAX',
             self::CONTROL_ACCOUNT_SOURCE_NOT_ALLOWED, self::MANUAL_JOURNAL_BLOCKED => 'CONTROL_ACCOUNT',
             self::DUPLICATE_SUSPECTED, self::IDEMPOTENCY_KEY_REUSE_CONFLICT => 'DUPLICATE',
             self::SOURCE_VERSION_CONFLICT, self::CONCURRENT_EDIT => 'CONCURRENCY',

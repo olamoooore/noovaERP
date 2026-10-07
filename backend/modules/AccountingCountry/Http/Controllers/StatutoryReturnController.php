@@ -282,7 +282,9 @@ class StatutoryReturnController extends Controller
             $tenantInt = (int) (tenant()->id ?? 0);
 
             foreach (\Modules\AccountingCountry\Services\TaxReportingService::expandFilingPeriod($period, $country) as $month) {
-                if (! $lockService->isPeriodLocked($month, $tenantInt, $legalEntityId)) {
+                // #278: regime-aware — another regime's lock does not
+                // stand in for this return's lock.
+                if (! $lockService->isPeriodLocked($month, $tenantInt, $legalEntityId, $country)) {
                     $lockService->closePeriod($month, $tenantInt, $legalEntityId, $country);
                 }
             }

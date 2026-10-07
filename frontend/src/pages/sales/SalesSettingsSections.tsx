@@ -21,7 +21,7 @@ import {
   SettingsSectionHeader,
   type SettingsDefaultMarkerProps,
 } from '@/components/settings/settings-ui'
-import { isChangedFromDefault } from './salesSettingsTools'
+import { followupLevelsError, isChangedFromDefault, type FollowupLevel } from './salesSettingsTools'
 
 export interface ReviewerConfig {
   reviewer_user_ids?: number[]
@@ -47,6 +47,8 @@ export interface SalesSettings {
     default_payment_terms_days: number
     default_notes: string
     default_terms: string
+    // Issue #326: what a failed credit check does on invoice create / post.
+    credit_limit_policy?: 'block' | 'warn'
     reviewer_user_ids?: number[]
     reviewer_roles?: string[]
     available_reviewers?: Array<{ id: number; name: string; email: string }>
@@ -78,8 +80,22 @@ export interface SalesSettings {
   } & ReviewerConfig
   // Issue #645: per-request-type reviewer lists. Each falls back to the
   // invoice reviewers when left empty.
-  quotation: ReviewerConfig
-  sales_order: ReviewerConfig
+  // Issue #545: the Quotations / Sales Orders sections share these groups
+  // with the reviewer lists (each section PUTs only its own fields).
+  quotation: ReviewerConfig & {
+    default_validity_days?: number
+    default_terms?: string
+    // Issue #550: online acceptance requirements for new quotations.
+    require_signature?: boolean
+    require_payment?: boolean
+    prepayment_percent?: number
+  }
+  sales_order: ReviewerConfig & {
+    auto_lock_on_confirm?: boolean
+    default_invoicing_policy?: 'ordered_qty' | 'delivered_qty'
+    // Issue #551: offer the pro-forma invoice on sales orders.
+    proforma_enabled?: boolean
+  }
   invoice_threshold: ReviewerConfig
   // Issue #553: creation defaults for new sales documents.
   defaults: {
@@ -90,12 +106,20 @@ export interface SalesSettings {
   pricelist: {
     display: 'show_discount' | 'net_price'
   }
+  // Issue #328: customer follow-up reminders for overdue invoices.
+  followup?: {
+    auto_send_enabled: boolean
+    levels: FollowupLevel[]
+    actions?: string[]
+  }
   // Issue #549: read-only server defaults (group => field => default) for the
   // "changed from default" markers. Never sent back.
   default_values?: Partial<Record<DefaultGroup, Record<string, unknown>>>
 }
 
-type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist'
+type DefaultGroup = 'cash_rounding' | 'invoice' | 'portal' | 'delivery' | 'delivery_order' | 'defaults' | 'pricelist' | 'followup'
+
+const DEFAULT_FOLLOWUP_TEMPLATE = 'invoice.overdue'
 
 export const emptySalesSettings: SalesSettings = {
   cash_rounding: {
@@ -138,10 +162,18 @@ export const emptySalesSettings: SalesSettings = {
   quotation: {
     reviewer_user_ids: [],
     reviewer_roles: [],
+    default_validity_days: 30,
+    default_terms: '',
+    require_signature: false,
+    require_payment: false,
+    prepayment_percent: 100,
   },
   sales_order: {
     reviewer_user_ids: [],
     reviewer_roles: [],
+    auto_lock_on_confirm: false,
+    default_invoicing_policy: 'ordered_qty',
+    proforma_enabled: true,
   },
   invoice_threshold: {
     reviewer_user_ids: [],
@@ -153,6 +185,10 @@ export const emptySalesSettings: SalesSettings = {
   },
   pricelist: {
     display: 'show_discount',
+  },
+  followup: {
+    auto_send_enabled: false,
+    levels: [{ days: 1, action: 'send', template: DEFAULT_FOLLOWUP_TEMPLATE }],
   },
 }
 
@@ -1106,6 +1142,26 @@ export function InvoiceDefaultsSettings() {
           />
         </SettingsRow>
 
+        <SettingsRow
+          title="Credit limit on invoices"
+          description="When creating or posting an invoice would take the customer over the credit limit (or the customer is on hold). Block refuses it; Warn lets it through with a warning."
+        >
+          <Select
+            value={invoice.credit_limit_policy ?? 'block'}
+            onValueChange={(v) =>
+              setLocal({ ...local, credit_limit_policy: v as SalesSettings['invoice']['credit_limit_policy'] })
+            }
+          >
+            <SelectTrigger className="w-56" aria-label="Credit limit on invoices">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="block">Block</SelectItem>
+              <SelectItem value="warn">Warn only</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
         <div className="grid gap-6 py-4 md:grid-cols-2">
           <div className="space-y-2">
             <div className="flex items-center">
@@ -1676,6 +1732,477 @@ export function DeliverySettings() {
         onSave={() => mutation.mutate(local)}
         onCancel={() => setLocal({})}
         label="Save delivery settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Payment Follow-ups (Issue #328) ────────────────────────────────────────
+
+export function FollowupSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [autoSend, setAutoSend] = useState<boolean | undefined>(undefined)
+  const [levels, setLevels] = useState<FollowupLevel[] | undefined>(undefined)
+  const reset = () => {
+    setAutoSend(undefined)
+    setLevels(undefined)
+  }
+  const mutation = useSalesSettingsMutation('followup', 'Follow-up settings saved', reset)
+  const marker = useDefaultMarkers(data, 'followup', () => setAutoSend(undefined))
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const saved = data.followup ?? emptySalesSettings.followup!
+  const currentAuto = autoSend ?? saved.auto_send_enabled
+  const currentLevels = levels ?? saved.levels
+  const levelsError = levels ? followupLevelsError(levels) : null
+
+  const updateLevel = (index: number, patch: Partial<FollowupLevel>) =>
+    setLevels(currentLevels.map((level, i) => (i === index ? { ...level, ...patch } : level)))
+
+  const patch: Record<string, unknown> = {}
+  if (autoSend !== undefined) patch.auto_send_enabled = autoSend
+  if (levels !== undefined) patch.levels = levels
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:bell-bing-bold-duotone"
+        title="Payment Follow-ups"
+        description="Remind customers about overdue invoices, by hand from the follow-up report or automatically every day."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Send follow-ups automatically"
+          description="Once a day, each overdue invoice that reaches a level gets that level's action — once per level. Customers who prefer phone or SMS, or who turned the channel off, are skipped and the skip is logged on the invoice."
+          {...marker('auto_send_enabled')}
+        >
+          <Switch
+            aria-label="Send follow-ups automatically"
+            checked={currentAuto}
+            onCheckedChange={(v) => setAutoSend(v)}
+          />
+        </SettingsRow>
+
+        <div className="space-y-3 py-4">
+          <div>
+            <p className="text-sm font-medium">Follow-up levels</p>
+            <p className="text-xs text-muted-foreground">
+              Days overdue at which a level applies. "Send reminder" emails (or WhatsApps) the customer using the
+              communication template; "Manual follow-up" only logs that someone should call.
+            </p>
+          </div>
+          {currentLevels.map((level, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2" data-testid="followup-level">
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                className="w-24"
+                aria-label={`Level ${index + 1} days overdue`}
+                value={Number.isFinite(level.days) ? level.days : ''}
+                onChange={(e) => updateLevel(index, { days: parseInt(e.target.value, 10) })}
+              />
+              <span className="text-xs text-muted-foreground">days overdue</span>
+              <Select
+                value={level.action}
+                onValueChange={(v) => updateLevel(index, { action: v as FollowupLevel['action'] })}
+              >
+                <SelectTrigger className="w-44" aria-label={`Level ${index + 1} action`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="send">Send reminder</SelectItem>
+                  <SelectItem value="manual">Manual follow-up</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                className="w-56"
+                aria-label={`Level ${index + 1} template`}
+                placeholder={DEFAULT_FOLLOWUP_TEMPLATE}
+                value={level.template}
+                maxLength={191}
+                onChange={(e) => updateLevel(index, { template: e.target.value })}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={`Remove level ${index + 1}`}
+                disabled={currentLevels.length <= 1}
+                onClick={() => setLevels(currentLevels.filter((_, i) => i !== index))}
+              >
+                <Icon icon="solar:trash-bin-minimalistic-bold-duotone" className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={currentLevels.length >= 10}
+            onClick={() => {
+              const last = currentLevels[currentLevels.length - 1]?.days ?? 0
+              setLevels([...currentLevels, { days: Math.min(last + 15, 365), action: 'send', template: DEFAULT_FOLLOWUP_TEMPLATE }])
+            }}
+          >
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1 h-4 w-4" />
+            Add level
+          </Button>
+          {levelsError && <p className="text-xs text-destructive">{levelsError}</p>}
+        </div>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(patch).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => {
+          if (levelsError) return
+          mutation.mutate(patch)
+        }}
+        onCancel={reset}
+        label="Save follow-up settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Quotations (Issue #545) ────────────────────────────────────────────────
+
+type QuotationSectionFields = Pick<
+  SalesSettings['quotation'],
+  'default_validity_days' | 'default_terms' | 'require_signature' | 'require_payment' | 'prepayment_percent'
+>
+
+export function QuotationSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [local, setLocal] = useState<QuotationSectionFields>({})
+  const mutation = useSalesSettingsMutation('quotation', 'Quotation settings saved', () => setLocal({}))
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const quotation = { ...data.quotation, ...local }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:document-text-bold-duotone"
+        title="Quotations"
+        description="What a new quotation starts with."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Default validity"
+          description="Valid Until on a new quotation is the quote date plus this many days. 0 leaves Valid Until empty (no expiry)."
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              max={365}
+              aria-label="Default validity days"
+              value={quotation.default_validity_days ?? 30}
+              onChange={(e) => setLocal({ ...local, default_validity_days: parseInt(e.target.value, 10) || 0 })}
+              className="w-20 text-center"
+            />
+            <span className="text-sm text-muted-foreground">days</span>
+          </div>
+        </SettingsRow>
+
+        <div className="space-y-2 py-4">
+          <Label htmlFor="quotation-default-terms" className="text-sm font-medium">
+            Default quotation terms
+          </Label>
+          <textarea
+            id="quotation-default-terms"
+            className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            placeholder="e.g. Prices valid for stock on hand."
+            value={quotation.default_terms ?? ''}
+            onChange={(e) => setLocal({ ...local, default_terms: e.target.value })}
+            maxLength={1000}
+          />
+          <p className="text-xs text-muted-foreground">
+            Filled in on a new quotation when its terms are left blank.
+          </p>
+        </div>
+
+        <SettingsRow
+          title="Require online signature"
+          description="Customers must draw a signature to accept a quotation online. New quotations start with this; each quotation can override it."
+        >
+          <Switch
+            aria-label="Require online signature"
+            checked={Boolean(quotation.require_signature)}
+            onCheckedChange={(v) => setLocal({ ...local, require_signature: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Require online payment"
+          description="Online acceptance records the customer's agreement, but the quotation is confirmed only after the prepayment is received. Each quotation can override it."
+        >
+          <Switch
+            aria-label="Require online payment"
+            checked={Boolean(quotation.require_payment)}
+            onCheckedChange={(v) => setLocal({ ...local, require_payment: v })}
+          />
+        </SettingsRow>
+
+        {quotation.require_payment && (
+          <SettingsRow title="Prepayment" description="Share of the quotation total to be paid up front.">
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                step="0.01"
+                aria-label="Prepayment percent"
+                value={quotation.prepayment_percent ?? 100}
+                onChange={(e) => setLocal({ ...local, prepayment_percent: Number(e.target.value) })}
+                className="w-24 text-center"
+              />
+              <span className="text-sm text-muted-foreground">%</span>
+            </div>
+          </SettingsRow>
+        )}
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save quotation settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Sales Orders (Issue #545) ──────────────────────────────────────────────
+
+type SalesOrderSectionFields = Pick<
+  SalesSettings['sales_order'],
+  'auto_lock_on_confirm' | 'default_invoicing_policy' | 'proforma_enabled'
+>
+
+export function SalesOrderSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [local, setLocal] = useState<SalesOrderSectionFields>({})
+  const mutation = useSalesSettingsMutation('sales_order', 'Sales order settings saved', () => setLocal({}))
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const order = { ...data.sales_order, ...local }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:cart-large-2-bold-duotone"
+        title="Sales Orders"
+        description="Invoicing and locking rules for sales orders."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Default invoicing policy"
+          description="For lines entered on a sales order without their own policy. Ordered bills the ordered quantity; Delivered bills only what has been delivered."
+        >
+          <Select
+            value={order.default_invoicing_policy ?? 'ordered_qty'}
+            onValueChange={(v) =>
+              setLocal({ ...local, default_invoicing_policy: v as SalesOrderSectionFields['default_invoicing_policy'] })
+            }
+          >
+            <SelectTrigger className="w-56" aria-label="Default invoicing policy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ordered_qty">Ordered quantities</SelectItem>
+              <SelectItem value="delivered_qty">Delivered quantities</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Lock confirmed orders"
+          description="Lock a sales order as soon as it is confirmed. A locked order must be unlocked before its lines can be amended."
+        >
+          <Switch
+            aria-label="Lock confirmed orders"
+            checked={Boolean(order.auto_lock_on_confirm)}
+            onCheckedChange={(v) => setLocal({ ...local, auto_lock_on_confirm: v })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Pro-forma invoice"
+          description="Offer a pro-forma invoice from sales orders. When off, the print action is hidden and the pro-forma document cannot be generated."
+        >
+          <Switch
+            aria-label="Pro-forma invoice"
+            checked={order.proforma_enabled !== false}
+            onCheckedChange={(v) => setLocal({ ...local, proforma_enabled: v })}
+          />
+        </SettingsRow>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save sales order settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Payment Methods (Issue #545, #486 master) ──────────────────────────────
+
+export interface PaymentMethodMasterRow {
+  id: number
+  code: string
+  label: string
+  is_active: boolean
+  requires_reference: boolean
+  default_bank_account_id: number | null
+  country_code?: string | null
+}
+
+type PaymentMethodPatch = Partial<Pick<PaymentMethodMasterRow, 'label' | 'is_active' | 'requires_reference' | 'default_bank_account_id'>>
+
+const NO_DEPOSIT_ACCOUNT = '__none__'
+
+export function PaymentMethodSettings() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [local, setLocal] = useState<Record<number, PaymentMethodPatch>>({})
+
+  const { data: methods, isLoading } = useQuery({
+    queryKey: ['payment-methods', 'all'],
+    queryFn: async () => {
+      const res = await api.get('/accounting/payment-methods', { params: { include_inactive: 1 } })
+      return (res.data?.data ?? []) as PaymentMethodMasterRow[]
+    },
+  })
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['bank-accounts', 'active'],
+    queryFn: async () => {
+      const res = await api.get('/accounting/bank-accounts', { params: { is_active: 1 } })
+      return (res.data?.data ?? []) as Array<{ id: number; account_name: string; bank_name?: string | null }>
+    },
+  })
+
+  const mutation = useMutation({
+    mutationFn: async (patches: Record<number, PaymentMethodPatch>) => {
+      // One PUT per edited method, in order, so a refusal (e.g. switching off
+      // the last active method) names the method it applies to.
+      for (const [id, patch] of Object.entries(patches)) {
+        await api.put(`/accounting/payment-methods/${id}`, patch)
+      }
+    },
+    onSuccess: () => {
+      setLocal({})
+      toast({ title: 'Payment methods saved' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Save failed',
+        description:
+          error.response?.data?.errors?.is_active?.[0] || error.response?.data?.message || 'Please try again.',
+      })
+    },
+    // Some rows may have saved before a refusal — always refresh.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
+    },
+  })
+
+  if (isLoading || !methods) return <SettingsLoadingCard />
+
+  const patch = (id: number, change: PaymentMethodPatch) =>
+    setLocal((current) => ({ ...current, [id]: { ...current[id], ...change } }))
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:wallet-money-bold-duotone"
+        title="Payment Methods"
+        description="Which methods staff can record, whether a reference is required, and the bank account each deposits to."
+      />
+      <CardContent className="py-0">
+        {methods.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">No payment methods are set up for this tenant.</p>
+        ) : (
+          <div className="divide-y">
+            {methods.map((method) => {
+              const row = { ...method, ...local[method.id] }
+              return (
+                <div
+                  key={method.id}
+                  data-testid={`payment-method-${method.code}`}
+                  className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto_minmax(0,14rem)] md:items-center"
+                >
+                  <div className="space-y-1">
+                    <Input
+                      aria-label={`${method.code} label`}
+                      value={row.label}
+                      maxLength={100}
+                      onChange={(e) => patch(method.id, { label: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Code <span className="font-mono">{method.code}</span>
+                      {method.country_code ? ` · ${method.country_code}` : ''}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Switch
+                      aria-label={`${method.code} active`}
+                      checked={row.is_active}
+                      onCheckedChange={(v) => patch(method.id, { is_active: v })}
+                    />
+                    Active
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Switch
+                      aria-label={`${method.code} requires reference`}
+                      checked={row.requires_reference}
+                      onCheckedChange={(v) => patch(method.id, { requires_reference: v })}
+                    />
+                    Reference required
+                  </label>
+                  <Select
+                    value={row.default_bank_account_id ? String(row.default_bank_account_id) : NO_DEPOSIT_ACCOUNT}
+                    onValueChange={(v) =>
+                      patch(method.id, { default_bank_account_id: v === NO_DEPOSIT_ACCOUNT ? null : Number(v) })
+                    }
+                  >
+                    <SelectTrigger aria-label={`${method.code} deposit to`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_DEPOSIT_ACCOUNT}>Deposit to: account mapping</SelectItem>
+                      {bankAccounts.map((account) => (
+                        <SelectItem key={account.id} value={String(account.id)}>
+                          {account.account_name}
+                          {account.bank_name ? ` — ${account.bank_name}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <p className="pb-4 text-xs text-muted-foreground">
+          A payment that names its own bank account deposits there; otherwise it uses the method&apos;s deposit-to
+          account, then the method&apos;s account mapping.
+        </p>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save payment methods"
       />
     </Card>
   )

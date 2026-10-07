@@ -17,6 +17,8 @@ class QuotationLine extends Model
         'income_account_id',
         'project_id',
         'department_id',
+        // Issue #332: [{analytic_account_id, percentage}] summing to 100.
+        'analytic_distribution',
         'model_number',
         'description',
         'product_notes',
@@ -28,12 +30,17 @@ class QuotationLine extends Model
         'pricing_trace',
         'tax_rate',
         'tax_inclusive',
+        // #302: persisted tax identity resolved at save.
+        'tax_rule_id',
+        'tax_code',
+        'tax_treatment',
         'tax_amount',
         'discount_amount',
         'line_total',
     ];
 
     protected $casts = [
+        'analytic_distribution' => 'array',
         'sequence' => 'integer',
         // #295 (Q7): decimal quantities (kg/hour/metre), like sales orders.
         'quantity' => 'decimal:4',

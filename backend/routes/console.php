@@ -88,6 +88,14 @@ Schedule::command('accounting:recognize-deferred-revenue')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #328 - customer follow-up reminders. The command iterates every
+// tenant (IteratesTenants); a tenant is only touched when it switched
+// automatic follow-ups on in Sales Settings.
+Schedule::command('sales:send-followup-reminders')
+    ->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #606 - weekly per-salesperson sales digest. The command iterates every
 // tenant (IteratesTenants) and sends only to users who opted in.
 Schedule::command('sales:send-weekly-digest')

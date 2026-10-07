@@ -93,6 +93,51 @@ class InvoiceService
     }
 
     /**
+     * Issue #324: resolve the master payment term for an invoice payload and
+     * derive its due date and instalment schedule from it.
+     *
+     *  - an explicit payment_term_id wins; otherwise the customer's default
+     *    master term applies, but only when no due date was set by hand
+     *    (a manual date keeps its meaning);
+     *  - with a term and no explicit due date, the due date is the term's
+     *    (last-instalment) due date for the invoice date;
+     *  - the schedule snapshot (due date + share of the total per instalment)
+     *    is stored so a later master edit never re-dates the invoice.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function applyPaymentTerm(array $data, bool $forceDueDate = false): array
+    {
+        $termId = $data['payment_term_id'] ?? null;
+
+        if (empty($termId) && empty($data['due_date']) && ! empty($data['customer_id'])) {
+            $termId = Customer::query()->whereKey($data['customer_id'])->value('payment_term_id');
+        }
+
+        $term = $termId ? \App\Models\PaymentTerm::query()->with('lines')->find((int) $termId) : null;
+        if (! $term) {
+            if (array_key_exists('payment_term_id', $data)) {
+                $data['payment_schedule'] = null;
+            }
+
+            return $data;
+        }
+
+        $invoiceDate = \Illuminate\Support\Carbon::parse($data['invoice_date'] ?? now())->toDateString();
+
+        $data['payment_term_id'] = $term->id;
+        if ($forceDueDate || empty($data['due_date'])) {
+            $data['due_date'] = $term->calculateDueDate($invoiceDate)->toDateString();
+        }
+
+        $schedule = $term->instalmentSchedule($invoiceDate);
+        $data['payment_schedule'] = $schedule !== [] ? $schedule : null;
+
+        return $data;
+    }
+
+    /**
      * Create invoice with lines — structurally non-public.
      *
      * Callers must hold a valid InvoiceCreationToken obtained from issueCreationToken().
@@ -117,6 +162,12 @@ class InvoiceService
             // customer's own terms first, the tenant default only when the
             // customer has none.
             $salesSettings = app(SalesSettings::class);
+
+            // Issue #324: the payment-terms master drives the due date and the
+            // instalment schedule — the document's own term first, else the
+            // customer's default term when no due date was set by hand.
+            $data = $this->applyPaymentTerm($data);
+
             if (empty($data['due_date'])) {
                 $customerTerms = isset($data['customer_id'])
                     ? Customer::query()->whereKey($data['customer_id'])->value('payment_terms')
@@ -219,9 +270,13 @@ class InvoiceService
                     'cost_center_id' => $lineData['cost_center_id'] ?? null,
                     'project_id' => $lineData['project_id'] ?? null,
                     'department_id' => $lineData['department_id'] ?? null,
+                    // Issue #332: the line's analytic distribution (account + %).
+                    'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
                     'branch_id' => $lineData['branch_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
+                    // #1004: sanitized rich-text description.
+                    'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($lineData['description_html'] ?? null),
                     'product_notes' => $lineData['product_notes'] ?? null,
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'serial_number' => $lineData['serial_number'] ?? null,
@@ -240,6 +295,12 @@ class InvoiceService
                     'pricing_trace' => $lineData['pricing_trace'] ?? null,
                     'tax_rate' => $customerExempt ? 0 : ($lineData['tax_rate'] ?? 0),
                     'tax_inclusive' => $lineTaxInclusive,
+                    // #302: the tax identity resolved upstream (order line,
+                    // conversion or the line tax resolver) persists on the
+                    // invoice line; a customer exemption outranks it (#309).
+                    'tax_rule_id' => $customerExempt ? null : ($lineData['tax_rule_id'] ?? null),
+                    'tax_code' => $customerExempt ? null : ($lineData['tax_code'] ?? null),
+                    'tax_treatment' => $customerExempt ? 'exempt' : ($lineData['tax_treatment'] ?? null),
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                     // #309 (X9): the line records its exemption reason so the
                     // MyInvois E line carries it; an explicit line reason wins.
@@ -387,6 +448,11 @@ class InvoiceService
 
             $result = $this->postingEngine->domainPosting($draft['domain_request']);
             if (! $result->success) {
+                // #278: a closed tax period is a governed refusal, not a fault.
+                if ($result->reasonCode === \App\Accounting\Exceptions\TaxPeriodLockedException::REASON_CODE) {
+                    throw new \App\Accounting\Exceptions\TaxPeriodLockedException($result->error);
+                }
+
                 throw new \Exception($result->error);
             }
 
@@ -1774,13 +1840,26 @@ class InvoiceService
                     'line_id' => (int) $line->id,
                 ];
             } else {
-                $key = ($accountId ?? 'default').':'.json_encode($dimensions);
-                $groups[$key] ??= [
-                    'account_id' => $accountId,
-                    'dimensions' => $dimensions,
-                    'deferred' => false,
-                    'line_id' => null,
-                ];
+                // Issue #332: a line with an analytic distribution splits its
+                // net weight over the shares, each share landing on its own
+                // (income account, dimensions) group — the cents allocation
+                // below still adds up to the exact document total.
+                $shares = \App\Support\AnalyticDistribution::dimensionShares($line->analytic_distribution, $dimensions)
+                    ?? [['percentage' => 100.0, 'dimensions' => $dimensions]];
+
+                foreach ($shares as $share) {
+                    $key = ($accountId ?? 'default').':'.json_encode($share['dimensions']);
+                    $groups[$key] ??= [
+                        'account_id' => $accountId,
+                        'dimensions' => $share['dimensions'],
+                        'deferred' => false,
+                        'line_id' => null,
+                    ];
+
+                    $lines[] = ['key' => $key, 'weight' => $weight * $share['percentage'] / 100];
+                }
+
+                continue;
             }
 
             $lines[] = ['key' => $key, 'weight' => $weight];

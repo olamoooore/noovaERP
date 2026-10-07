@@ -134,6 +134,7 @@ class CloseCycleController extends Controller
         if (! $evaluation['ready_to_close']) {
             // Canonical reason code for the dominant blocker (#39).
             $reasonCode = $this->blockingReasonCode($evaluation);
+
             return response()->json([
                 'message' => 'Cycle is not ready to close.',
                 'reason_code' => $reasonCode,
@@ -155,12 +156,16 @@ class CloseCycleController extends Controller
 
     /**
      * Choose the dominant canonical reason code for a not-ready evaluation (#39).
-     * Order of precedence: blocking findings > escalations > tasks > signoffs.
+     * Order of precedence: blocking findings > tax readiness > escalations > tasks > signoffs.
      */
     private function blockingReasonCode(array $evaluation): string
     {
         if (($evaluation['blocking_findings'] ?? 0) > 0) {
             return 'ASSURANCE_BLOCKED';
+        }
+        // #278 F4: the ACC-009 tax fact is not ready under a BLOCKING policy.
+        if ($evaluation['tax']['blocking'] ?? false) {
+            return \App\Accounting\Enums\ReasonCode::TAX_READINESS_BLOCKED->value;
         }
         if (($evaluation['open_escalations'] ?? 0) > 0) {
             return 'BUSINESS_RULE_VIOLATION';

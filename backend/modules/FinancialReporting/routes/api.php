@@ -9,6 +9,7 @@ use Modules\FinancialReporting\Controllers\ReportDashboardWidgetController;
 use Modules\FinancialReporting\Controllers\ReportExportController;
 use Modules\FinancialReporting\Controllers\ReportScheduleController;
 use Modules\FinancialReporting\Controllers\ReportTemplateController;
+use Modules\FinancialReporting\Controllers\SalesRecordsController;
 use Modules\FinancialReporting\Controllers\SavedReportViewController;
 use Modules\FinancialReporting\Controllers\SavedReportViewScheduleController;
 use Modules\FinancialReporting\Controllers\TraceabilityReportController;
@@ -41,6 +42,9 @@ Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission:
             Route::get('/sales/trends', [AnalyticsController::class, 'salesTrends'])->name('sales.trends');
             Route::get('/sales/by-customer', [AnalyticsController::class, 'salesByCustomer'])->name('sales.by-customer');
             Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
+            // Issue #596: a report row's source documents — same read model
+            // and filters as the row, so it is readable wherever the row is.
+            Route::get('/sales/drilldown', [AnalyticsController::class, 'salesDrilldown'])->name('sales.drilldown');
         });
 
         // Issue #603: per-user Sales-cockpit widgets pinning a saved view (#598).
@@ -75,6 +79,12 @@ Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission:
             Route::get('/aging', [InventoryReportController::class, 'aging'])->name('aging');
             Route::get('/turnover', [InventoryReportController::class, 'turnover'])->name('turnover');
         });
+
+        // #1020: the client's Sales Records sheet — invoice rows with Qty/S$
+        // column pairs for the chosen grouping (item code/brand/supplier/
+        // customer/category) and monthly totals.
+        Route::get('/reports/sales-records', [SalesRecordsController::class, 'index'])
+            ->name('reports.sales-records');
 
         // Issue #583: lot/serial traceability report (upstream receipt → stock
         // moves → delivery → medical case → invoice). reports.view comes from the

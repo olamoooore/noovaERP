@@ -282,6 +282,8 @@ class SalesOrderService
             'product_notes' => $lineData['product_notes'] ?? null,
             'variant_id' => $lineData['variant_id'] ?? null,
             'description' => $lineData['description'] ?? '',
+            // #1004: sanitized rich-text description.
+            'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($lineData['description_html'] ?? null),
             'sku' => $lineData['sku'] ?? null,
             'quantity' => $lineData['quantity'] ?? (($lineData['line_type'] ?? 'product') === 'product' ? 1 : 0),
             'unit' => $lineData['unit'] ?? 'pcs',
@@ -306,11 +308,18 @@ class SalesOrderService
                 : ($lineProduct !== null
                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $orderDate)),
             'tax_amount' => $lineData['tax_amount'] ?? 0,
+            // #302: tax identity resolved at the HTTP save path (or carried
+            // by a conversion); NULL for callers that never resolved one.
+            'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+            'tax_code' => $lineData['tax_code'] ?? null,
+            'tax_treatment' => $lineData['tax_treatment'] ?? null,
             'income_account_id' => $lineData['income_account_id'] ?? null,
             // Issue #884 (UX2): the line's analytic dimensions travel
             // quotation → order → invoice alongside the income account.
             'project_id' => $lineData['project_id'] ?? null,
             'department_id' => $lineData['department_id'] ?? null,
+            // Issue #332: the line's analytic distribution travels with it.
+            'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
             // Issue #151: preserve the line's invoicing policy through
             // any caller that reproduces lines (recurring orders).
             'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
@@ -410,7 +419,14 @@ class SalesOrderService
         return $this->lastCreditCheck;
     }
 
-    public function confirmOrder(SalesOrder $order): SalesOrder
+    /**
+     * @param  bool  $creditGate  Issue #326: false only for the backing order
+     *                            of a direct invoice. That invoice runs the same CreditCheckService
+     *                            verdict itself (base-currency exposure, tenant warn/block policy) in
+     *                            the same transaction, so the order must not run a second check on a
+     *                            different basis (#383).
+     */
+    public function confirmOrder(SalesOrder $order, bool $creditGate = true): SalesOrder
     {
         $this->lastCreditCheck = null;
 
@@ -422,20 +438,12 @@ class SalesOrderService
         // Issue #240: include the customer's other confirmed-but-uninvoiced
         // orders (they are not in total_outstanding yet) and take a row lock on
         // the customer so concurrent confirmations cannot both pass the check.
-        return DB::transaction(function () use ($order) {
-            if ($order->customer_id !== null) {
+        return DB::transaction(function () use ($order, $creditGate) {
+            if ($creditGate && $order->customer_id !== null) {
                 $customer = \App\Models\Customer::whereKey($order->customer_id)->lockForUpdate()->first();
 
                 if ($customer !== null) {
-                    // Issue #384: every open order counts with its UNINVOICED
-                    // REMAINDER (an order with one partial invoice used to drop
-                    // out entirely), and all amounts are in base currency.
-                    $committedOrdersTotal = SalesOrder::query()
-                        ->where('customer_id', $customer->id)
-                        ->whereKeyNot($order->id)
-                        ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
-                        ->get()
-                        ->sum(fn (SalesOrder $open) => $this->baseCurrencyAmount($open, $this->uninvoicedRemainder($open)));
+                    $committedOrdersTotal = $this->committedOrdersTotal((int) $customer->id, (int) $order->id);
 
                     $creditCheck = $this->creditCheckService->checkCreditLimit(
                         $customer,
@@ -473,6 +481,23 @@ class SalesOrderService
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
+    }
+
+    /**
+     * Issue #384: every open (confirmed, not completed/cancelled) order of the
+     * customer counts with its UNINVOICED REMAINDER (an order with one partial
+     * invoice used to drop out entirely), and all amounts are in base
+     * currency. Issue #326: shared with the invoice credit check
+     * (CreditCheckService::checkCustomer) so both use one committed basis.
+     */
+    public function committedOrdersTotal(int $customerId, ?int $exceptOrderId = null): float
+    {
+        return (float) SalesOrder::query()
+            ->where('customer_id', $customerId)
+            ->when($exceptOrderId !== null, fn ($query) => $query->whereKeyNot($exceptOrderId))
+            ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
+            ->get()
+            ->sum(fn (SalesOrder $open) => $this->baseCurrencyAmount($open, $this->uninvoicedRemainder($open)));
     }
 
     /**
@@ -521,7 +546,10 @@ class SalesOrderService
      */
     public static function autoLockOnConfirmEnabled(): bool
     {
-        return (bool) \App\Models\Setting::getValue(self::AUTO_LOCK_ON_CONFIRM_SETTING, false);
+        // Issue #545: read through the Sales Settings accessor, which owns
+        // the key's default and coercion (the toggle lives in the Sales
+        // Orders settings section).
+        return app(\App\Services\SalesSettings::class)->autoLockOnConfirm();
     }
 
     /**
@@ -676,6 +704,7 @@ class SalesOrderService
             'product_notes', 'sku', 'model_number', 'quantity', 'unit', 'uom_id',
             'unit_price', 'discount_type', 'discount_value', 'discount_amount',
             'tax_rate', 'tax_inclusive', 'income_account_id', 'invoicing_policy',
+            'tax_rule_id', 'tax_code', 'tax_treatment',
         ]));
 
         if ($updates === []) {
@@ -710,6 +739,8 @@ class SalesOrderService
             'product_notes' => $lineData['product_notes'] ?? null,
             'variant_id' => $lineData['variant_id'] ?? null,
             'description' => $lineData['description'] ?? '',
+            // #1004: sanitized rich-text description.
+            'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($lineData['description_html'] ?? null),
             'sku' => $lineData['sku'] ?? $product?->sku,
             'quantity' => $lineData['quantity'] ?? ($lineType === 'product' ? 1 : 0),
             'unit' => $lineData['unit'] ?? $product?->unit ?? 'pcs',
@@ -732,6 +763,10 @@ class SalesOrderService
             'income_account_id' => $lineData['income_account_id'] ?? null,
             'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
             'backorder_quantity' => 0,
+            // #302: resolved tax identity (see SalesOrderController).
+            'tax_rule_id' => $lineData['tax_rule_id'] ?? null,
+            'tax_code' => $lineData['tax_code'] ?? null,
+            'tax_treatment' => $lineData['tax_treatment'] ?? null,
         ];
     }
 
@@ -935,15 +970,18 @@ class SalesOrderService
             $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
-            // Issue #321: the order's master payment term (carried from the
-            // quotation) sets the due date; without one the customer's day
-            // count applies as before.
+            // Issue #321/#324: the order's master payment term (carried from
+            // the quotation), else the customer's default master term, sets
+            // the due date (and the instalment schedule) — computed by
+            // InvoiceService from the final invoice date. Without a master
+            // term the customer's day count applies as before.
             $invoiceDate = now()->toDateString();
-            $paymentTerm = $order->payment_term_id
-                ? \App\Models\PaymentTerm::query()->find($order->payment_term_id)
+            $paymentTermId = $order->payment_term_id ?: $order->customer?->payment_term_id;
+            $paymentTerm = $paymentTermId
+                ? \App\Models\PaymentTerm::query()->find($paymentTermId)
                 : null;
             $dueDate = $paymentTerm
-                ? $paymentTerm->calculateDueDate($invoiceDate)->toDateString()
+                ? null
                 // #539: the tenant's default terms only when the customer has none.
                 : now()->addDays(
                     $order->customer->payment_terms ?? app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays()
@@ -1053,6 +1091,8 @@ class SalesOrderService
                     'model_number' => $line->model_number,
                     'product_notes' => $line->product_notes,
                     'description' => $description,
+                    // #1004: the order line's sanitized rich text lands on the invoice line.
+                    'description_html' => $line->description_html,
                     'quantity' => $invoiceQuantity,
                     // Issue #685: the sales UoM travels onto the invoice so the
                     // document says "2 BX" and the e-invoice mapper can read
@@ -1067,6 +1107,10 @@ class SalesOrderService
                     // #303 (X3): the order line's inclusive mode is part of the
                     // carried price — the invoice must book the same gross.
                     'tax_inclusive' => (bool) $line->tax_inclusive,
+                    // #302: the order line's tax identity travels with its rate.
+                    'tax_rule_id' => $line->tax_rule_id,
+                    'tax_code' => $line->tax_code,
+                    'tax_treatment' => $line->tax_treatment,
                     'discount_amount' => $line->discount_amount,
                     // Issue #884 (UX2): the order line's income account and
                     // analytic dimensions land on the invoice line, so the
@@ -1074,6 +1118,8 @@ class SalesOrderService
                     'gl_account_id' => $line->income_account_id,
                     'project_id' => $line->project_id,
                     'department_id' => $line->department_id,
+                    // Issue #332: the order line's analytic distribution.
+                    'analytic_distribution' => $line->analytic_distribution,
                 ];
             }
 
@@ -1101,6 +1147,18 @@ class SalesOrderService
             // Merge overrides into creation data so the Invoice creating boot hook
             // respects imported values (especially invoice_number) instead of auto-generating.
             if (! empty($totalOverrides)) {
+                // Issue #324: a hand-entered due date without a term is a
+                // manual date — it detaches the order's master term so the
+                // stored term and the due date can never disagree.
+                if (! empty($totalOverrides['due_date']) && empty($totalOverrides['payment_term_id'])) {
+                    $invoiceData['payment_term_id'] = null;
+                }
+                // A term picked on the invoice itself is authoritative for
+                // the due date (computed from it by InvoiceService).
+                if (! empty($totalOverrides['payment_term_id'])) {
+                    unset($totalOverrides['due_date']);
+                    $invoiceData['due_date'] = null;
+                }
                 $invoiceData = array_merge($invoiceData, $totalOverrides);
             }
 

@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { ActionQueueFilterChip } from '@/components/sales/ActionQueueFilterChip'
+import { useActionQueueParam } from '@/hooks/useActionQueueParam'
 import pricingApi from '@/lib/pricingApi'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
@@ -89,6 +91,8 @@ export function QuotesPage() {
   const [currencyFilter, setCurrencyFilter] = useState('all')
   const [sortBy, setSortBy] = useState<'date' | 'currency'>('date')
   const [tagFilter, setTagFilter] = useState('')
+  // #365: a Sales cockpit action-queue tile links here with ?action_queue=<key>[&mine=1].
+  const { actionQueue, mine: actionQueueMine, params: actionQueueParams, clear: clearActionQueue } = useActionQueueParam()
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
@@ -101,9 +105,10 @@ export function QuotesPage() {
   if (currencyFilter !== 'all') queryParams.set('currency_code', currencyFilter)
   if (sortBy === 'currency') queryParams.set('sort_by', 'currency')
   if (tagFilter) queryParams.set('tag', tagFilter)
+  Object.entries(actionQueueParams).forEach(([key, value]) => queryParams.set(key, value))
 
   const { data: quotesResponse, isLoading } = useQuery({
-    queryKey: ['quotations', debouncedSearchQuery, statusFilter, currencyFilter, sortBy, tagFilter, page, pageSize],
+    queryKey: ['quotations', debouncedSearchQuery, statusFilter, currencyFilter, sortBy, tagFilter, actionQueue, actionQueueMine, page, pageSize],
     queryFn: async () => {
       const response = await api.get(`/quotations?${queryParams.toString()}`)
       return response.data
@@ -126,6 +131,7 @@ export function QuotesPage() {
     ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
     ...(currencyFilter !== 'all' ? { currency_code: currencyFilter } : {}),
     ...(tagFilter ? { tag: tagFilter } : {}),
+    ...actionQueueParams,
   }
   const {
     selectedIds,
@@ -368,6 +374,16 @@ export function QuotesPage() {
               />
             </div>
           </div>
+
+          {actionQueue && (
+            <div className="flex flex-wrap items-center gap-2">
+              <ActionQueueFilterChip
+                actionQueue={actionQueue}
+                mine={actionQueueMine}
+                onClear={() => { clearActionQueue(); setPage(1) }}
+              />
+            </div>
+          )}
 
           {isLoading ? (
             <div className="py-12 text-center">

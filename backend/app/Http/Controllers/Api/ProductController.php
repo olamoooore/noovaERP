@@ -271,9 +271,9 @@ class ProductController extends Controller
     /**
      * Wide product search: name, secondary name, SKU, barcode, manufacturer
      * part, description (long and short — model codes are commonly held in the
-     * short description), the brand/category names, plus the tracked
-     * identifiers (lot, batch, serial) so an operator can find a product from
-     * any code printed on the item.
+     * short description), the brand/category names, the tracked identifiers
+     * (lot, batch, serial) and the metafield-style attributes/custom fields,
+     * so an operator can find a product from any code printed on the item.
      */
     private function applyWideProductSearch($query, string $search): void
     {
@@ -287,9 +287,11 @@ class ProductController extends Controller
                 ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', [$like])
                 ->orWhereRaw('LOWER(description) LIKE ?', [$like])
                 ->orWhereRaw('LOWER(short_description) LIKE ?', [$like])
+                ->orWhereRaw("LOWER(COALESCE(attributes::text, '')) LIKE ?", [$like])
                 ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like])
                 ->orWhereHas('brand', fn ($brand) => $brand->whereRaw('LOWER(name) LIKE ?', [$like]))
                 ->orWhereHas('category', fn ($category) => $category->whereRaw('LOWER(name) LIKE ?', [$like]))
+                ->orWhereHas('customFieldValues', fn ($value) => $value->whereRaw('LOWER(value) LIKE ?', [$like]))
                 ->orWhereHas('batches', function ($batch) use ($like) {
                     $batch->whereRaw('LOWER(batch_number) LIKE ?', [$like])
                         ->orWhereRaw('LOWER(lot_number) LIKE ?', [$like]);

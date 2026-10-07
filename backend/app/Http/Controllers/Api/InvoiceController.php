@@ -20,9 +20,11 @@ use App\Services\CaseImportService;
 use App\Services\CustomerWideSearchService;
 use App\Services\InvoiceActivityService;
 use App\Services\InvoiceApprovalService;
+use App\Services\InvoiceBulkDocumentService;
 use App\Services\InvoiceCancellationService;
 use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
+use App\Services\InvoiceSendBundleService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\JsonResponse;
@@ -34,8 +36,11 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
+use Modules\Sales\Exceptions\CreditLimitExceededException;
+use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\DeliveryOrderService;
 use Modules\Sales\Services\SalesOrderService;
+use Modules\TemplateBuilder\Services\DocumentRenderAuthorizer;
 
 class InvoiceController extends Controller
 {
@@ -302,6 +307,10 @@ class InvoiceController extends Controller
             app(\App\Services\SalesDocumentProgress::class)->scopeInvoicedNotDelivered($query);
         }
 
+        // Issue #365: a Sales cockpit action-queue tile opens this list
+        // filtered to exactly the rows it counted.
+        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'invoice');
+
         if ($request->filled('start_date')) {
             $query->whereDate('invoice_date', '>=', $request->start_date);
         }
@@ -428,6 +437,9 @@ class InvoiceController extends Controller
             'invoice_date' => 'nullable|date',
             'due_date' => 'nullable|date',
             'payment_terms' => 'nullable|integer|min:0|max:365',
+            // Issue #324: payment term from the payment-terms master — it
+            // sets the due date and the instalment schedule.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'case_number' => 'nullable|string|max:100',
             'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
             'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
@@ -500,8 +512,12 @@ class InvoiceController extends Controller
             'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
+            // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
+            'lines.*.description_html' => 'nullable|string|max:20000',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -516,6 +532,9 @@ class InvoiceController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) chosen on the line overrides the
+            // engine; without it the server resolves the line's tax.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             // #309 (X9): a per-line exemption reason travels with an exempt
             // line (the customer profile supplies the default).
@@ -532,7 +551,13 @@ class InvoiceController extends Controller
             'price_list_id' => 'nullable|integer',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:100',
+            // Issue #327: the user confirmed "create anyway" for a likely
+            // duplicate (same customer reference / PO).
+            'confirm_duplicate' => 'nullable|boolean',
         ]);
+
+        $confirmDuplicate = (bool) ($validated['confirm_duplicate'] ?? false);
+        unset($validated['confirm_duplicate']);
 
         // #315: sales.invoice.allow_custom_number gates hand-typed numbers. A
         // client-supplied number is rejected (not silently ignored or
@@ -578,7 +603,24 @@ class InvoiceController extends Controller
             $tagNames = $validated['tags'] ?? [];
             unset($validated['tags']);
 
-            $invoice = $this->createInvoiceFromData($validated);
+            // Issue #326: create + credit check in one transaction, so a
+            // `block` verdict leaves no invoice (or backing order) behind.
+            // Issue #327: an unconfirmed likely duplicate rolls back the same way.
+            [$invoice, $creditCheck, $duplicateCheck] = DB::transaction(function () use ($validated, $confirmDuplicate) {
+                [$invoice, $creditCheck] = $this->createInvoiceWithCreditGate($validated);
+
+                $duplicates = app(\App\Services\InvoiceDuplicateCheck::class);
+                $duplicateCheck = $duplicates->check($invoice);
+
+                if ($duplicateCheck['level'] === \App\Services\InvoiceDuplicateCheck::LEVEL_LIKELY && ! $confirmDuplicate) {
+                    throw new \App\Exceptions\LikelyDuplicateInvoiceException(
+                        $duplicateCheck,
+                        'Likely duplicate of '.$duplicates->describe($duplicateCheck).'. Confirm to create it anyway.',
+                    );
+                }
+
+                return [$invoice, $creditCheck, $duplicateCheck];
+            });
 
             if (is_array($tagNames) && $tagNames !== []) {
                 app(\App\Services\TagService::class)->attach($invoice, $tagNames, $request->user()?->id);
@@ -593,7 +635,12 @@ class InvoiceController extends Controller
                 [
                     'invoice_number' => $invoice->invoice_number,
                     'total' => (float) $invoice->total,
-                ],
+                ] + ($duplicateCheck['level'] === \App\Services\InvoiceDuplicateCheck::LEVEL_LIKELY ? [
+                    // Issue #327: the user's "create anyway" is recorded
+                    // with the invoices it was flagged against.
+                    'duplicate_confirmed' => true,
+                    'duplicate_of' => array_column($duplicateCheck['matches'], 'id'),
+                ] : []),
             );
 
             // When the tenant requires approval, submitting for review is part
@@ -609,8 +656,24 @@ class InvoiceController extends Controller
                         : 'Invoice created successfully'),
                 'id' => $invoice->id,
                 'data' => $invoice->fresh(['approvalRequest', 'customer']),
+                // Issue #326: the credit verdict (a warning under the `warn`
+                // policy when approved is false).
+                'credit_check' => $creditCheck,
+                // Issue #327: none | possible | likely (likely only when confirmed).
+                'duplicate_check' => $duplicateCheck,
             ], 201);
 
+        } catch (ValidationException $e) {
+            // #302: an explicit tax rule that cannot apply is a 422, not a 500.
+            throw $e;
+        } catch (\App\Exceptions\LikelyDuplicateInvoiceException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'DUPLICATE_INVOICE_LIKELY',
+                'duplicate_check' => $e->result,
+            ], 422);
+        } catch (CreditLimitExceededException $e) {
+            return $this->creditLimitExceededResponse(app(CreditCheckService::class)->invoiceVerdict($e->creditCheck));
         } catch (\App\Exceptions\PricingException $e) {
             // MRD pricelist-multicurrency FR-1.1/FR-1.3/FR-6.3: unknown or
             // unsellable currency, missing FX rate, or a below-floor override
@@ -661,6 +724,59 @@ class InvoiceController extends Controller
 
             return $e->getMessage();
         }
+    }
+
+    /**
+     * Issue #326: create the invoice and run the credit check on it in ONE
+     * transaction. The check is the sales-order confirm rule
+     * (CreditCheckService) on a base-currency exposure; the backing order of
+     * a direct invoice skips its own check (createInvoiceFromData) so there
+     * is one verdict, not two on different bases. Under the `block` policy a
+     * failed check throws and rolls the whole creation back.
+     *
+     * @return array{0: Invoice, 1: array<string, mixed>|null}
+     */
+    private function createInvoiceWithCreditGate(array $data): array
+    {
+        $credit = app(CreditCheckService::class);
+
+        return DB::transaction(function () use ($data, $credit) {
+            $invoice = $this->createInvoiceFromData($data);
+            $this->ensureTenantSearchPath();
+
+            $result = $invoice->status === 'draft' ? $credit->checkInvoice($invoice, lockCustomer: true) : null;
+            $verdict = $result !== null ? $credit->invoiceVerdict($result) : null;
+
+            if ($verdict !== null && $verdict['blocked']) {
+                throw new CreditLimitExceededException($result, $invoice->customer);
+            }
+
+            return [$invoice, $verdict];
+        });
+    }
+
+    /**
+     * Issue #326: the credit verdict for posting a draft invoice (null when
+     * the invoice has no customer).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function invoiceCreditVerdict(Invoice $invoice): ?array
+    {
+        $credit = app(CreditCheckService::class);
+        $result = $credit->checkInvoice($invoice);
+
+        return $result !== null ? $credit->invoiceVerdict($result) : null;
+    }
+
+    /** Issue #326: the 422 a `block` credit verdict returns. */
+    private function creditLimitExceededResponse(array $verdict): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Credit check failed: '.$verdict['reason'],
+            'code' => 'CREDIT_LIMIT_EXCEEDED',
+            'credit_check' => $verdict,
+        ], 422);
     }
 
     /**
@@ -790,6 +906,10 @@ class InvoiceController extends Controller
                 ? \App\Support\CustomerTaxProfileResolver::exemptionReason($draftCustomerId, $draftDate)
                 : null;
 
+            // #302 (X1): line tax is resolved on the server through the tax
+            // engine at the draft's date — the sent % is not booked as final.
+            $data['lines'] = app(\App\Services\SalesLineTaxResolver::class)->applyToLines($data['lines'], $draftDate, $draftCustomerId);
+
             foreach ($data['lines'] as $line) {
                 $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                     ? \App\Models\Product::find($line['product_id'])
@@ -823,8 +943,11 @@ class InvoiceController extends Controller
                     'gl_account_id' => $line['gl_account_id'] ?? null,
                     'project_id' => $line['project_id'] ?? null,
                     'department_id' => $line['department_id'] ?? null,
+                    'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($line['analytic_distribution'] ?? null),
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
+                    // #1004: sanitized rich-text description.
+                    'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                     'product_notes' => $line['product_notes'] ?? null,
                     'lot_number' => $line['lot_number'] ?? null,
                     'serial_number' => $line['serial_number'] ?? null,
@@ -840,6 +963,11 @@ class InvoiceController extends Controller
                         ? (bool) $line['tax_inclusive']
                         : ($lineProduct !== null
                             && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $data['invoice_date'] ?? null)),
+                    // #302: the resolved tax identity persists with the line;
+                    // a customer exemption outranks the rule (#309).
+                    'tax_rule_id' => $draftCustomerExempt ? null : ($line['tax_rule_id'] ?? null),
+                    'tax_code' => $draftCustomerExempt ? null : ($line['tax_code'] ?? null),
+                    'tax_treatment' => $draftCustomerExempt ? 'exempt' : ($line['tax_treatment'] ?? null),
                     'discount_amount' => $line['discount_amount'] ?? 0,
                     'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $draftExemptionReason,
                 ], array_filter($priced, fn ($v) => $v !== null)));
@@ -862,6 +990,17 @@ class InvoiceController extends Controller
         // price the SalesOrder internals use (the invoice re-expresses it in
         // the sales UoM again when created from the order).
         $uomConverter = app(\App\Services\ProductUomConverter::class);
+
+        // #302 (X1): resolve every line's tax on the server through the tax
+        // engine at the invoice date (explicit tax rule override honoured);
+        // the backing order and the invoice carry the resolved identity.
+        $data['lines'] = app(\App\Services\SalesLineTaxResolver::class)
+            ->applyToLines(
+                $data['lines'],
+                $data['invoice_date'] ?? null,
+                isset($data['customer_id']) ? (int) $data['customer_id'] : null,
+            );
+
         $salesLines = [];
         foreach ($data['lines'] as $line) {
             $lineType = $line['line_type'] ?? 'product';
@@ -887,8 +1026,11 @@ class InvoiceController extends Controller
                 'income_account_id' => $line['gl_account_id'] ?? null,
                 'project_id' => $line['project_id'] ?? null,
                 'department_id' => $line['department_id'] ?? null,
+                'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($line['analytic_distribution'] ?? null),
                 'model_number' => $line['model_number'] ?? null,
                 'description' => $line['description'],
+                // #1004: sanitized rich-text description.
+                'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                 'product_notes' => $line['product_notes'] ?? null,
                 'quantity' => $line['quantity'],
                 'uom_id' => $lineUom?->id,
@@ -901,6 +1043,10 @@ class InvoiceController extends Controller
                 // #303 (X3): null when the screen did not send it — the Sales Order
                 // then resolves it through the engine (product override included).
                 'tax_inclusive' => $line['tax_inclusive'] ?? null,
+                // #302: the server-resolved tax identity travels with the line.
+                'tax_rule_id' => $line['tax_rule_id'] ?? null,
+                'tax_code' => $line['tax_code'] ?? null,
+                'tax_treatment' => $line['tax_treatment'] ?? null,
                 'discount_amount' => $line['discount_amount'] ?? 0,
                 // Issue #882 (SA9): the service period travels with the line
                 // so the invoice can carry it (the Sales Order has no service
@@ -943,13 +1089,18 @@ class InvoiceController extends Controller
             // currency → entity base) and optional explicit list selection.
             'currency_code' => $data['currency_code'] ?? null,
             'price_list_id' => $data['price_list_id'] ?? null,
+            // Issue #324: the picked master term (else the customer default,
+            // applied by the order's creation defaults).
+            'payment_term_id' => $data['payment_term_id'] ?? null,
         ], fn ($v) => $v !== null));
 
         // Fast-track admin orders through confirm -> allocate. #373 (O4):
         // fulfilment is derived from delivery-order completion, so invoicing
         // must never mark the order fulfilled without a delivery.
         // Re-apply search_path after each DB::transaction() call which can reset connections
-        $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
+        // Issue #326: the invoice runs the credit check itself
+        // (createInvoiceWithCreditGate) — no second check on the order.
+        $salesOrder = $this->salesOrderService->confirmOrder($salesOrder, creditGate: false);
         $this->ensureTenantSearchPath();
         $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
         $this->ensureTenantSearchPath();
@@ -982,6 +1133,9 @@ class InvoiceController extends Controller
             'terms' => $data['terms'] ?? null,
             'discount_amount' => $data['discount_amount'] ?? null,
             'po_number' => $data['po_number'] ?? null,
+            // Issue #324: a term picked on the invoice is authoritative for
+            // the due date (SalesOrderService drops a typed due date then).
+            'payment_term_id' => $data['payment_term_id'] ?? null,
             // Contact IDs are handled separately via UPDATE after invoice creation
             // to bypass FK violations caused by connection recycling during SO lifecycle
         ], fn ($v) => $v !== null);
@@ -1198,11 +1352,15 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy', 'writeOffs'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'lines.uom', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy', 'writeOffs', 'paymentTerm'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
+
+        // Issue #324: the instalment schedule (amount / paid / outstanding
+        // per due date) — a single row when the term has no instalments.
+        $invoice->instalments = $invoice->instalmentBreakdown();
 
         // Confirmation state drives the "Evidence confirmed" UI/step.
         $invoice->evidence_confirmed = $invoice->evidence
@@ -1254,6 +1412,9 @@ class InvoiceController extends Controller
             app(\App\Services\SalesDocumentProgress::class)->forInvoices([(int) $invoice->id])[(int) $invoice->id] ?? null,
         );
 
+        // Issue #332: name each line's analytic distribution share for display.
+        \App\Support\AnalyticDistribution::describeLines($invoice->lines);
+
         return response()->json($invoice);
     }
 
@@ -1282,6 +1443,8 @@ class InvoiceController extends Controller
             ],
             'invoice_date' => 'date',
             'due_date' => 'date',
+            // Issue #324: payment term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'case_number' => 'nullable|string|max:100',
             'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
             'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
@@ -1353,8 +1516,12 @@ class InvoiceController extends Controller
             'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
+            // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
+            'lines.*.description_html' => 'nullable|string|max:20000',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -1369,6 +1536,9 @@ class InvoiceController extends Controller
             'lines.*.price_mode' => 'nullable|in:auto,manual,carried',
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            // #302: an explicit tax code (rule) chosen on the line overrides the
+            // engine; without it the server resolves the line's tax.
+            'lines.*.tax_rule_id' => 'nullable|integer',
             'lines.*.tax_inclusive' => 'nullable|boolean',
             // #309 (X9): a per-line exemption reason travels with an exempt
             // line (the customer profile supplies the default).
@@ -1473,6 +1643,26 @@ class InvoiceController extends Controller
                     unset($validated['cases']);
                 }
 
+                // Issue #324: picking a master term (or re-dating an invoice
+                // that has one) recomputes the due date and the instalment
+                // schedule from the term; a typed due date without a term
+                // detaches it (manual date). Clearing the term clears the
+                // schedule.
+                $termId = array_key_exists('payment_term_id', $validated)
+                    ? $validated['payment_term_id']
+                    : (array_key_exists('due_date', $validated) ? null : $invoice->payment_term_id);
+                if (! array_key_exists('payment_term_id', $validated) && array_key_exists('due_date', $validated)) {
+                    $validated['payment_term_id'] = null;
+                    $validated['payment_schedule'] = null;
+                } elseif ($termId && (array_key_exists('payment_term_id', $validated) || array_key_exists('invoice_date', $validated))) {
+                    $validated = $this->invoiceService->applyPaymentTerm(array_merge($validated, [
+                        'payment_term_id' => $termId,
+                        'invoice_date' => $validated['invoice_date'] ?? $invoice->invoice_date?->toDateString(),
+                    ]), forceDueDate: true);
+                } elseif (array_key_exists('payment_term_id', $validated)) {
+                    $validated['payment_schedule'] = null;
+                }
+
                 $invoice->update($validated);
 
                 if ($lines !== null) {
@@ -1496,6 +1686,17 @@ class InvoiceController extends Controller
                     $editExemptionReason = $editCustomerExempt
                         ? \App\Support\CustomerTaxProfileResolver::exemptionReason($editCustomerId, $editDate)
                         : null;
+
+                    // #302 (X1): an edited draft re-resolves line tax through
+                    // the tax engine at the invoice date (explicit rule wins).
+                    $lines = app(\App\Services\SalesLineTaxResolver::class)->applyToLines(
+                        $lines,
+                        $editDate,
+                        $editCustomerId,
+                        $invoice->sales_order_id
+                            ? (\Modules\Sales\Models\SalesOrder::query()->whereKey($invoice->sales_order_id)->value('legal_entity_id') ?: null)
+                            : null,
+                    );
 
                     $invoice->lines()->delete();
                     foreach ($lines as $line) {
@@ -1524,8 +1725,11 @@ class InvoiceController extends Controller
                             'gl_account_id' => $line['gl_account_id'] ?? null,
                             'project_id' => $line['project_id'] ?? null,
                             'department_id' => $line['department_id'] ?? null,
+                            'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($line['analytic_distribution'] ?? null),
                             'model_number' => $line['model_number'] ?? null,
                             'description' => $line['description'],
+                            // #1004: sanitized rich-text description.
+                            'description_html' => \App\Support\InvoiceRichtextSanitizer::clean($line['description_html'] ?? null),
                             'product_notes' => $line['product_notes'] ?? null,
                             'lot_number' => $line['lot_number'] ?? null,
                             'serial_number' => $line['serial_number'] ?? null,
@@ -1539,6 +1743,10 @@ class InvoiceController extends Controller
                                 ? (bool) $line['tax_inclusive']
                                 : ($lineProduct !== null
                                     && app(\App\Services\TaxResolutionService::class)->isInclusiveForProduct($lineProduct, null, $invoice->invoice_date?->toDateString())),
+                            // #302: resolved tax identity; an exemption outranks it (#309).
+                            'tax_rule_id' => $editCustomerExempt ? null : ($line['tax_rule_id'] ?? null),
+                            'tax_code' => $editCustomerExempt ? null : ($line['tax_code'] ?? null),
+                            'tax_treatment' => $editCustomerExempt ? 'exempt' : ($line['tax_treatment'] ?? null),
                             'discount_amount' => $line['discount_amount'] ?? 0,
                             'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $editExemptionReason,
                             'is_deferred' => $deferredFields['is_deferred'],
@@ -1689,6 +1897,12 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Issue #326: /send posts too, so it runs the same credit check.
+        $creditCheck = $this->invoiceCreditVerdict($invoice);
+        if ($creditCheck !== null && $creditCheck['blocked']) {
+            return $this->creditLimitExceededResponse($creditCheck);
+        }
+
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
@@ -1708,6 +1922,7 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => 'Invoice posted successfully',
                 'invoice' => $posted,
+                'credit_check' => $creditCheck,
             ]);
 
         } catch (\RuntimeException $e) {
@@ -2192,8 +2407,8 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
-        if (in_array($invoice->status, ['cancelled', 'voided', 'reversed'], true)) {
-            return response()->json(['message' => 'This invoice cannot be sent to the customer.'], 422);
+        if (in_array($invoice->status, InvoiceSendBundleService::UNSENDABLE_STATUSES, true)) {
+            return response()->json(['message' => InvoiceSendBundleService::UNSENDABLE_STATUS_MESSAGE], 422);
         }
 
         $validated = $request->validate([
@@ -2210,91 +2425,26 @@ class InvoiceController extends Controller
             $invoice->unsetRelation('customer');
         }
 
-        $salesSettings = app(\App\Services\SalesSettings::class);
-
         try {
-            // 1) Acceptance portal link (review / e-sign) — only while the
-            // tenant keeps customer acceptance on (#539). The link lifetime
-            // defaults to sales.portal.acceptance_link_expiry_days.
-            $linkData = [];
-
-            if ($salesSettings->acceptanceEnabled()) {
-                $linkData = $this->evidenceService->createPortalAcceptanceLink(
-                    $invoice,
-                    $validated['expires_in_days'] ?? null
-                );
-
-                $this->activityService->log(
-                    $invoice,
-                    \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
-                    [
-                        'acceptance_url' => $linkData['url'],
-                        'expires_at' => $linkData['expires_at'],
-                        'evidence_id' => $linkData['evidence_id'],
-                        'send_email' => true,
-                        'bundle' => true,
-                    ],
-                    $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
-                    $invoice->fresh()->evidence_status,
-                    \App\Models\InvoiceActivityLog::ACTOR_USER,
-                    $request->user()->id,
-                );
-            }
-
-            // 2) Pay-now link — only for posted invoices with a live balance.
-            // Drafts are sent for acceptance first; a draft has no payable
-            // document yet, so the bundle degrades gracefully.
-            $paymentUrl = null;
-            $payment = null;
-
-            if ($invoice->status !== 'draft' && bccomp((string) $invoice->balance, '0.00', 2) > 0) {
-                try {
-                    $payment = $this->invoiceService->createPaymentLink(
-                        $invoice,
-                        (float) $invoice->balance,
-                        now()->addDays($validated['payment_expires_in_days'] ?? $salesSettings->paymentLinkExpiryDays()),
-                    );
-                    $paymentUrl = $payment['url'] ?? null;
-
-                    $this->activityService->log(
-                        $invoice,
-                        \App\Models\InvoiceActivityLog::EVENT_PAYMENT_LINK_ISSUED,
-                        [
-                            'payment_link_url' => $paymentUrl,
-                            'amount' => (float) $invoice->balance,
-                            'expires_at' => $invoice->payment_link_expires_at?->toIso8601String(),
-                        ],
-                        null,
-                        null,
-                        \App\Models\InvoiceActivityLog::ACTOR_USER,
-                        $request->user()->id,
-                    );
-                } catch (\Throwable $e) {
-                    \Log::warning('Send bundle: payment link creation failed, sending without it', [
-                        'invoice_id' => $invoice->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            // 3)ONE email: PDF + acceptance link + pay-now link + QR.
-            $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
-                // #539: the tenant's "document type on send" choice; the final
-                // invoice stays the bundle default when none was configured.
-                'document_type' => $salesSettings->documentTypeOnSend() ?? \App\Models\InvoiceDelivery::DOCUMENT_FINAL_INVOICE,
-                'portal_url' => $linkData['url'] ?? null,
-                'payment_url' => $paymentUrl,
+            // Issue #329: the bundle itself lives in InvoiceSendBundleService
+            // so Bulk Send queues exactly this path.
+            $result = app(InvoiceSendBundleService::class)->send($invoice, $request->user(), [
+                'expires_in_days' => $validated['expires_in_days'] ?? null,
+                'payment_expires_in_days' => $validated['payment_expires_in_days'] ?? null,
                 'recipient' => $recipientOverride,
             ]);
+
+            $paymentUrl = $result['payment_url'];
+            $delivery = $result['delivery'];
 
             return response()->json([
                 'message' => $paymentUrl
                     ? 'Invoice sent with acceptance and pay-now links'
                     : 'Invoice sent to customer',
                 'data' => [
-                    ...$linkData,
+                    ...$result['link_data'],
                     'payment_url' => $paymentUrl,
-                    'payment' => $payment,
+                    'payment' => $result['payment'],
                     'delivery' => [
                         'id' => $delivery->id,
                         'status' => $delivery->status,
@@ -2466,6 +2616,13 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Issue #326: the same credit check as create and sales-order
+        // confirm; the tenant policy decides block (422) or warn.
+        $creditCheck = $this->invoiceCreditVerdict($invoice);
+        if ($creditCheck !== null && $creditCheck['blocked']) {
+            return $this->creditLimitExceededResponse($creditCheck);
+        }
+
         try {
             $posted = $this->invoiceService->postInvoice($invoice);
 
@@ -2532,7 +2689,15 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => 'Invoice posted successfully',
                 'data' => $posted,
+                'credit_check' => $creditCheck,
             ]);
+        } catch (\App\Accounting\Exceptions\TaxPeriodLockedException $e) {
+            // #278: the invoice date falls in a closed (filed) tax period.
+            return response()->json([
+                'message' => 'The tax period of this invoice is closed. Post a correction dated in an open period instead.',
+                'code' => $e::REASON_CODE,
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\RuntimeException $e) {
             if (str_contains($e->getMessage(), 'Cannot resolve GL account')) {
                 return response()->json([
@@ -3025,6 +3190,14 @@ class InvoiceController extends Controller
                 continue;
             }
 
+            // Issue #326: same credit check as single post.
+            $creditCheck = $this->invoiceCreditVerdict($invoice);
+            if ($creditCheck !== null && $creditCheck['blocked']) {
+                $skipped[] = ['id' => $id, 'reason' => 'Credit check failed: '.$creditCheck['reason']];
+
+                continue;
+            }
+
             try {
                 $postedInvoice = $this->invoiceService->postInvoice($invoice);
 
@@ -3059,6 +3232,74 @@ class InvoiceController extends Controller
             'message' => count($posted).' invoice(s) posted.',
             'posted' => $posted,
             'skipped' => $skipped,
+        ]);
+    }
+
+    /**
+     * Issue #329: Bulk Send from the invoice list. Each selected invoice is
+     * authorized (legal entity) and checked on its own, then one bundle send
+     * (the same path as the single Send button) is queued per eligible
+     * invoice. 202 with one result per id: queued, or skipped with why.
+     */
+    public function bulkSend(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:'.InvoiceBulkDocumentService::BULK_SEND_LIMIT,
+            'ids.*' => 'integer',
+        ]);
+
+        $bulk = app(InvoiceBulkDocumentService::class);
+
+        // The source document's own read permission, as on every invoice render.
+        $denied = app(DocumentRenderAuthorizer::class)->denyType('invoice', $request);
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $results = $bulk->queueSend($validated['ids'], $request, $request->user());
+        $queued = count(array_filter($results, fn (array $result) => $result['outcome'] === 'queued'));
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$queued} of ".count($results).' invoice(s) queued for sending.',
+            'data' => [
+                'queued' => $queued,
+                'skipped' => count($results) - $queued,
+                'results' => $results,
+            ],
+        ], 202);
+    }
+
+    /**
+     * Issue #329: zip of the selected invoices' PDFs plus their e-invoice
+     * XML/JSON where present, with a manifest of skipped / failed ids.
+     */
+    public function bulkDownload(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1|max:'.InvoiceBulkDocumentService::BULK_DOWNLOAD_LIMIT,
+            'ids.*' => 'integer',
+        ]);
+
+        $denied = app(DocumentRenderAuthorizer::class)->denyType('invoice', $request);
+        if ($denied !== null) {
+            return $denied;
+        }
+
+        $zip = app(InvoiceBulkDocumentService::class)->buildZip($validated['ids'], $request);
+
+        // None of the ids is visible to the caller: same answer as a single
+        // render of an inaccessible invoice (no existence oracle).
+        if ($zip === null) {
+            return response()->json(['message' => 'Document not found.'], 403);
+        }
+
+        $filename = 'invoices-'.now()->format('Ymd-His').'.zip';
+
+        return response($zip['bytes'], 200, [
+            'Content-Type' => 'application/zip',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Content-Length' => strlen($zip['bytes']),
         ]);
     }
 
@@ -3361,7 +3602,9 @@ class InvoiceController extends Controller
                     throw new \RuntimeException("Date in closed period ({$invoiceDate})");
                 }
 
-                $invoice = $this->createInvoiceFromData($data);
+                // Issue #326: a row refused by the credit check is reported
+                // as an error and leaves nothing behind.
+                [$invoice] = $this->createInvoiceWithCreditGate($data);
 
                 // Create medical case if case data is present
                 $caseData = [

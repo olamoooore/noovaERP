@@ -153,6 +153,26 @@ export function formatNumber(value: number, decimals: number = 0): string {
   }).format(value)
 }
 
+/**
+ * Quantities are stored to 4 decimals. Strip floating-point noise so a value
+ * like 1.0002 renders as 1, while genuine fractions (1.75, 0.5) survive.
+ */
+export function normalizeQuantity(value: number | string | null | undefined): number | '' {
+  if (value === '' || value == null) {
+    return ''
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return ''
+  }
+
+  const rounded = Math.round(parsed * 10000) / 10000
+  const nearestInteger = Math.round(rounded)
+
+  return Math.abs(rounded - nearestInteger) < 0.001 ? nearestInteger : rounded
+}
+
 export function getApiErrorMessage(error: any, fallback: string = 'An error occurred'): string {
   const data = error?.response?.data
 

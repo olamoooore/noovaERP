@@ -28,6 +28,11 @@ export interface SalesOrderRecurrence {
   next_run_date?: string | null
   max_cycles?: number | null
   cycles_generated?: number | null
+  // Issue #330: invoice schedules (optionally auto-posted / auto-sent).
+  document_type?: 'order' | 'invoice' | string | null
+  auto_post?: boolean | null
+  auto_send?: boolean | null
+  last_error?: string | null
 }
 
 const INTERVAL_LABELS: Record<string, string> = {
@@ -74,6 +79,9 @@ export function SalesOrderBillingRecurrenceCard({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [maxCycles, setMaxCycles] = useState('')
+  const [documentType, setDocumentType] = useState<'order' | 'invoice'>('order')
+  const [autoPost, setAutoPost] = useState(false)
+  const [autoSend, setAutoSend] = useState(false)
 
   const recurrencesKey = ['sales-order-recurrences', String(orderId)]
   const { data: recurrences = [], isError: recurrencesFailed } = useQuery({
@@ -106,6 +114,8 @@ export function SalesOrderBillingRecurrenceCard({
         start_date: startDate,
         end_date: endDate || null,
         max_cycles: maxCycles ? Number(maxCycles) : null,
+        // Issue #330: only invoice schedules carry the invoice options.
+        ...(documentType === 'invoice' ? { document_type: 'invoice', auto_post: autoPost, auto_send: autoSend } : {}),
       })
       return response.data
     },
@@ -136,6 +146,9 @@ export function SalesOrderBillingRecurrenceCard({
     setStartDate('')
     setEndDate('')
     setMaxCycles('')
+    setDocumentType('order')
+    setAutoPost(false)
+    setAutoSend(false)
     setRecurrenceOpen(true)
   }
 
@@ -172,7 +185,7 @@ export function SalesOrderBillingRecurrenceCard({
             <div>
               <div className="font-medium">Recurring schedule</div>
               <p className="text-sm text-muted-foreground">
-                Generate a new order from this one every month, quarter or year.
+                Generate a new order or invoice from this one every month, quarter or year.
               </p>
             </div>
             {canWrite && canRecur && (
@@ -190,6 +203,7 @@ export function SalesOrderBillingRecurrenceCard({
           {recurrences.map((recurrence) => {
             const status = String(recurrence.status)
             const live = status === 'active' || status === 'paused'
+            const invoices = recurrence.document_type === 'invoice'
             return (
               <div
                 key={recurrence.id}
@@ -201,13 +215,27 @@ export function SalesOrderBillingRecurrenceCard({
                   <Badge variant="secondary" className={RECURRENCE_STATUS_CLASS[status] ?? ''}>
                     {status.charAt(0).toUpperCase() + status.slice(1)}
                   </Badge>
+                  {invoices && (
+                    <Badge variant="outline">
+                      Invoices
+                      {recurrence.auto_post ? ' · auto-post' : ''}
+                      {recurrence.auto_send ? ' · auto-send' : ''}
+                    </Badge>
+                  )}
                   {recurrence.next_run_date && live && (
-                    <span className="text-muted-foreground">Next order {formatDate(recurrence.next_run_date)}</span>
+                    <span className="text-muted-foreground">
+                      Next {invoices ? 'invoice' : 'order'} {formatDate(recurrence.next_run_date)}
+                    </span>
                   )}
                   <span className="text-muted-foreground">
                     {recurrence.cycles_generated ?? 0}
                     {recurrence.max_cycles ? ` of ${recurrence.max_cycles}` : ''} generated
                   </span>
+                  {recurrence.last_error && (
+                    <span className="w-full text-destructive" data-testid={`sales-order-recurrence-error-${recurrence.id}`}>
+                      Last run failed: {recurrence.last_error}
+                    </span>
+                  )}
                 </div>
                 {canWrite && live && (
                   <div className="flex gap-2">
@@ -252,11 +280,35 @@ export function SalesOrderBillingRecurrenceCard({
           <DialogHeader>
             <DialogTitle>Make this order recurring</DialogTitle>
             <DialogDescription>
-              A new draft order is generated from this order on each run date until the end date or cycle count is
-              reached.
+              A new order (or invoice) is generated from this order on each run date until the end date or cycle count
+              is reached. Invoices are priced and taxed again on each run.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="recurrence-document-type">Generates</Label>
+              <select
+                id="recurrence-document-type"
+                value={documentType}
+                onChange={(event) => setDocumentType(event.target.value as 'order' | 'invoice')}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="order">Draft sales orders</option>
+                <option value="invoice">Invoices</option>
+              </select>
+            </div>
+            {documentType === 'invoice' && (
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="flex items-center justify-between gap-4">
+                  <Label htmlFor="recurrence-auto-post">Post each invoice automatically</Label>
+                  <Switch id="recurrence-auto-post" checked={autoPost} onCheckedChange={setAutoPost} />
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <Label htmlFor="recurrence-auto-send">Email each invoice to the customer</Label>
+                  <Switch id="recurrence-auto-send" checked={autoSend} onCheckedChange={setAutoSend} />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="recurrence-interval">Interval</Label>
               <select

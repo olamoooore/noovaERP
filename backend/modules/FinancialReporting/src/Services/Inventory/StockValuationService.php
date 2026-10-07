@@ -20,9 +20,10 @@ class StockValuationService extends BaseReportService
     {
         $asOfDate = $filter->endDate ?? now();
         $categoryId = $filter->categoryId;
+        $productId = $filter->productId;
 
         // Get stock valuation
-        $products = $this->getStockValuation($asOfDate, $categoryId);
+        $products = $this->getStockValuation($asOfDate, $categoryId, $productId);
 
         // Calculate totals
         $totalQuantity = $products->sum('quantity');
@@ -61,12 +62,13 @@ class StockValuationService extends BaseReportService
     /**
      * Get stock valuation for all products
      */
-    protected function getStockValuation(Carbon $asOfDate, ?int $categoryId = null)
+    protected function getStockValuation(Carbon $asOfDate, ?int $categoryId = null, ?int $productId = null)
     {
         $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
         $query = DB::table('products as p')
             ->where('p.is_active', true)
-            ->where('p.track_inventory', true);
+            ->where('p.track_inventory', true)
+            ->when($productId, fn ($q) => $q->where('p.id', $productId));
 
         // Note: Category filtering not available as products table doesn't have category_id
         // If needed in future, add category_id column to products table
@@ -84,6 +86,7 @@ class StockValuationService extends BaseReportService
             'p.id',
             'p.sku',
             'p.name',
+            'p.short_description',
             'p.cost',
             'p.unit',
             'p.reorder_level',
@@ -118,6 +121,7 @@ class StockValuationService extends BaseReportService
                     'id' => $product->id,
                     'sku' => $product->sku,
                     'name' => $product->name,
+                    'short_description' => $product->short_description,
                     'category_name' => null, // No categories in current schema
                     'quantity' => $quantity,
                     'unit' => $product->unit,
@@ -135,13 +139,14 @@ class StockValuationService extends BaseReportService
     /**
      * Get historical stock valuation (as of specific date)
      */
-    public function getHistoricalValuation(Carbon $asOfDate, ?int $categoryId = null): array
+    public function getHistoricalValuation(Carbon $asOfDate, ?int $categoryId = null, ?int $productId = null): array
     {
         $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
         // Get all products
         $query = DB::table('products as p')
             ->where('p.is_active', true)
-            ->where('p.track_inventory', true);
+            ->where('p.track_inventory', true)
+            ->when($productId, fn ($q) => $q->where('p.id', $productId));
 
         // Note: Category filtering not available as products table doesn't have category_id
 
@@ -158,6 +163,7 @@ class StockValuationService extends BaseReportService
             'p.id',
             'p.sku',
             'p.name',
+            'p.short_description',
             'p.cost',
             'p.unit',
             DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
@@ -192,6 +198,7 @@ class StockValuationService extends BaseReportService
                     'id' => $product->id,
                     'sku' => $product->sku,
                     'name' => $product->name,
+                    'short_description' => $product->short_description,
                     'category_name' => null, // No categories in current schema
                     'quantity' => $quantity,
                     'unit' => $product->unit,
@@ -292,12 +299,13 @@ class StockValuationService extends BaseReportService
     /**
      * Get low stock products (below reorder level)
      */
-    public function getLowStockProducts(): array
+    public function getLowStockProducts(?int $productId = null): array
     {
         $stockLevelsExists = DB::getSchemaBuilder()->hasTable('stock_levels');
         $products = DB::table('products as p')
             ->where('p.is_active', true)
             ->where('p.track_inventory', true)
+            ->when($productId, fn ($q) => $q->where('p.id', $productId))
             ->when($stockLevelsExists, function ($query) {
                 $query->leftJoin(
                     DB::raw('(SELECT product_id, SUM(quantity) as total_quantity FROM stock_levels GROUP BY product_id) as sl'),
@@ -309,6 +317,7 @@ class StockValuationService extends BaseReportService
                         'p.id',
                         'p.sku',
                         'p.name',
+                        'p.short_description',
                         DB::raw('COALESCE(sl.total_quantity, 0) as stock_quantity'),
                         'p.reorder_level',
                         'p.cost',
@@ -323,6 +332,7 @@ class StockValuationService extends BaseReportService
                         'p.id',
                         'p.sku',
                         'p.name',
+                        'p.short_description',
                         'p.stock_quantity',
                         'p.reorder_level',
                         'p.cost',
@@ -340,6 +350,7 @@ class StockValuationService extends BaseReportService
                     'id' => $p->id,
                     'sku' => $p->sku,
                     'name' => $p->name,
+                    'short_description' => $p->short_description,
                     'category_name' => null, // No categories in current schema
                     'current_quantity' => $p->stock_quantity,
                     'reorder_level' => $p->reorder_level,

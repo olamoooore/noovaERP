@@ -423,80 +423,38 @@ class Product extends Model
     }
 
     /**
-     * Get effective tax rate - uses product's tax_rate or falls back to default system tax
-     * This ensures POS always has access to the correct tax rate
+     * #302 (X2): the effective output tax rate as the tax engine resolves it
+     * for today — the same ladder (tax_mode, linked rule, effective dates,
+     * scope, tenant default, localized rules) that every sales/POS document
+     * uses. This used to be a second, divergent ladder (legacy tax_rate
+     * first, tax_mode='none' ignored, no dates or scope). Display only:
+     * documents resolve their own line tax at their own date on the server
+     * (SalesLineTaxResolver).
      */
     public function getEffectiveTaxRateAttribute(): float
     {
-        // If product has its own tax rate set, use it
-        if ($this->tax_rate !== null && (float) $this->tax_rate > 0) {
-            return (float) $this->tax_rate;
-        }
-
-        // If product is linked to a Tax model, use that rate
-        if ($this->tax_id) {
-            $productTax = $this->tax;
-            if ($productTax && $productTax->rate > 0) {
-                return (float) $productTax->rate;
-            }
-        }
-
-        // Fall back to default system tax from settings
-        $taxSetting = Setting::getValue('tax', [
-            'enabled' => true,
-            'default_tax_id' => null,
-        ]);
-
-        if (! empty($taxSetting['enabled']) && ! empty($taxSetting['default_tax_id'])) {
-            $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
-            if ($defaultTax) {
-                return (float) $defaultTax->rate;
-            }
-        }
-
-        return 0.0;
+        return (float) ($this->engineTaxResolution()['rate'] ?? 0.0);
     }
 
     /**
-     * Get whether the effective tax is inclusive - uses product's tax or falls back to default system tax
-     * This ensures POS always knows whether to add tax on top or extract from price
+     * #302 (X2): whether the engine-resolved effective tax is inclusive —
+     * per-product override and custom mode included (TaxEngineService).
      */
     public function getEffectiveTaxIsInclusiveAttribute(): bool
     {
-        // If product uses custom tax mode, use the product's tax_included setting
-        if ($this->tax_mode === 'custom') {
-            return (bool) $this->tax_included;
-        }
+        return (bool) ($this->engineTaxResolution()['is_inclusive'] ?? false);
+    }
 
-        // Per-product override wins for rule-linked / default / legacy modes
-        // (NULL = inherit from the resolved rule).
-        if ($this->tax_inclusive_override !== null) {
-            return (bool) $this->tax_inclusive_override;
-        }
-
-        // If product is linked to a Tax model, use that tax's is_inclusive
-        if ($this->tax_id) {
-            $productTax = $this->tax;
-            if ($productTax) {
-                return (bool) $productTax->is_inclusive;
-            }
-        }
-
-        // Fall back to default system tax from settings
-        $taxSetting = Setting::getValue('tax', [
-            'enabled' => true,
-            'default_tax_id' => null,
-        ]);
-
-        if (! empty($taxSetting['enabled']) && ! empty($taxSetting['default_tax_id'])) {
-            $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
-            if ($defaultTax) {
-                return (bool) $defaultTax->is_inclusive;
-            }
-        }
-
-        // Default to exclusive (tax added on top)
-        return false;
+    /**
+     * The engine's resolution for this product today. Not memoized: the
+     * product's tax fields, rules or tenant settings can change on the same
+     * instance, and a stale answer would reintroduce a divergent ladder.
+     *
+     * @return array<string, mixed>
+     */
+    private function engineTaxResolution(): array
+    {
+        return app(\App\Services\TaxEngineService::class)->resolve($this, null, 'output', null, now()->toDateString());
     }
 
     public function getVolumeAttribute(): ?float

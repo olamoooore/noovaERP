@@ -387,6 +387,18 @@ export function SalesOrderDetailPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
+  // Issue #551: Sales Settings → Sales Orders can turn the pro-forma invoice
+  // off; the server then refuses the render, so the action is hidden too.
+  const { data: salesDefaults } = useQuery({
+    queryKey: ['sales-settings', 'defaults'],
+    queryFn: async () => {
+      const response = await api.get('/settings/sales/defaults')
+      return response.data?.data ?? null
+    },
+    staleTime: 60_000,
+  })
+  const proformaEnabled = (salesDefaults as { sales_order?: { proforma_enabled?: boolean } } | null)?.sales_order?.proforma_enabled !== false
+
   const { data: order, isLoading, refetch: refetchOrder } = useQuery({
     queryKey: ['sales-order', id],
     queryFn: async () => {
@@ -1003,14 +1015,18 @@ export function SalesOrderDetailPage() {
                 title: 'Order Confirmation',
                 resolutionPath: `/documents/sales_order_confirmation/resolution?document_id=${id}`,
               },
-              {
-                documentType: 'sales_proforma_invoice',
-                label: 'Pro-forma invoice',
-                pdfPath: `/sales/orders/${id}/proforma/pdf`,
-                filename: `SO-${order.sales_order_number}-proforma.pdf`,
-                title: 'Pro-forma Invoice',
-                resolutionPath: `/documents/sales_proforma_invoice/resolution?document_id=${id}`,
-              },
+              ...(proformaEnabled
+                ? [
+                    {
+                      documentType: 'sales_proforma_invoice' as const,
+                      label: 'Pro-forma invoice',
+                      pdfPath: `/sales/orders/${id}/proforma/pdf`,
+                      filename: `SO-${order.sales_order_number}-proforma.pdf`,
+                      title: 'Pro-forma Invoice',
+                      resolutionPath: `/documents/sales_proforma_invoice/resolution?document_id=${id}`,
+                    },
+                  ]
+                : []),
             ]}
           />
           <ChatterDialog

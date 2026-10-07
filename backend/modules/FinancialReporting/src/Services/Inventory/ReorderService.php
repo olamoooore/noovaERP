@@ -95,10 +95,16 @@ class ReorderService extends BaseReportService
             $query->where('p.category_id', $filter->categoryId);
         }
 
+        // #1020: product filter uses the shared server-side product picker.
+        if ($filter->productId) {
+            $query->where('p.id', $filter->productId);
+        }
+
         $products = $query->select([
             'p.id',
             'p.sku',
             'p.name',
+            'p.short_description',
             $currentStockSelect,
             $thresholdSelect,
             'p.reorder_level',
@@ -209,43 +215,30 @@ class ReorderService extends BaseReportService
      */
     protected function getLastPurchaseInfo(int $productId): array
     {
-        try {
-            // Check if invoice_items table exists
-            $tableExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'invoice_items')")[0]->exists;
+        // Last purchase order that included this product (#1020). The previous
+        // query selected `invoice_items.price` and `invoices.type`, neither of
+        // which exist — it failed on every call and a blanket catch hid the
+        // error, so "last supplier" was silently always null.
+        $lastPurchase = DB::table('purchase_order_items as poi')
+            ->join('purchase_orders as po', 'po.id', '=', 'poi.purchase_order_id')
+            ->leftJoin('suppliers as s', 's.id', '=', 'po.supplier_id')
+            ->where('poi.product_id', $productId)
+            ->orderByDesc('po.order_date')
+            ->orderByDesc('po.id')
+            ->select([
+                'po.order_date as date',
+                's.name as supplier',
+            ])
+            ->first();
 
-            if (! $tableExists) {
-                return [];
-            }
-
-            // This would typically query purchase orders or bills
-            // For now, we'll return a placeholder structure
-            // You would need to implement this based on your purchase order system
-
-            $lastPurchase = DB::table('invoice_items as ii')
-                ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
-                ->leftJoin('customers as c', 'c.id', '=', 'i.customer_id')
-                ->where('ii.product_id', $productId)
-                ->where('i.type', 'purchase') // Assuming invoices table has a type field
-                ->orderBy('i.invoice_date', 'desc')
-                ->select([
-                    'i.invoice_date as date',
-                    'ii.price as price',
-                    'c.name as supplier',
-                ])
-                ->first();
-
-            if ($lastPurchase) {
-                return [
-                    'date' => $lastPurchase->date,
-                    'price' => $lastPurchase->price,
-                    'supplier' => $lastPurchase->supplier,
-                ];
-            }
-
-            return [];
-        } catch (\Exception $e) {
-            return [];
+        if ($lastPurchase) {
+            return [
+                'date' => $lastPurchase->date,
+                'supplier' => $lastPurchase->supplier,
+            ];
         }
+
+        return [];
     }
 
     /**

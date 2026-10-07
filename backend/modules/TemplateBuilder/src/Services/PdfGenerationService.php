@@ -217,6 +217,28 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         return $this->build($template, $data, $format);
     }
 
+    public function previewDocument(DocumentTemplate $draft, string $documentType, string $documentId): array
+    {
+        if ($draft->document_type !== $documentType) {
+            throw new \RuntimeException("The template is not a {$documentType} template.");
+        }
+
+        // Same payload choke point as render(): PHI masking (#611) and the
+        // pricelist display mode (#553) apply to the preview too.
+        $data = $this->dataSources->loadPayload($documentType, $documentId);
+        $data['document_variant'] = '';
+
+        // The DRAFT definition is rendered as-is (no forRendering() swap to
+        // the published version) — that is the point of an editor preview.
+        // Nothing is persisted: no GeneratedDocument, no immutable copy.
+        $composed = $this->composeBody($draft, $data, null);
+
+        return [
+            'html' => $this->wrapCanvas($draft, $composed['html']),
+            'warnings' => $composed['warnings'],
+        ];
+    }
+
     /**
      * Issue #617: display text for a requested document variant, or null when
      * the request is for the canonical document (no/unknown variant key).
@@ -299,13 +321,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         // Production PDFs render the PUBLISHED version, never an unsaved draft.
         $renderTemplate = $this->forRendering($template);
 
-        $rendered = $this->renderer->render($renderTemplate, $data);
-
-        // A signed document carries its signature block on the same template, so
-        // every tenant template gets one without being edited.
-        $body = $rendered['html']
-            .($signature !== null ? $this->signatureBlockHtml($signature) : '')
-            .$this->fxFooterHtml($renderTemplate, $data);
+        $body = $this->composeBody($renderTemplate, $data, $signature)['html'];
 
         $fullHtml = $this->wrapCanvas($renderTemplate, $body);
 
@@ -340,6 +356,28 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $bytes = $pdf->output();
 
         return ['bytes' => $bytes, 'html' => $fullHtml, 'mime' => 'application/pdf', 'hash' => $hash];
+    }
+
+    /**
+     * The rendered document body exactly as a real PDF carries it: template
+     * output, optional signature block and the automatic FX footer. Shared by
+     * build() and previewDocument() so a preview can never diverge from the
+     * printed document (#616 single renderer, #620).
+     *
+     * @param  array<string,mixed>  $data
+     * @return array{html: string, warnings: array<int,string>}
+     */
+    private function composeBody(DocumentTemplate $renderTemplate, array $data, ?array $signature): array
+    {
+        $rendered = $this->renderer->render($renderTemplate, $data);
+
+        // A signed document carries its signature block on the same template, so
+        // every tenant template gets one without being edited.
+        $html = $rendered['html']
+            .($signature !== null ? $this->signatureBlockHtml($signature) : '')
+            .$this->fxFooterHtml($renderTemplate, $data);
+
+        return ['html' => $html, 'warnings' => $rendered['warnings'] ?? []];
     }
 
     /**

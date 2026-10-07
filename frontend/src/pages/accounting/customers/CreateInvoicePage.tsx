@@ -18,9 +18,10 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity } from '@/lib/utils';
 import api from '@/lib/api'
-import { getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
+import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
+import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
 import { resolveLineTaxRate } from '@/lib/lineTax';
 import { computeDocumentTotals } from '@/lib/documentTotals';
 import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
@@ -50,8 +51,13 @@ import { getProductLineDescription, ProductSearchCombobox } from '@/components/i
 import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/CaseSearchCombobox';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
+import { creditWarning } from '@/lib/creditCheck';
+import { duplicateWarning, likelyDuplicateFromError, type DuplicateCheckResult } from '@/lib/duplicateCheck';
+import { DuplicateInvoiceDialog } from '@/components/sales/DuplicateInvoiceDialog';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { ProductTrackingSelector } from '@/components/inventory/ProductTrackingSelector';
+import { RichTextEditor } from '@/components/ui/RichTextEditor';
+import { htmlToPlainText, plainToRichHtml } from '@/lib/richText';
 import { missingTrackingLineIndex } from '@/lib/lotTracking';
 import { StockAvailabilityChip } from '@/components/sales/StockAvailabilityChip';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
@@ -89,6 +95,9 @@ interface InvoiceLine {
   sku: string;
   model_number: string;
   description: string;
+  // #1004: sanitized rich-text copy of the description (font family/size, colour, bold/italic/underline, alignment, lists).
+  description_html?: string | null;
+  uom_id?: number | string | null;
   product_notes: string;
   lot_number: string;
   serial_number: string;
@@ -144,6 +153,7 @@ interface CustomerContact {
   contact_category?: string | null;
   contact_type?: string | null;
   is_primary?: boolean;
+  core_contact_uuid?: string | null;
   street?: string | null;
   street2?: string | null;
   city?: string | null;
@@ -165,6 +175,8 @@ interface CustomerRecord extends CustomerWithResolvedAddresses {
   company_registration_number?: string | null;
   website?: string | null;
   payment_terms?: number | null;
+  // Issue #324: the customer's default master payment term.
+  payment_term_id?: number | null;
   notes?: string | null;
   billing_address?: string | null;
   shipping_address?: string | null;
@@ -197,6 +209,7 @@ const emptyLine = (): InvoiceLine => ({
   sku: '',
   model_number: '',
   description: '',
+  description_html: '',
   product_notes: '',
   lot_number: '',
   serial_number: '',
@@ -388,6 +401,43 @@ export const CreateInvoicePage: React.FC = () => {
   const [customerId, setCustomerId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => todayDateOnly());
   const [paymentTerms, setPaymentTerms] = useState(30);
+  // Issue #324: the payment term picked from the payment-terms master. When
+  // set, the due date (and any instalment schedule) comes from the master's
+  // calculate-due-date; typing days or a due date by hand detaches it.
+  const [paymentTermId, setPaymentTermId] = useState('');
+  const [termInstalments, setTermInstalments] = useState<Array<{ due_date: string; percent: number }>>([]);
+  const { data: paymentTermRows = [] } = useQuery({
+    queryKey: ['payment-terms'],
+    queryFn: async () => {
+      const response = await api.get('/accounting/payment-terms');
+      const rows = Array.isArray(response.data) ? response.data : response.data?.data;
+      return (Array.isArray(rows) ? rows : []) as Array<{ id: number; name: string; type?: string; days?: number; is_active?: boolean }>;
+    },
+  });
+  const selectedPaymentTermName = paymentTermId
+    ? paymentTermRows.find((term) => String(term.id) === paymentTermId)?.name ?? null
+    : null;
+  const paymentTermRequestRef = useRef(0);
+  const applyMasterPaymentTerm = async (termId: string, date: string) => {
+    const requestId = ++paymentTermRequestRef.current;
+    if (!termId || !date) {
+      setTermInstalments([]);
+      return;
+    }
+    try {
+      const response = await api.post('/accounting/payment-terms/calculate-due-date', {
+        payment_term_id: Number(termId),
+        invoice_date: date,
+      });
+      if (requestId !== paymentTermRequestRef.current) return;
+      if (response.data?.due_date) setDueDate(String(response.data.due_date));
+      const instalments = Array.isArray(response.data?.instalments) ? response.data.instalments : [];
+      setTermInstalments(instalments.length > 1 ? instalments : []);
+    } catch {
+      // The server derives the due date from the term on save regardless.
+      if (requestId === paymentTermRequestRef.current) setTermInstalments([]);
+    }
+  };
   // HR71-04: explicit override intent. Once the user manually edits terms or
   // due date, a later customer change must not silently overwrite it.
   const [termsOverridden, setTermsOverridden] = useState(false);
@@ -436,6 +486,9 @@ export const CreateInvoicePage: React.FC = () => {
   // #317: customer id of a restored local draft — its header values are the
   // user's own, so the customer-default effects must not overwrite them.
   const restoredCustomerRef = useRef<string | null>(null);
+  // Guards the async Contact-Master address lookups per section: a stale
+  // response must not overwrite the address of a contact picked later.
+  const contactAddressRequestRef = useRef<{ billing: number; shipping: number }>({ billing: 0, shipping: 0 });
   const [customInvoiceNumber, setCustomInvoiceNumber] = useState('');
   const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
   const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
@@ -496,6 +549,8 @@ export const CreateInvoicePage: React.FC = () => {
     }),
   });
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
+  // Issue #327: a likely duplicate the server refused until confirmed.
+  const [likelyDuplicate, setLikelyDuplicate] = useState<DuplicateCheckResult | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
   const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
@@ -605,6 +660,7 @@ export const CreateInvoicePage: React.FC = () => {
     }
 
     const primaryContact = getPrimaryCustomerContact(selectedCustomer);
+    const shippingContact = getCustomerContactForRole(selectedCustomer, 'shipping');
     const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
     const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
     setDocumentSnapshot({
@@ -619,17 +675,29 @@ export const CreateInvoicePage: React.FC = () => {
       tax_registration_number: selectedCustomer.tax_number ?? '',
     });
 
-    setBillingContactId('');
-    setShippingContactId('');
+    setBillingContactId(primaryContact?.id != null ? String(primaryContact.id) : '');
+    setShippingContactId(shippingContact?.id != null ? String(shippingContact.id) : '');
     setDoctorContactId('');
     setRequestorContactId('');
+    // Invalidate any in-flight contact-address lookups from the previous pick.
+    contactAddressRequestRef.current.billing += 1;
+    contactAddressRequestRef.current.shipping += 1;
 
     // WRK-A / HR71-04: Use the customer's authoritative payment terms to
     // populate a DEFAULT only when the user has NOT intentionally overridden
     // terms/due date, and never re-derives a saved invoice's historical due
     // date while editing (originalCustomerId guard above returns early).
+    // Issue #324: a customer default master term beats its day count.
+    if (!termsOverridden && selectedCustomer.payment_term_id) {
+      const termId = String(selectedCustomer.payment_term_id);
+      setPaymentTermId(termId);
+      void applyMasterPaymentTerm(termId, invoiceDate);
+      return;
+    }
     const customerTerms = Number(selectedCustomer.payment_terms);
     if (!termsOverridden && Number.isFinite(customerTerms) && customerTerms >= 0) {
+      setPaymentTermId('');
+      setTermInstalments([]);
       setPaymentTerms(customerTerms);
       setDueDate(calcDueDate(invoiceDate, customerTerms));
     }
@@ -775,6 +843,13 @@ export const CreateInvoicePage: React.FC = () => {
       setPaymentTerms(restoredTerms);
       setTermsOverridden(true);
     }
+    // Issue #324: the saved master term and its instalment schedule.
+    setPaymentTermId(existingInvoice.payment_term_id ? String(existingInvoice.payment_term_id) : '');
+    setTermInstalments(
+      Array.isArray(existingInvoice.payment_schedule) && existingInvoice.payment_schedule.length > 1
+        ? existingInvoice.payment_schedule
+        : [],
+    );
     setCustomInvoiceNumber(existingInvoice.invoice_number || '');
     setBillingContactId(existingInvoice.billing_contact_id ? String(existingInvoice.billing_contact_id) : '');
     setShippingContactId(existingInvoice.shipping_contact_id ? String(existingInvoice.shipping_contact_id) : '');
@@ -801,14 +876,17 @@ export const CreateInvoicePage: React.FC = () => {
       sku: line.product?.sku || '',
       model_number: line.model_number || line.product?.manufacturer_part_number || '',
       description: line.description || '',
+      description_html: line.description_html || '',
       product_notes: line.product_notes || '',
       lot_number: line.lot_number || '',
       serial_number: line.serial_number || '',
       product_batch_id: line.product_batch_id || null,
       product_serial_id: line.product_serial_id || null,
       tracking_method: line.product?.tracking_method || 'none',
+      // #1004: UOM lines keep 4-decimal quantities (spinner step); each lines step by 1.
+      uom_id: line.uom_id ?? null,
       expiry_date: line.expiry_date ? String(line.expiry_date).split('T')[0] : '',
-      quantity: Number(line.quantity ?? 1),
+      quantity: (normalizeQuantity(line.quantity ?? 1) || 1) as number,
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
       discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
@@ -837,8 +915,22 @@ export const CreateInvoicePage: React.FC = () => {
       ? contacts.find((contact) => contact.name?.trim().toLowerCase() === requestorName)
       : undefined;
 
-    setBillingContactId(billingMatch?.id != null ? String(billingMatch.id) : '');
-    setShippingContactId(shippingMatch?.id != null ? String(shippingMatch.id) : '');
+    // Invoices raised before contact defaults were stored show no contact;
+    // render the customer's default billing/shipping contact instead of blank,
+    // without touching the invoice's saved snapshots or addresses.
+    const billingDefault = getCustomerContactForRole(selectedCustomerDetail, 'billing');
+    const shippingDefault = getCustomerContactForRole(selectedCustomerDetail, 'shipping');
+
+    setBillingContactId(
+      billingMatch?.id != null
+        ? String(billingMatch.id)
+        : (billingDefault?.id != null ? String(billingDefault.id) : ''),
+    );
+    setShippingContactId(
+      shippingMatch?.id != null
+        ? String(shippingMatch.id)
+        : (shippingDefault?.id != null ? String(shippingDefault.id) : ''),
+    );
     setDoctorContactId(doctorMatch?.id != null ? String(doctorMatch.id) : '');
     setRequestorContactId(requestorMatch?.id != null ? String(requestorMatch.id) : '');
   }, [existingInvoice, isEditMode, selectedCustomerDetail]);
@@ -866,8 +958,7 @@ export const CreateInvoicePage: React.FC = () => {
     // settings response arrived), the setting must not clobber them.
     const customerTerms = Number(selectedCustomer?.payment_terms);
     const customerHasTerms = selectedCustomer != null
-      && Number.isFinite(customerTerms)
-      && customerTerms >= 0;
+      && ((Number.isFinite(customerTerms) && customerTerms >= 0) || !!selectedCustomer.payment_term_id);
     const defaultTermsDays = Number((inv as any)?.default_payment_terms_days);
     if (!termsOverridden && !customerHasTerms && Number.isFinite(defaultTermsDays) && defaultTermsDays >= 0) {
       setPaymentTerms(defaultTermsDays);
@@ -905,7 +996,7 @@ export const CreateInvoicePage: React.FC = () => {
     ready: !isEditMode || invoiceLoaded,
     persist: !isEditMode,
     snapshot: {
-      customerId, invoiceDate, paymentTerms, termsOverridden, requiresApproval, customInvoiceNumber, dueDate,
+      customerId, invoiceDate, paymentTerms, paymentTermId, termsOverridden, requiresApproval, customInvoiceNumber, dueDate,
       caseNumber, prNo, contractNo, buyerContactId, plantCode, companyCode, dateOfCase, caseLocation,
       patientName, costCenterId, deliveryDate, warehouseId, poNumber, doctorContactId, requestorContactId,
       extraCases, primaryMedicalCaseId, billingContactId, shippingContactId, billingAddress, shippingAddress,
@@ -917,6 +1008,7 @@ export const CreateInvoicePage: React.FC = () => {
       setCustomerId(draft.customerId);
       setInvoiceDate(draft.invoiceDate);
       setPaymentTerms(draft.paymentTerms);
+      setPaymentTermId(draft.paymentTermId ?? '');
       setTermsOverridden(draft.termsOverridden);
       setRequiresApproval(draft.requiresApproval);
       setCustomInvoiceNumber(draft.customInvoiceNumber);
@@ -967,7 +1059,10 @@ export const CreateInvoicePage: React.FC = () => {
     onSuccess: async (data) => {
       setConflict(null);
       draftGuard.clearDraft();
-      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully` });
+      // Issue #326: a save under the `warn` credit policy carries the verdict.
+      // Issue #327: a create that resembles another invoice warns too.
+      const warnings = [creditWarning(data), duplicateWarning(data)].filter(Boolean).join(' ');
+      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully`, description: warnings || undefined });
       const invoiceId = id || data?.id || data?.data?.id;
       const savedStatus = data?.status ?? data?.data?.status;
 
@@ -1005,6 +1100,12 @@ export const CreateInvoicePage: React.FC = () => {
     },
     onError: (error: any, variables: unknown) => {
       const message = getApiErrorMessage(error);
+      // Issue #327: likely duplicate — ask before creating it anyway.
+      const duplicate = likelyDuplicateFromError(error);
+      if (duplicate) {
+        setLikelyDuplicate(duplicate);
+        return;
+      }
       // FR-6.3: a below-floor manual override needs an audited reason — ask
       // for it once, then retry with the reason attached to manual lines.
       if (typeof message === 'string' && message.toLowerCase().includes('override_reason')) {
@@ -1157,6 +1258,39 @@ export const CreateInvoicePage: React.FC = () => {
     });
   };
 
+  // Selecting a related contact person renders their default address for that
+  // section: the Contact Master default billing/shipping address when the
+  // contact is linked, else the customer-contact record's inline address.
+  // Falls back silently to the customer's default when the contact has none.
+  const applyContactAddress = async (role: 'billing' | 'shipping', contact: CustomerContact) => {
+    const requestId = ++contactAddressRequestRef.current[role];
+    let masterAddresses: ContactMasterAddress[] | null = null;
+
+    if (contact.core_contact_uuid) {
+      try {
+        const res = await api.get(`/contacts/${contact.core_contact_uuid}/addresses`);
+        masterAddresses = res.data?.data ?? res.data ?? [];
+      } catch {
+        // Keep the inline contact address as the fallback.
+      }
+    }
+
+    const nextAddress = buildContactAddress(contact, masterAddresses, role);
+    if (!nextAddress || requestId !== contactAddressRequestRef.current[role]) {
+      return;
+    }
+
+    if (role === 'billing') {
+      setBillingAddress(nextAddress);
+    } else {
+      setShippingAddress(nextAddress);
+    }
+    updateDocumentSnapshot(
+      role === 'billing' ? 'billing_address_snapshot' : 'shipping_address_snapshot',
+      addressFormToSnapshot(nextAddress),
+    );
+  };
+
   const addLine = () => setLines([...lines, { ...emptyLine(), tax_rate: defaultTaxRate || '' }]);
   const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
   const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => {
@@ -1273,7 +1407,8 @@ export const CreateInvoicePage: React.FC = () => {
         product_id: line.product_id ? String(line.product_id) : '',
         sku: line.product?.sku ?? '',
         description: line.description ?? '',
-        quantity: line.quantity != null ? Number(line.quantity) : 1,
+        description_html: line.description_html || '',
+        quantity: line.quantity != null ? (normalizeQuantity(line.quantity) || 1) as number : 1,
         unit_price: line.unit_price != null ? Number(line.unit_price) : '',
         tax_rate: line.tax_rate != null ? Number(line.tax_rate) : (defaultTaxRate || ''),
         discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
@@ -1804,6 +1939,8 @@ export const CreateInvoicePage: React.FC = () => {
       notes: notes || undefined,
       terms: terms || undefined,
       payment_terms: paymentTerms,
+      // Issue #324: the master term (null = manual days/due date).
+      ...(!isQuoteMode ? { payment_term_id: paymentTermId ? Number(paymentTermId) : null } : {}),
       discount_amount: documentDiscountAmount || 0,
       // FR-5.1/FR-5.2: explicit document currency; empty = resolve default.
       ...(currencyCode ? { currency_code: currencyCode } : {}),
@@ -1827,13 +1964,14 @@ export const CreateInvoicePage: React.FC = () => {
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
           model_number: line.model_number || null,
           description: line.description || 'Item',
+          description_html: line.description_html || null,
           product_notes: line.product_notes || null,
           lot_number: line.lot_number || null,
           serial_number: line.serial_number || null,
           product_batch_id: line.product_batch_id || null,
           product_serial_id: line.product_serial_id || null,
           expiry_date: line.expiry_date || null,
-          quantity: line.quantity === '' ? 0 : Number(line.quantity),
+          quantity: line.quantity === '' ? 0 : (Number(normalizeQuantity(line.quantity)) || 0),
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
           price_mode: line.price_mode ?? undefined,
           override_reason: line.override_reason ?? undefined,
@@ -2106,7 +2244,11 @@ export const CreateInvoicePage: React.FC = () => {
                     onChange={(event) => {
                       const newDate = event.target.value;
                       setInvoiceDate(newDate);
-                      setDueDate(calcDueDate(newDate, paymentTerms));
+                      if (paymentTermId && !isQuoteMode) {
+                        void applyMasterPaymentTerm(paymentTermId, newDate);
+                      } else {
+                        setDueDate(calcDueDate(newDate, paymentTerms));
+                      }
                       // #299 (F7): price lists are date-effective — a new
                       // invoice date must re-resolve auto/carried lines for
                       // that date (manual lines are kept by the apply loop).
@@ -2124,11 +2266,38 @@ export const CreateInvoicePage: React.FC = () => {
                     <label className="mb-1 block text-xs font-medium">Terms</label>
                     <HeaderChip
                       icon="solar:calendar-bold-duotone"
-                      value={`${paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt'} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
+                      value={`${selectedPaymentTermName ?? (paymentTerms > 0 ? `Net ${paymentTerms}` : 'Due on receipt')} · ${dueDate ? formatDate(dueDate) : 'No due date'}`}
                       title="Payment terms and due date"
                       className="w-full justify-between"
                     >
                       <div className="space-y-2">
+                        <div>
+                          {/* Issue #324: picked from the payment-terms master. */}
+                          <label className="mb-1 block text-xs font-medium" htmlFor="invoice-payment-term">Payment term</label>
+                          <select
+                            id="invoice-payment-term"
+                            aria-label="Payment term"
+                            value={paymentTermId}
+                            onChange={(event) => {
+                              const next = event.target.value;
+                              setPaymentTermId(next);
+                              setTermsOverridden(true);
+                              const term = paymentTermRows.find((row) => String(row.id) === next);
+                              if (term && Number.isFinite(Number(term.days))) {
+                                setPaymentTerms(Number(term.days));
+                              }
+                              void applyMasterPaymentTerm(next, invoiceDate);
+                            }}
+                            className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                          >
+                            <option value="">Custom (days / due date)</option>
+                            {paymentTermRows
+                              .filter((term) => term.is_active !== false || String(term.id) === paymentTermId)
+                              .map((term) => (
+                                <option key={term.id} value={String(term.id)}>{term.name}</option>
+                              ))}
+                          </select>
+                        </div>
                         <div>
                           <label className="mb-1 block text-xs font-medium">Payment terms (days)</label>
                           <input
@@ -2141,6 +2310,9 @@ export const CreateInvoicePage: React.FC = () => {
                               setDueDate(calcDueDate(invoiceDate, days));
                               // HR71-04: an intentional term edit is an override.
                               setTermsOverridden(true);
+                              // #324: a hand-typed day count detaches the master term.
+                              setPaymentTermId('');
+                              setTermInstalments([]);
                             }}
                             className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                           />
@@ -2154,10 +2326,26 @@ export const CreateInvoicePage: React.FC = () => {
                               setDueDate(event.target.value);
                               // HR71-04: an intentional due-date edit is an override.
                               setTermsOverridden(true);
+                              // #324: a hand-typed due date detaches the master term.
+                              setPaymentTermId('');
+                              setTermInstalments([]);
                             }}
                             className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
+                        {termInstalments.length > 1 && (
+                          <div data-testid="invoice-instalment-preview">
+                            <p className="mb-1 text-xs font-medium">Instalments</p>
+                            <ul className="space-y-0.5 text-xs text-muted-foreground">
+                              {termInstalments.map((row, index) => (
+                                <li key={`${row.due_date}-${index}`} className="flex justify-between gap-2">
+                                  <span>{formatDate(row.due_date)}</span>
+                                  <span>{Number(row.percent).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                     </HeaderChip>
                   </div>
@@ -2522,6 +2710,7 @@ export const CreateInvoicePage: React.FC = () => {
                                 contact_email: contact.email || current.contact_email,
                                 contact_phone: contact.phone || (contact as any).mobile || current.contact_phone,
                               }));
+                              void applyContactAddress('billing', contact as CustomerContact);
                             }
                           }}
                           placeholder="Select customer contact..."
@@ -2590,7 +2779,12 @@ export const CreateInvoicePage: React.FC = () => {
                         <label className="mb-1 block text-xs font-medium text-slate-600">Contact</label>
                         <ContactSearchCombobox
                           value={shippingContactId}
-                          onValueChange={(val) => setShippingContactId(val)}
+                          onValueChange={(val, contact) => {
+                            setShippingContactId(val);
+                            if (contact) {
+                              void applyContactAddress('shipping', contact as CustomerContact);
+                            }
+                          }}
                           placeholder="Select customer contact..."
                           customerId={customerId}
                           source="customer_contacts"
@@ -2949,7 +3143,7 @@ export const CreateInvoicePage: React.FC = () => {
                 >
                     {lines.map((line, index) => (
                       <tr key={index} className="doc-line-row border-b transition-colors hover:bg-muted/20" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }} /> : <>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} html={line.description_html || plainToRichHtml(line.description)} colSpan={13 + (visibleLineColumns.stock ? 1 : 0)} total={line.line_type === 'section' ? money(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onHtmlChange={(html) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_html: html, description: htmlToPlainText(html) } : item))} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) { fieldErrors.clearLines(); setLines(reorderDocumentLines(lines, draggedLineIndex, index)); } setDraggedLineIndex(null); }} /> : <>
                         <td data-label="#" className={cn(LINE_CELL, 'w-10')}>
                           <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
                             {lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
@@ -2970,6 +3164,8 @@ export const CreateInvoicePage: React.FC = () => {
                                 updated[index].expiry_date = '';
                                 if (product) {
                                   updated[index].description = getProductLineDescription(product);
+                                  // #1004: a new product pick replaces any old rich formatting.
+                                  updated[index].description_html = '';
                                   updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
                                   updated[index].model_number = (product as any).manufacturer_part_number || '';
                                   updated[index].sku = (product as any).sku || '';
@@ -2996,12 +3192,13 @@ export const CreateInvoicePage: React.FC = () => {
                         </td>}
                         {visibleLineColumns.description && <td data-label="Description" className={cn(LINE_CELL, 'min-w-[16rem]')}>
                           <FieldSlot name={lineFieldKey(index, 'description')}>
-                            <textarea
-                              value={line.description}
-                              onChange={(event) => updateLine(index, 'description', event.target.value)}
-                              rows={2}
-                              className={LINE_TEXTAREA}
+                            {/* #1004: WYSIWYG description (bold/italic/underline/colour); plain text stays in sync for search/exports. */}
+                            <RichTextEditor
+                              compact
+                              value={line.description_html || plainToRichHtml(line.description)}
+                              onChange={(html) => setLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_html: html, description: htmlToPlainText(html) } : item))}
                               placeholder="Description"
+                              className="min-w-0 bg-transparent"
                             />
                           </FieldSlot>
                         </td>}
@@ -3044,7 +3241,8 @@ export const CreateInvoicePage: React.FC = () => {
                               <input
                                 type="number"
                                 min="0"
-                                step="0.0001"
+                                // #1024: arrows step by 1; decimals stay typeable.
+                                step="1"
                                 inputMode="decimal"
                                 value={line.quantity}
                                 onChange={(event) => {
@@ -3052,6 +3250,11 @@ export const CreateInvoicePage: React.FC = () => {
                                   if (raw === '') { updateLine(index, 'quantity', ''); return; }
                                   const parsed = Number(raw);
                                   if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
+                                }}
+                                onBlur={() => {
+                                  if (line.quantity !== '') {
+                                    updateLine(index, 'quantity', normalizeQuantity(line.quantity) as number);
+                                  }
                                 }}
                                 onKeyDown={(event) => {
                                   // D6(e): Enter on the last row starts a new line.
@@ -3268,6 +3471,16 @@ export const CreateInvoicePage: React.FC = () => {
           </div>
         </form>
         </FieldErrorsProvider>
+
+        <DuplicateInvoiceDialog
+          check={likelyDuplicate}
+          pending={saveMutation.isPending}
+          onCancel={() => setLikelyDuplicate(null)}
+          onConfirm={() => {
+            setLikelyDuplicate(null);
+            saveMutation.mutate({ ...(lastSavePayloadRef.current ?? {}), confirm_duplicate: true });
+          }}
+        />
 
         <Dialog open={overrideDialogOpen} onOpenChange={setOverrideDialogOpen}>
           <DialogContent>

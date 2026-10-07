@@ -32,14 +32,17 @@ class InventoryReportController extends Controller
         $validated = $request->validate([
             'as_of_date' => 'nullable|date',
             'category_id' => 'nullable|integer|exists:categories,id',
+            'product_id' => 'nullable|integer|exists:products,id',
             'historical' => 'nullable|boolean',
             'low_stock' => 'nullable|boolean',
         ]);
 
         try {
+            $filter = ReportFilter::fromRequest($validated);
+
             // Check if low stock report is requested
             if ($validated['low_stock'] ?? false) {
-                $reportData = $this->stockValuationService->getLowStockProducts();
+                $reportData = $this->stockValuationService->getLowStockProducts($filter->productId);
 
                 return response()->json([
                     'success' => true,
@@ -47,14 +50,13 @@ class InventoryReportController extends Controller
                 ]);
             }
 
-            $filter = ReportFilter::fromRequest($validated);
-
             // Check if historical valuation is requested
             if ($validated['historical'] ?? false) {
                 $asOfDate = $filter->endDate ?? now();
                 $reportData = $this->stockValuationService->getHistoricalValuation(
                     $asOfDate,
-                    $filter->categoryId
+                    $filter->categoryId,
+                    $filter->productId
                 );
 
                 return response()->json([
@@ -77,6 +79,7 @@ class InventoryReportController extends Controller
                     return [
                         'product_id' => $item['id'],
                         'product_name' => $item['name'],
+                        'short_description' => $item['short_description'] ?? '',
                         'sku' => $item['sku'],
                         'category' => $item['category_name'] ?? 'Uncategorized',
                         'quantity' => $item['quantity'],
@@ -189,6 +192,7 @@ class InventoryReportController extends Controller
     {
         $validated = $request->validate([
             'category_id' => 'nullable|integer|exists:categories,id',
+            'product_id' => 'nullable|integer|exists:products,id',
             'grouped' => 'nullable|boolean',
             'critical_only' => 'nullable|boolean',
         ]);
@@ -253,6 +257,7 @@ class InventoryReportController extends Controller
         $validated = $request->validate([
             'as_of_date' => 'nullable|date',
             'category_id' => 'nullable|integer|exists:categories,id',
+            'product_id' => 'nullable|integer|exists:products,id',
             'slow_moving_only' => 'nullable|boolean',
             'age_bucket' => 'nullable|in:0-30,31-60,61-90,90+',
             'older_than_days' => 'nullable|integer|min:1',
@@ -311,6 +316,7 @@ class InventoryReportController extends Controller
                     return [
                         'product_id' => $item['id'],
                         'product_name' => $item['name'],
+                        'short_description' => $item['short_description'] ?? '',
                         'sku' => $item['sku'],
                         'quantity' => $item['stock_quantity'],
                         'age_days' => $item['age_in_days'],
@@ -358,6 +364,7 @@ class InventoryReportController extends Controller
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'category_id' => 'nullable|integer|exists:categories,id',
+            'product_id' => 'nullable|integer|exists:products,id',
             'fast_movers_only' => 'nullable|boolean',
             'slow_movers_only' => 'nullable|boolean',
             'classification' => 'nullable|in:Fast,Medium,Slow,No Movement',
@@ -368,6 +375,7 @@ class InventoryReportController extends Controller
             $startDate = \Carbon\Carbon::parse($validated['start_date']);
             $endDate = \Carbon\Carbon::parse($validated['end_date']);
             $categoryId = $validated['category_id'] ?? null;
+            $productId = $validated['product_id'] ?? null;
 
             // Check if by category view is requested
             if ($validated['by_category'] ?? false) {
@@ -381,7 +389,7 @@ class InventoryReportController extends Controller
 
             // Check if fast movers only is requested
             if ($validated['fast_movers_only'] ?? false) {
-                $reportData = $this->inventoryTurnoverService->getFastMovers($startDate, $endDate, $categoryId);
+                $reportData = $this->inventoryTurnoverService->getFastMovers($startDate, $endDate, $categoryId, $productId);
 
                 return response()->json([
                     'success' => true,
@@ -391,7 +399,7 @@ class InventoryReportController extends Controller
 
             // Check if slow movers only is requested
             if ($validated['slow_movers_only'] ?? false) {
-                $reportData = $this->inventoryTurnoverService->getSlowMovers($startDate, $endDate, $categoryId);
+                $reportData = $this->inventoryTurnoverService->getSlowMovers($startDate, $endDate, $categoryId, $productId);
 
                 return response()->json([
                     'success' => true,
@@ -405,7 +413,8 @@ class InventoryReportController extends Controller
                     $validated['classification'],
                     $startDate,
                     $endDate,
-                    $categoryId
+                    $categoryId,
+                    $productId
                 );
 
                 return response()->json([
@@ -415,7 +424,7 @@ class InventoryReportController extends Controller
             }
 
             // Get standard turnover report
-            $reportData = $this->inventoryTurnoverService->generate($startDate, $endDate, $categoryId);
+            $reportData = $this->inventoryTurnoverService->generate($startDate, $endDate, $categoryId, $productId);
 
             // Transform to frontend format
             $response = [
@@ -423,6 +432,7 @@ class InventoryReportController extends Controller
                     return [
                         'product_id' => $item['id'],
                         'product_name' => $item['name'],
+                        'short_description' => $item['short_description'] ?? '',
                         'category' => $item['category'] ?? 'Uncategorized',
                         'turnover_ratio' => $item['turnover_ratio'],
                         'days_in_inventory' => $item['days_in_inventory'],

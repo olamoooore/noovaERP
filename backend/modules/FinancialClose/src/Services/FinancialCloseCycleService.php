@@ -547,9 +547,14 @@ class FinancialCloseCycleService
             ->filter(fn ($s) => in_array($s['role'], self::SIGNOFF_ROLES))
             ->count();
 
+        // #278 F4 (B1D-HO-10): consume the ACC-009 tax-readiness fact; the
+        // tenant's close dependency policy decides whether it blocks.
+        $tax = app(TaxReadinessDependencyService::class)->evaluate($tenantId, $cycle);
+
         $ready = $incompleteTasks === 0
             && $openEscalations === 0
             && $blockingFindings === 0
+            && ! $tax['blocking']
             && $authorisedSignoffs >= self::REQUIRED_SIGNOFFS;
 
         // Auto-transition to ready_to_close when conditions are met
@@ -568,6 +573,8 @@ class FinancialCloseCycleService
                     'blocking_findings' => $blockingFindings,
                     'open_findings' => $totalOpenFindings,
                     'signoffs' => $authorisedSignoffs,
+                    'tax_fact_version' => $tax['version'],
+                    'tax_policy' => $tax['policy'],
                 ],
             ]);
         }
@@ -596,6 +603,7 @@ class FinancialCloseCycleService
             ],
             'authorised_signoffs' => $authorisedSignoffs,
             'required_signoffs' => self::REQUIRED_SIGNOFFS,
+            'tax' => $tax,
         ];
     }
 

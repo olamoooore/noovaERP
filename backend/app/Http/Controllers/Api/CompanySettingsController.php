@@ -832,6 +832,21 @@ class CompanySettingsController extends Controller
                 'delivery_order' => [
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
                 ],
+                // Issue #545: the quotation form pre-fills valid-until and
+                // terms from these.
+                'quotation' => [
+                    'default_validity_days' => app(\App\Services\SalesSettings::class)->quotationDefaultValidityDays(),
+                    'default_terms' => app(\App\Services\SalesSettings::class)->quotationDefaultTerms() ?? '',
+                    // Issue #550: online acceptance requirements.
+                    'require_signature' => app(\App\Services\SalesSettings::class)->quotationRequireSignature(),
+                    'require_payment' => app(\App\Services\SalesSettings::class)->quotationRequirePayment(),
+                    'prepayment_percent' => app(\App\Services\SalesSettings::class)->quotationPrepaymentPercent(),
+                ],
+                // Issue #551: the sales order screen hides the pro-forma
+                // action when the tenant turned it off.
+                'sales_order' => [
+                    'proforma_enabled' => app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled(),
+                ],
                 'tax' => $this->salesTaxDefaults(),
             ],
         ]);
@@ -924,6 +939,8 @@ class CompanySettingsController extends Controller
                     'default_payment_terms_days' => app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays(),
                     'default_notes' => app(\App\Services\SalesSettings::class)->defaultNotes() ?? '',
                     'default_terms' => app(\App\Services\SalesSettings::class)->defaultTerms() ?? '',
+                    // Issue #326: warn or block on a failed invoice credit check.
+                    'credit_limit_policy' => app(\App\Services\SalesSettings::class)->invoiceCreditLimitPolicy(),
                 ],
                 'portal' => [
                     'acceptance_enabled' => app(\App\Services\SalesSettings::class)->acceptanceEnabled(),
@@ -946,10 +963,22 @@ class CompanySettingsController extends Controller
                 'quotation' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.quotation.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.quotation.reviewer_roles', [])),
+                    // Issue #545: Quotations section.
+                    'default_validity_days' => app(\App\Services\SalesSettings::class)->quotationDefaultValidityDays(),
+                    'default_terms' => app(\App\Services\SalesSettings::class)->quotationDefaultTerms() ?? '',
+                    // Issue #550: online acceptance requirements.
+                    'require_signature' => app(\App\Services\SalesSettings::class)->quotationRequireSignature(),
+                    'require_payment' => app(\App\Services\SalesSettings::class)->quotationRequirePayment(),
+                    'prepayment_percent' => app(\App\Services\SalesSettings::class)->quotationPrepaymentPercent(),
                 ],
                 'sales_order' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.sales_order.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.sales_order.reviewer_roles', [])),
+                    // Issue #545: Sales Orders section.
+                    'auto_lock_on_confirm' => app(\App\Services\SalesSettings::class)->autoLockOnConfirm(),
+                    'default_invoicing_policy' => app(\App\Services\SalesSettings::class)->defaultInvoicingPolicy(),
+                    // Issue #551: pro-forma invoice toggle.
+                    'proforma_enabled' => app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled(),
                 ],
                 'invoice_threshold' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice_threshold.reviewer_user_ids', []))),
@@ -985,10 +1014,21 @@ class CompanySettingsController extends Controller
                 'pricelist' => [
                     'display' => (string) \App\Models\Setting::getValue('sales.pricelist.display', \App\Services\SalesSettings::DEFAULT_PRICELIST_DISPLAY),
                 ],
+                // Issue #328: customer follow-up reminders.
+                'followup' => [
+                    'auto_send_enabled' => app(\App\Services\SalesSettings::class)->followupAutoSendEnabled(),
+                    'levels' => app(\App\Services\SalesSettings::class)->followupLevels(),
+                    'actions' => \App\Services\SalesSettings::FOLLOWUP_ACTIONS,
+                ],
                 // Issue #549: read-only defaults for the "changed from default"
                 // markers. Not accepted by updateSalesSettings; a reset is a
                 // normal PUT of the default value.
                 'default_values' => \App\Services\SalesSettings::defaults(),
+                // Issue #921 (SS5) / #555: read-only "where used" per field —
+                // store key, type, default, scope, edit permission and the
+                // code paths that read it — generated from the registry.
+                'where_used' => app(\App\Platform\Settings\Contracts\SettingsRegistryContract::class)
+                    ->whereUsed(\App\Platform\Settings\SettingsRegistry::SCREEN_SALES),
             ],
         ]);
     }
@@ -1049,41 +1089,42 @@ class CompanySettingsController extends Controller
             'defaults.team_by_user' => 'nullable|array',
             'defaults.team_by_user.*' => 'nullable|string|max:255',
             'pricelist.display' => 'nullable|in:show_discount,net_price',
+            // Issue #545: Quotations and Sales Orders sections.
+            'quotation.default_validity_days' => 'nullable|integer|min:0|max:365',
+            'quotation.default_terms' => 'nullable|string|max:1000',
+            'quotation.require_signature' => 'nullable|boolean',
+            'quotation.require_payment' => 'nullable|boolean',
+            'quotation.prepayment_percent' => 'nullable|numeric|gt:0|max:100',
+            'sales_order.auto_lock_on_confirm' => 'nullable|boolean',
+            'sales_order.default_invoicing_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::INVOICING_POLICIES)],
+            'sales_order.proforma_enabled' => 'nullable|boolean',
+            // Issue #326: invoice credit-limit policy.
+            'invoice.credit_limit_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::CREDIT_LIMIT_POLICIES)],
+            // Issue #328: customer follow-up reminders.
+            'followup.auto_send_enabled' => 'nullable|boolean',
+            'followup.levels' => 'nullable|array|min:1|max:10',
+            'followup.levels.*.days' => 'required|integer|min:1|max:365|distinct',
+            'followup.levels.*.action' => ['required', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::FOLLOWUP_ACTIONS)],
+            'followup.levels.*.template' => 'nullable|string|max:191',
         ]);
 
-        $map = [
-            'invoice.allow_custom_number' => 'sales.invoice.allow_custom_number',
-            'invoice.field_profile' => 'sales.invoice.field_profile',
-            'invoice.default_requires_approval' => 'sales.invoice.default_requires_approval',
-            'invoice.approval_expiry_days' => 'sales.invoice.approval_expiry_days',
-            'invoice.reviewer_user_ids' => 'sales.invoice.reviewer_user_ids',
-            'invoice.reviewer_roles' => 'sales.invoice.reviewer_roles',
-            'invoice.auto_send_to_customer_on_post' => 'sales.invoice.auto_send_to_customer_on_post',
-            'invoice.allow_partial_payments' => 'sales.invoice.allow_partial_payments',
-            'invoice.default_payment_terms_days' => 'sales.invoice.default_payment_terms_days',
-            'invoice.default_notes' => 'sales.invoice.default_notes',
-            'invoice.default_terms' => 'sales.invoice.default_terms',
-            'portal.acceptance_enabled' => 'sales.portal.acceptance_enabled',
-            'portal.require_signature' => 'sales.portal.require_signature',
-            'portal.acceptance_link_expiry_days' => 'sales.portal.acceptance_link_expiry_days',
-            'portal.payment_link_expiry_days' => 'sales.portal.payment_link_expiry_days',
-            'delivery.attach_pdf' => 'sales.delivery.attach_pdf',
-            'delivery.cc_internal_email' => 'sales.delivery.cc_internal_email',
-            'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
-            'delivery_order.default_requires_approval' => 'sales.delivery_order.default_requires_approval',
-            'quotation.reviewer_user_ids' => 'sales.quotation.reviewer_user_ids',
-            'quotation.reviewer_roles' => 'sales.quotation.reviewer_roles',
-            'sales_order.reviewer_user_ids' => 'sales.sales_order.reviewer_user_ids',
-            'sales_order.reviewer_roles' => 'sales.sales_order.reviewer_roles',
-            'invoice_threshold.reviewer_user_ids' => 'sales.invoice_threshold.reviewer_user_ids',
-            'invoice_threshold.reviewer_roles' => 'sales.invoice_threshold.reviewer_roles',
-            'delivery_order.reviewer_user_ids' => 'sales.delivery_order.reviewer_user_ids',
-            'delivery_order.reviewer_roles' => 'sales.delivery_order.reviewer_roles',
-            // Issue #553: new-document defaults + pricelist display.
-            'defaults.salesperson_mode' => 'sales.defaults.salesperson_mode',
-            'defaults.team_by_user' => 'sales.defaults.team_by_user',
-            'pricelist.display' => 'sales.pricelist.display',
-        ];
+        // Issue #328: levels are stored ascending by days overdue.
+        if (isset($validated['followup']['levels']) && is_array($validated['followup']['levels'])) {
+            $levels = array_map(fn (array $level) => [
+                'days' => (int) $level['days'],
+                'action' => $level['action'],
+                'template' => trim((string) ($level['template'] ?? '')) ?: \App\Services\SalesSettings::DEFAULT_FOLLOWUP_TEMPLATE,
+            ], $validated['followup']['levels']);
+            usort($levels, fn (array $a, array $b) => $a['days'] <=> $b['days']);
+            $validated['followup']['levels'] = $levels;
+        }
+
+        // Issue #921 (SS5): the field => store-key map comes from the
+        // platform settings registry, so the screen can only persist a
+        // setting that is declared there together with the code that reads
+        // it. (JSON-block fields — tax, cash_rounding — are merged below.)
+        $map = app(\App\Platform\Settings\Contracts\SettingsRegistryContract::class)
+            ->storeKeysForScreen(\App\Platform\Settings\SettingsRegistry::SCREEN_SALES);
 
         // MRD R10.3: tax writes go to the ONE canonical Setting tax block
         // the engine reads. default_tax_rate re-points default_tax_id to a

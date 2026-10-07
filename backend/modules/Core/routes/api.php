@@ -132,6 +132,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // settings payload above stays OWNER/ADMIN-only.
     Route::get('/settings/sales/defaults', [CompanySettingsController::class, 'getSalesDocumentDefaults'])
         ->middleware(RequirePermission::using('sales.view|invoices.write'));
+    // #302 (X1/X2): read-only line tax preview + output tax-code options for
+    // the sales line editor — the same resolver the save path books with.
+    // Same audience and gate as the document defaults above.
+    Route::get('/sales/tax-preview', [\App\Http\Controllers\Api\SalesTaxPreviewController::class, 'show'])
+        ->middleware(RequirePermission::using('sales.view|invoices.write'));
     Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings'])
         ->middleware(RequirePermission::using('settings.view'));
     Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings'])
@@ -359,6 +364,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(RequirePermission::using('invoices.write'));
         Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost'])
             ->middleware(RequirePermission::using('accounting.post'));
+        // Issue #329: Bulk Send (queued bundle per invoice) reuses the single
+        // send-bundle grant; the zip download reuses the invoice PDF render
+        // grant. Both also check every id's source permission + legal entity
+        // in the controller (#611 DocumentRenderAuthorizer).
+        Route::post('/invoices/bulk-send', [InvoiceController::class, 'bulkSend'])
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::get('/invoices/bulk-download', [InvoiceController::class, 'bulkDownload'])
+            ->middleware(RequirePermission::using('document.view'));
 
         // Invoice CRUD — explicit so per-method middleware is precise
         Route::get('/invoices', [InvoiceController::class, 'index'])
@@ -438,6 +451,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // D8 one-click Send bundle: acceptance link + pay-now link + QR in
         // ONE email. Sales action, not an accounting one.
         Route::post('/invoices/{invoice}/send-bundle', [InvoiceController::class, 'sendBundle'])
+            ->middleware(RequirePermission::using('invoices.send'));
+
+        // Issue #328: follow-up reminders for overdue invoices — from the
+        // follow-up report (per customer) and the invoice detail page. A
+        // reminder is an invoice send, so both reuse the invoices.send grant.
+        Route::post('/customers/{customer}/followup-reminders', [\App\Http\Controllers\Api\CustomerFollowupController::class, 'sendForCustomer'])
+            ->whereNumber('customer')
+            ->middleware(RequirePermission::using('invoices.send'));
+        Route::post('/invoices/{invoice}/followup-reminder', [\App\Http\Controllers\Api\CustomerFollowupController::class, 'sendForInvoice'])
+            ->whereNumber('invoice')
             ->middleware(RequirePermission::using('invoices.send'));
 
         // E-sign envelope (Phase E — external provider abstraction)
@@ -1024,6 +1047,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         // Payment Methods (#486 method master)
         Route::get('/payment-methods', [PaymentMethodsController::class, 'index']);
+        // #545 (SET-UX1): edited from Sales Settings → Payments; same
+        // settings.write gate as PUT /settings/sales.
+        Route::put('/payment-methods/{id}', [PaymentMethodsController::class, 'update'])
+            ->whereNumber('id')
+            ->middleware(RequirePermission::using('settings.write'));
 
         // Bank Accounts
         Route::get('/bank-accounts', [BankAccountsController::class, 'index']);
@@ -1187,7 +1215,19 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
             Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
             Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+
+            // Issue #578 (UX3): create the DO / invoice from the case. These
+            // raise sales documents, so the existing sales.write permission is
+            // required on top of medical_cases.write.
+            Route::post('/medical-cases/{id}/create-delivery-order', [MedicalCaseController::class, 'createDeliveryOrder'])
+                ->middleware(RequirePermission::using('sales.write'));
+            Route::post('/medical-cases/{id}/create-invoice', [MedicalCaseController::class, 'createInvoice'])
+                ->middleware(RequirePermission::using('sales.write'));
         });
+
+        // Issue #578 (UX3): completed DO lines that can back a case delivery.
+        Route::get('/medical-cases/{id}/delivery-order-lines', [MedicalCaseController::class, 'deliveryOrderLines'])
+            ->middleware(RequirePermission::using('medical_cases.view'));
     });
 
     // Bonus Schemes (issues #161/#186)

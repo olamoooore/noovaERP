@@ -289,6 +289,8 @@ export interface StockValuationData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string;
     category: string;
     quantity: number;
@@ -307,6 +309,8 @@ export interface StockMovementData {
     date: string;
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    product_short_description?: string | null;
     sku: string;
     type: string;
     quantity: number;
@@ -337,9 +341,12 @@ export interface ReorderData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string;
     current_stock: number;
     reorder_level: number;
+    effective_threshold?: number | null;
     suggested_quantity: number;
     supplier_name?: string;
     last_purchase_price?: number;
@@ -350,6 +357,8 @@ export interface InventoryAgingData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string;
     quantity: number;
     age_days: number;
@@ -370,6 +379,8 @@ export interface InventoryTurnoverData {
   items: Array<{
     product_id: number;
     product_name: string;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     category: string;
     turnover_ratio: number;
     days_in_inventory: number;
@@ -379,12 +390,74 @@ export interface InventoryTurnoverData {
   average_days: number;
 }
 
+// #1020: the client's Sales Records sheet — one row per invoice with Qty/S$
+// column pairs for the chosen grouping and monthly totals.
+export type SalesRecordsGroupBy = 'item_code' | 'brand' | 'supplier' | 'customer' | 'category';
+
+export interface SalesRecordsColumn {
+  key: string;
+  label: string;
+  code?: string | null;
+  short_description?: string | null;
+}
+
+export interface SalesRecordsValue {
+  quantity: number;
+  value: number;
+}
+
+export interface SalesRecordsRow {
+  invoice_id: number;
+  customer_name: string;
+  date: string;
+  month: string;
+  document_number: string;
+  lot_number: string;
+  bonus_scheme: string | null;
+  due_date: string | null;
+  status: string;
+  values: Record<string, SalesRecordsValue>;
+  total: number;
+}
+
+export interface SalesRecordsMonthTotal {
+  month: string;
+  label: string;
+  values: Record<string, SalesRecordsValue>;
+  total: number;
+}
+
+export interface SalesRecordsData {
+  title: string;
+  period: { start_date: string; end_date: string };
+  group_by: SalesRecordsGroupBy;
+  columns: SalesRecordsColumn[];
+  rows: SalesRecordsRow[];
+  month_totals: SalesRecordsMonthTotal[];
+  summary: { total_quantity: number; total_value: number; invoice_count: number };
+  generated_at: string;
+}
+
+export interface SalesRecordsFilters {
+  start_date?: string;
+  end_date?: string;
+  group_by?: SalesRecordsGroupBy;
+  brand_id?: number;
+  supplier_id?: number;
+  customer_id?: number;
+  category_id?: number;
+  product_id?: number;
+  item_code?: string;
+}
+
 // Analytics Types
 export interface SalesByProductData {
   products: Array<{
     id: number | null;
     name: string | null;
     product_name?: string | null;
+    /** #1020: shown under the product name in report tables. */
+    short_description?: string | null;
     sku: string | null;
     total_quantity: number;
     quantity_sold?: number;
@@ -512,6 +585,8 @@ export interface UnbilledDeliveryRow {
   customer_name: string | null;
   product_id: number | null;
   product_name: string | null;
+  /** #1020: shown under the product name in report tables. */
+  short_description?: string | null;
   sku: string | null;
   quantity_ordered: number;
   quantity_delivered: number;
@@ -541,6 +616,45 @@ export interface UnbilledDeliveriesData {
 }
 
 /**
+ * Issue #596: one sales-report row drilled to its source documents
+ * (GET /analytics/sales/drilldown). `net_amount` is the document's share of
+ * the row in the tenant base currency, so the documents add up to the row.
+ */
+export type SalesDrilldownDimension = 'customer' | 'product' | 'category' | 'period';
+
+export interface SalesDrilldownTarget {
+  dimension: SalesDrilldownDimension;
+  /** Row id, 'none' for the walk-in / unlinked / Uncategorized bucket, or the period key. */
+  key: string;
+  /** Only for dimension = period: the trend interval the key belongs to. */
+  interval?: 'day' | 'week' | 'month' | 'year';
+}
+
+export interface SalesDrilldownDocument {
+  document_type: 'invoice' | 'credit_note' | 'pos_order' | 'sales_order';
+  document_id: number;
+  document_number: string;
+  document_date: string | null;
+  channel?: string;
+  customer_id: number | null;
+  customer_name: string;
+  currency_code?: string | null;
+  document_amount?: number;
+  net_amount: number;
+}
+
+export interface SalesDrilldownData {
+  dimension: SalesDrilldownDimension;
+  key: string | null;
+  documents: SalesDrilldownDocument[];
+  summary: {
+    document_count: number;
+    total_net_amount: number;
+    base_currency?: string;
+  };
+}
+
+/**
  * Issue #609: the hospital/doctor performance report
  * (GET /medical-cases/reports/performance). `product_mix.quantity` is units
  * used — delivered from a completed delivery-order line — not allocated.
@@ -562,11 +676,59 @@ export interface MedicalCasePerformanceDoctorRow extends MedicalCasePerformanceH
 export interface MedicalCasePerformanceProductRow {
   product_id: number | null;
   product_name: string | null;
+  /** #1020: shown under the product name in report tables. */
+  short_description?: string | null;
   sku: string | null;
   quantity: number;
 }
 
 export type MedicalCaseDateField = 'case_date' | 'procedure_date';
+
+/**
+ * Issue #608: one Product usage pivot row at the finest grain — legal entity
+ * → hospital group → hospital → doctor × product. Units used = delivered from
+ * a completed DO line; paid = used − FOC; net_value = linked invoice lines net
+ * of credit notes in base currency (#574). case_ids lets the client count
+ * distinct cases in subtotals and drill down.
+ */
+export interface MedicalCaseUsageRow {
+  legal_entity_id: number | null;
+  legal_entity_name: string | null;
+  hospital_group_id: number | null;
+  hospital_group_name: string | null;
+  hospital_id: number;
+  hospital_name: string | null;
+  doctor_contact_id: number | null;
+  doctor_name: string;
+  product_id: number | null;
+  product_name: string | null;
+  /** #1020: shown under the product name in report tables. */
+  short_description?: string | null;
+  sku: string | null;
+  category_id: number | null;
+  category_name: string | null;
+  used_units: number;
+  paid_units: number;
+  foc_units: number;
+  net_value: number;
+  case_count: number;
+  case_ids: number[];
+}
+
+/** Issue #608: drill-down case; patient fields are masked server-side without medical_cases.phi.view. */
+export interface MedicalCaseUsageCase {
+  id: number;
+  case_no: string | null;
+  status: string;
+  case_date: string | null;
+  procedure_date: string | null;
+  hospital_id: number;
+  hospital_name: string | null;
+  doctor_contact_id: number | null;
+  doctor_name: string;
+  patient_name: string | null;
+  patient_reference: string | null;
+}
 
 export interface MedicalCasePerformanceData {
   period: { from: string; to: string; date_field: MedicalCaseDateField };
@@ -574,6 +736,11 @@ export interface MedicalCasePerformanceData {
   hospital_totals: MedicalCasePerformanceHospitalRow[];
   by_doctor: MedicalCasePerformanceDoctorRow[];
   product_mix: MedicalCasePerformanceProductRow[];
+  usage?: {
+    rows: MedicalCaseUsageRow[];
+    cases: MedicalCaseUsageCase[];
+    phi_masked: boolean;
+  };
 }
 
 export interface SalesByCategoryData {

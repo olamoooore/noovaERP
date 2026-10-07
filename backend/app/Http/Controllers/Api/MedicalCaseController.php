@@ -23,8 +23,10 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\StockReservation;
 use Modules\Inventory\Services\StockReservationService;
+use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\DeliveryOrderLine;
 use Modules\Sales\Models\SalesOrderLine;
+use Modules\Sales\Services\DeliveryOrderService;
 
 class MedicalCaseController extends Controller
 {
@@ -373,7 +375,7 @@ class MedicalCaseController extends Controller
             'items.product',
             'items.salesOrderItem',
             'items.invoiceItem',
-            'items.deliveryOrderItem',
+            'items.deliveryOrderItem.deliveryOrder',
             'doctorContact',
             'requestorContact',
             'buyerContact',
@@ -393,7 +395,35 @@ class MedicalCaseController extends Controller
             return response()->json(['message' => 'Medical case not found'], 404);
         }
 
+        // Issue #578 (UX3): the linked DO(s) and invoice, with their status,
+        // for the chips on the case header.
+        $case->setAttribute('linked_delivery_orders', $this->linkedDeliveryOrders($case));
+
         return response()->json($case);
+    }
+
+    /**
+     * Issue #578: the distinct delivery orders the case lines are linked to.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function linkedDeliveryOrders(MedicalCase $case): array
+    {
+        $case->loadMissing('items.deliveryOrderItem.deliveryOrder');
+
+        return $case->items
+            ->map(fn (MedicalCaseItem $item) => $item->deliveryOrderItem?->deliveryOrder)
+            ->filter()
+            ->unique('id')
+            ->sortBy('id')
+            ->map(fn (DeliveryOrder $order) => [
+                'id' => $order->id,
+                'delivery_order_number' => $order->delivery_order_number,
+                'status' => $order->status,
+                'delivery_date' => $order->delivery_date,
+            ])
+            ->values()
+            ->all();
     }
 
     public function update(Request $request, $id): JsonResponse
@@ -778,6 +808,314 @@ class MedicalCaseController extends Controller
         return 'delivered';
     }
 
+    /**
+     * Issue #578 (UX3): "Create DO" from the case lines. The delivery order is
+     * created through DeliveryOrderService (one per linked sales order) for
+     * each line's undelivered allocation, and every case line is linked to its
+     * new DO line. Nothing is delivered yet: once the DO is completed the
+     * delivery is recorded against that line (#562), which is what earns
+     * usage and moves the case status.
+     */
+    public function createDeliveryOrder(Request $request, $id): JsonResponse
+    {
+        $case = $this->findScopedCase($request, $id, [
+            'items.salesOrderItem.salesOrder',
+            'items.deliveryOrderItem.deliveryOrder',
+        ]);
+
+        if (! $case) {
+            return response()->json(['message' => 'Medical case not found'], 404);
+        }
+
+        if (! in_array($case->status, ['allocated', 'partially_delivered'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'A delivery order can only be created for an allocated or partially delivered case.',
+            ]);
+        }
+
+        $groups = [];
+
+        foreach ($case->items as $item) {
+            $remaining = round((float) $item->allocated_qty - (float) $item->delivered_qty, 4);
+
+            if ($remaining <= 0) {
+                continue;
+            }
+
+            $linkedOrder = $item->deliveryOrderItem?->deliveryOrder;
+
+            if ($linkedOrder && ! $linkedOrder->isDone() && ! $linkedOrder->isCancelled()) {
+                throw ValidationException::withMessages([
+                    'items' => "Case line {$item->id} is already on open delivery order {$linkedOrder->delivery_order_number}. Complete or cancel it first.",
+                ]);
+            }
+
+            $order = $item->salesOrderItem?->salesOrder;
+
+            if (! $order) {
+                throw ValidationException::withMessages([
+                    'items' => "Case line {$item->id} has no linked sales order to deliver from.",
+                ]);
+            }
+
+            $groups[$order->id]['order'] = $order;
+            $groups[$order->id]['items'][] = ['item' => $item, 'quantity' => $remaining];
+        }
+
+        if ($groups === []) {
+            throw ValidationException::withMessages([
+                'items' => 'Every case line is already delivered; there is nothing left to put on a delivery order.',
+            ]);
+        }
+
+        try {
+            $deliveryOrders = DB::transaction(function () use ($case, $groups) {
+                $created = [];
+
+                foreach ($groups as $group) {
+                    $deliveryOrder = app(DeliveryOrderService::class)->createDeliveryOrder($group['order'], [
+                        'lines' => array_map(fn (array $entry) => [
+                            'sales_order_line_id' => (int) $entry['item']->sales_order_item_id,
+                            'quantity_delivered' => $entry['quantity'],
+                        ], $group['items']),
+                        'notes' => "Medical case {$case->case_no}",
+                    ]);
+
+                    // Link each case line to the DO line created for it (same
+                    // sales order line, consumed in submission order).
+                    $unused = $deliveryOrder->lines->sortBy('id')->values()->all();
+
+                    foreach ($group['items'] as $entry) {
+                        foreach ($unused as $key => $line) {
+                            if ((int) $line->sales_order_line_id === (int) $entry['item']->sales_order_item_id) {
+                                $entry['item']->update(['delivery_order_item_id' => $line->id]);
+                                unset($unused[$key]);
+
+                                break;
+                            }
+                        }
+                    }
+
+                    $created[] = $deliveryOrder;
+                }
+
+                return $created;
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            // DeliveryOrderService signals business-rule refusals (order
+            // status, remaining quantity, shipping policy) as \Exception —
+            // the same 422 mapping as DeliveryOrderController::store.
+            return response()->json([
+                'message' => 'Failed to create the delivery order: '.$e->getMessage(),
+                'errors' => ['delivery_order' => [$e->getMessage()]],
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Delivery order created from the medical case',
+            'data' => [
+                'delivery_orders' => array_map(fn (DeliveryOrder $order) => [
+                    'id' => $order->id,
+                    'delivery_order_number' => $order->delivery_order_number,
+                    'status' => $order->status,
+                ], $deliveryOrders),
+                'case' => $case->fresh()->load(['customer', 'items.product']),
+            ],
+        ], 201);
+    }
+
+    /**
+     * Issue #578 (UX3): "Link to DO line" — the completed delivery order
+     * lines of the case customer that could back each case line's delivery
+     * (same product, delivered quantity not yet claimed by other cases).
+     * Keyed by case item id.
+     */
+    public function deliveryOrderLines(Request $request, $id): JsonResponse
+    {
+        $case = $this->findScopedCase($request, $id, ['items']);
+
+        if (! $case) {
+            return response()->json(['message' => 'Medical case not found'], 404);
+        }
+
+        $data = [];
+
+        foreach ($case->items as $item) {
+            $lines = DeliveryOrderLine::query()
+                ->with('deliveryOrder:id,delivery_order_number,delivery_date,status,customer_id')
+                ->where('product_id', $item->product_id)
+                ->where(fn ($query) => $query->whereNull('line_type')->orWhere('line_type', 'product'))
+                ->whereHas('deliveryOrder', fn ($query) => $query
+                    ->where('status', 'done')
+                    ->where('customer_id', $case->customer_id))
+                ->latest('id')
+                ->limit(50)
+                ->get();
+
+            $claimed = MedicalCaseItem::query()
+                ->whereIn('delivery_order_item_id', $lines->pluck('id')->all())
+                ->where('id', '!=', $item->id)
+                ->groupBy('delivery_order_item_id')
+                ->selectRaw('delivery_order_item_id, SUM(delivered_qty) as total_delivered')
+                ->pluck('total_delivered', 'delivery_order_item_id');
+
+            $data[$item->id] = $lines
+                ->map(function (DeliveryOrderLine $line) use ($item, $claimed) {
+                    $ownLinked = (int) $item->delivery_order_item_id === (int) $line->id
+                        ? (float) $item->delivered_qty
+                        : 0.0;
+
+                    return [
+                        'id' => $line->id,
+                        'delivery_order_id' => $line->delivery_order_id,
+                        'delivery_order_number' => $line->deliveryOrder?->delivery_order_number,
+                        'delivery_date' => $line->deliveryOrder?->delivery_date,
+                        'quantity_delivered' => (float) $line->quantity_delivered,
+                        'remaining_qty' => round((float) $line->quantity_delivered - (float) ($claimed[$line->id] ?? 0) - $ownLinked, 4),
+                        'is_linked' => (int) $item->delivery_order_item_id === (int) $line->id,
+                    ];
+                })
+                ->filter(fn (array $line) => $line['remaining_qty'] > 0)
+                ->values()
+                ->all();
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Issue #578 (UX3): "Create invoice" from the case. Bills each chargeable
+     * case line's delivered-but-uninvoiced quantity from the completed DO
+     * line it was delivered from, through the shared delivery-order
+     * invoicing path (DeliveryOrderService::createInvoiceFromDeliveryLines:
+     * tax, terms, currency, DO/SO invoiced quantities). The new invoice lines
+     * are then linked to the case lines through the same rules as linking an
+     * existing invoice (#566). FOC lines are redeemed free of charge and are
+     * not billed (#573 fulfilment rule).
+     */
+    public function createInvoice(Request $request, $id): JsonResponse
+    {
+        $case = $this->findScopedCase($request, $id, ['items.deliveryOrderItem.deliveryOrder']);
+
+        if (! $case) {
+            return response()->json(['message' => 'Medical case not found'], 404);
+        }
+
+        // Same precondition as linking an invoice (#573 MC8).
+        if (! in_array($case->status, ['partially_delivered', 'delivered'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'Case must be partially delivered or delivered before invoicing.',
+            ]);
+        }
+
+        $deliveryService = app(DeliveryOrderService::class);
+        $entries = [];
+        $billedItems = [];
+
+        foreach ($case->items as $item) {
+            if ($item->is_foc) {
+                continue;
+            }
+
+            $toBill = round((float) $item->delivered_qty - (float) $item->invoiced_qty, 4);
+
+            if ($toBill <= 0) {
+                continue;
+            }
+
+            if (round((float) $item->invoiced_qty, 4) > 0) {
+                // A case line maps to a single invoice line (#566).
+                throw ValidationException::withMessages([
+                    'items' => "Case line {$item->id} is already partly invoiced; link the remaining quantity to an existing invoice instead.",
+                ]);
+            }
+
+            $line = $item->deliveryOrderItem;
+            $deliveryOrder = $line?->deliveryOrder;
+
+            if (! $line || ! $deliveryOrder || ! $deliveryService->isInvoiceableStatus($deliveryOrder)) {
+                throw ValidationException::withMessages([
+                    'items' => "Case line {$item->id} has no completed delivery order line to bill from.",
+                ]);
+            }
+
+            if ($toBill > $deliveryOrder->invoiceableQuantityForLine($line)) {
+                throw ValidationException::withMessages([
+                    'items' => "Delivery order {$deliveryOrder->delivery_order_number} has already been invoiced for case line {$item->id}; link that invoice instead.",
+                ]);
+            }
+
+            $entries[] = ['line' => $line, 'quantity' => $toBill];
+            $billedItems[] = $item;
+        }
+
+        if ($entries === []) {
+            throw ValidationException::withMessages([
+                'items' => 'There is nothing left to invoice on this case.',
+            ]);
+        }
+
+        // Same approval gate as DO "Create Invoice", per delivery order.
+        foreach (collect($entries)->map(fn (array $entry) => $entry['line']->deliveryOrder)->unique('id') as $deliveryOrder) {
+            if ($gate = $deliveryService->requestInvoiceApprovalIfNeeded($deliveryOrder, $request->user())) {
+                return response()->json([
+                    'message' => "Approval required before delivery order {$deliveryOrder->delivery_order_number} can be invoiced",
+                    'requires_approval' => true,
+                    'approval_request' => $gate['approval_request'],
+                    'threshold' => $gate['threshold'],
+                ], 202);
+            }
+        }
+
+        try {
+            $invoice = DB::transaction(function () use ($case, $deliveryService, $entries, $billedItems) {
+                $invoice = $deliveryService->createInvoiceFromDeliveryLines($entries);
+
+                // Invoice lines are created in the order of $entries.
+                $invoiceLines = InvoiceLine::query()
+                    ->where('invoice_id', $invoice->id)
+                    ->where(fn ($query) => $query->whereNull('line_type')->orWhere('line_type', 'product'))
+                    ->orderBy('id')
+                    ->get()
+                    ->values();
+
+                $payload = [];
+                foreach ($billedItems as $index => $item) {
+                    $payload[] = [
+                        'id' => $item->id,
+                        'invoiced_qty' => $entries[$index]['quantity'],
+                        'invoice_item_id' => $invoiceLines[$index]->id,
+                    ];
+                }
+
+                $this->linkInvoiceLines($case, (int) $invoice->id, $payload);
+
+                return $invoice;
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => 'Failed to create the invoice: '.$e->getMessage(),
+                'errors' => ['invoice' => [$e->getMessage()]],
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Invoice created from the medical case',
+            'data' => [
+                'invoice' => [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'status' => $invoice->status,
+                ],
+                'case' => $case->fresh()->load(['customer', 'items.product', 'invoice']),
+            ],
+        ], 201);
+    }
+
     public function invoice(Request $request, $id): JsonResponse
     {
         $case = $this->findScopedCase($request, $id, ['items']);
@@ -808,87 +1146,7 @@ class MedicalCaseController extends Controller
         $this->assertLinkableInvoice((int) $validated['invoice_id'], (int) $case->customer_id);
 
         try {
-            DB::transaction(function () use ($case, $validated) {
-                $items = collect($validated['items'])->map(function ($itemData) use ($case) {
-                    return MedicalCaseItem::where('medical_case_id', $case->id)
-                        ->where('id', $itemData['id'])
-                        ->firstOrFail();
-                });
-
-                $invoiceLineIds = collect($validated['items'])->pluck('invoice_item_id')->unique()->values()->all();
-
-                $invoiceLines = InvoiceLine::query()
-                    ->whereIn('id', $invoiceLineIds)
-                    ->lockForUpdate()
-                    ->get()
-                    ->keyBy('id');
-
-                // Quantities other live case lines already invoiced against
-                // the same invoice lines (this payload's items excluded).
-                $invoicedElsewhere = MedicalCaseItem::query()
-                    ->whereIn('invoice_item_id', $invoiceLineIds)
-                    ->whereNotIn('id', $items->pluck('id')->all())
-                    ->whereHas('medicalCase', fn ($query) => $query->where('status', '!=', 'cancelled'))
-                    ->groupBy('invoice_item_id')
-                    ->selectRaw('invoice_item_id, SUM(invoiced_qty) as total_invoiced')
-                    ->pluck('total_invoiced', 'invoice_item_id');
-
-                $invoicedInPayload = [];
-
-                foreach ($validated['items'] as $index => $itemData) {
-                    $item = $items[$index];
-                    $quantity = (float) $itemData['invoiced_qty'];
-
-                    if (round($quantity, 4) > round((float) $item->delivered_qty, 4)) {
-                        throw ValidationException::withMessages([
-                            "items.{$index}.invoiced_qty" => "The invoiced quantity cannot exceed the delivered quantity of {$item->delivered_qty} for this case line.",
-                        ]);
-                    }
-
-                    $invoiceLine = $invoiceLines->get((int) $itemData['invoice_item_id']);
-
-                    if (! $invoiceLine || (int) $invoiceLine->invoice_id !== (int) $validated['invoice_id']) {
-                        throw ValidationException::withMessages([
-                            "items.{$index}.invoice_item_id" => 'The invoice line must belong to the selected invoice.',
-                        ]);
-                    }
-
-                    if (($invoiceLine->line_type ?? 'product') !== 'product' || (int) $invoiceLine->product_id !== (int) $item->product_id) {
-                        throw ValidationException::withMessages([
-                            "items.{$index}.invoice_item_id" => 'The invoice line must be for the same product as the case line.',
-                        ]);
-                    }
-
-                    $alreadyInvoiced = (float) ($invoicedElsewhere[$invoiceLine->id] ?? 0)
-                        + (float) ($invoicedInPayload[$invoiceLine->id] ?? 0);
-                    $openQty = round((float) $invoiceLine->quantity - $alreadyInvoiced, 4);
-
-                    if (round($quantity, 4) > $openQty) {
-                        throw ValidationException::withMessages([
-                            "items.{$index}.invoiced_qty" => "The invoiced quantity exceeds the invoice line's remaining quantity of {$openQty}.",
-                        ]);
-                    }
-
-                    $invoicedInPayload[$invoiceLine->id] = (float) ($invoicedInPayload[$invoiceLine->id] ?? 0) + $quantity;
-
-                    $item->update([
-                        'invoiced_qty' => $itemData['invoiced_qty'],
-                        'invoice_item_id' => $invoiceLine->id,
-                    ]);
-                }
-
-                $case->update(['invoice_id' => $validated['invoice_id']]);
-
-                // Issue #573 (MC8): the case is `invoiced` only once every used
-                // line is fully delivered and fully invoiced (FOC lines are
-                // redeemed free of charge). A partial invoice leaves the
-                // derived delivery status in place.
-                $fresh = $case->fresh('items');
-
-                if ($fresh->status === 'delivered' && $fresh->fulfilmentBlocker() === null) {
-                    app(SalesWorkflowService::class)->transition($fresh, 'invoice');
-                }
-            });
+            DB::transaction(fn () => $this->linkInvoiceLines($case, (int) $validated['invoice_id'], $validated['items']));
 
             return response()->json([
                 'message' => 'Medical case invoiced successfully',
@@ -901,6 +1159,103 @@ class MedicalCaseController extends Controller
                 'message' => 'Failed to invoice medical case',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Issue #566 (MC4): map each case line to a line of the invoice (same
+     * product, within the invoice line's remaining quantity and the case
+     * line's delivered quantity), link the invoice to the case and — once
+     * every used line is delivered and invoiced — move the case to
+     * `invoiced` through the WorkflowEngine (#573).
+     *
+     * Issue #578: shared by the "link an existing invoice" route and the
+     * case "Create invoice" route. Runs inside the caller's transaction.
+     *
+     * @param  array<int, array{id: int|string, invoiced_qty: int|float|string, invoice_item_id: int|string}>  $itemsPayload
+     *
+     * @throws ValidationException
+     */
+    private function linkInvoiceLines(MedicalCase $case, int $invoiceId, array $itemsPayload): void
+    {
+        $items = collect($itemsPayload)->map(function ($itemData) use ($case) {
+            return MedicalCaseItem::where('medical_case_id', $case->id)
+                ->where('id', $itemData['id'])
+                ->firstOrFail();
+        });
+
+        $invoiceLineIds = collect($itemsPayload)->pluck('invoice_item_id')->unique()->values()->all();
+
+        $invoiceLines = InvoiceLine::query()
+            ->whereIn('id', $invoiceLineIds)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        // Quantities other live case lines already invoiced against
+        // the same invoice lines (this payload's items excluded).
+        $invoicedElsewhere = MedicalCaseItem::query()
+            ->whereIn('invoice_item_id', $invoiceLineIds)
+            ->whereNotIn('id', $items->pluck('id')->all())
+            ->whereHas('medicalCase', fn ($query) => $query->where('status', '!=', 'cancelled'))
+            ->groupBy('invoice_item_id')
+            ->selectRaw('invoice_item_id, SUM(invoiced_qty) as total_invoiced')
+            ->pluck('total_invoiced', 'invoice_item_id');
+
+        $invoicedInPayload = [];
+
+        foreach ($itemsPayload as $index => $itemData) {
+            $item = $items[$index];
+            $quantity = (float) $itemData['invoiced_qty'];
+
+            if (round($quantity, 4) > round((float) $item->delivered_qty, 4)) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.invoiced_qty" => "The invoiced quantity cannot exceed the delivered quantity of {$item->delivered_qty} for this case line.",
+                ]);
+            }
+
+            $invoiceLine = $invoiceLines->get((int) $itemData['invoice_item_id']);
+
+            if (! $invoiceLine || (int) $invoiceLine->invoice_id !== $invoiceId) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.invoice_item_id" => 'The invoice line must belong to the selected invoice.',
+                ]);
+            }
+
+            if (($invoiceLine->line_type ?? 'product') !== 'product' || (int) $invoiceLine->product_id !== (int) $item->product_id) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.invoice_item_id" => 'The invoice line must be for the same product as the case line.',
+                ]);
+            }
+
+            $alreadyInvoiced = (float) ($invoicedElsewhere[$invoiceLine->id] ?? 0)
+                + (float) ($invoicedInPayload[$invoiceLine->id] ?? 0);
+            $openQty = round((float) $invoiceLine->quantity - $alreadyInvoiced, 4);
+
+            if (round($quantity, 4) > $openQty) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.invoiced_qty" => "The invoiced quantity exceeds the invoice line's remaining quantity of {$openQty}.",
+                ]);
+            }
+
+            $invoicedInPayload[$invoiceLine->id] = (float) ($invoicedInPayload[$invoiceLine->id] ?? 0) + $quantity;
+
+            $item->update([
+                'invoiced_qty' => $itemData['invoiced_qty'],
+                'invoice_item_id' => $invoiceLine->id,
+            ]);
+        }
+
+        $case->update(['invoice_id' => $invoiceId]);
+
+        // Issue #573 (MC8): the case is `invoiced` only once every used
+        // line is fully delivered and fully invoiced (FOC lines are
+        // redeemed free of charge). A partial invoice leaves the
+        // derived delivery status in place.
+        $fresh = $case->fresh('items');
+
+        if ($fresh->status === 'delivered' && $fresh->fulfilmentBlocker() === null) {
+            app(SalesWorkflowService::class)->transition($fresh, 'invoice');
         }
     }
 
@@ -935,6 +1290,8 @@ class MedicalCaseController extends Controller
 
     /**
      * Issue #185: hospital/doctor performance report.
+     * Issue #608: also the Product usage pivot (`usage`), with optional
+     * filters and PHI masking on the drill-down cases.
      */
     public function performanceReport(Request $request): JsonResponse
     {
@@ -942,6 +1299,13 @@ class MedicalCaseController extends Controller
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
             'date_field' => 'nullable|in:case_date,procedure_date',
+            'legal_entity_id' => 'nullable|integer',
+            'hospital_group_id' => 'nullable|integer',
+            'customer_id' => 'nullable|integer',
+            'doctor_contact_id' => 'nullable|integer',
+            'salesperson_id' => 'nullable|integer',
+            'product_id' => 'nullable|integer',
+            'category_id' => 'nullable|integer',
         ]);
 
         $report = app(\App\Services\MedicalCaseReportingService::class)->performance(
@@ -950,6 +1314,13 @@ class MedicalCaseController extends Controller
             $validated['date_field'] ?? 'case_date',
             // Issue #575 (MC11): report only the requester's legal entities.
             $this->accessibleEntityIds($request),
+            array_map('intval', array_filter(\Illuminate\Support\Arr::only($validated, [
+                'legal_entity_id', 'hospital_group_id', 'customer_id', 'doctor_contact_id',
+                'salesperson_id', 'product_id', 'category_id',
+            ]), fn ($value) => $value !== null && $value !== '')),
+            // Issue #608: patient names in the drill-down are masked unless
+            // the caller holds medical_cases.phi.view (#567).
+            \App\Http\Middleware\RequirePermission::allows($request, 'medical_cases.phi.view'),
         );
 
         return response()->json(['data' => $report]);

@@ -309,6 +309,8 @@ class CustomerController extends Controller
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
+            // Issue #324: default term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'price_list_id' => 'nullable|integer',
 
             // Personal
@@ -518,6 +520,8 @@ class CustomerController extends Controller
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
+            // Issue #324: default term from the payment-terms master.
+            'payment_term_id' => 'nullable|integer|exists:payment_terms,id',
             'price_list_id' => 'nullable|integer',
 
             // Personal
@@ -1267,9 +1271,17 @@ class CustomerController extends Controller
             return $this->customerNotFound();
         }
 
-        return response()->json(
-            app(\App\Services\AgedReceivablesService::class)->getCustomerContext((int) $id)
+        $context = app(\App\Services\AgedReceivablesService::class)->getCustomerContext((int) $id);
+
+        // Issue #326: the credit verdict invoice create/post enforce, on the
+        // same base-currency open AR the strip shows.
+        $customer = Customer::withTrashed()->findOrFail((int) $id);
+        $credit = app(\Modules\Sales\Services\CreditCheckService::class);
+        $context['credit_check'] = $credit->invoiceVerdict(
+            $credit->checkCustomer($customer, openArBase: (float) $context['outstanding'])
         );
+
+        return response()->json($context);
     }
 
     /**

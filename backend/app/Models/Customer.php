@@ -47,6 +47,8 @@ class Customer extends Model
         'credit_limit',
         'customer_group',
         'payment_terms',
+        // Issue #324: default master payment term (customer default → document).
+        'payment_term_id',
         'total_outstanding',
         'credit_balance',
         'price_list_id',

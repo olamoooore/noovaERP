@@ -47,7 +47,21 @@ class SalesOrderRecurrenceController extends Controller
             'start_date' => 'required|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'max_cycles' => 'nullable|integer|min:1',
+            // Issue #330: a schedule can generate invoices (optionally posted
+            // and sent) instead of orders; the default stays 'order'.
+            'document_type' => 'nullable|in:'.implode(',', SalesOrderRecurrence::DOCUMENT_TYPES),
+            'auto_post' => 'nullable|boolean',
+            'auto_send' => 'nullable|boolean',
         ]);
+
+        $generatesInvoices = ($validated['document_type'] ?? SalesOrderRecurrence::DOCUMENT_ORDER) === SalesOrderRecurrence::DOCUMENT_INVOICE;
+        foreach (['auto_post', 'auto_send'] as $option) {
+            if (! $generatesInvoices && ! empty($validated[$option])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    $option => 'Auto-post and auto-send apply only to schedules that generate invoices.',
+                ]);
+            }
+        }
 
         $validated['created_by'] = \Illuminate\Support\Facades\Auth::id();
 

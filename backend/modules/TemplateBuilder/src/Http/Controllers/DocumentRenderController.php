@@ -13,6 +13,7 @@ use Modules\TemplateBuilder\Models\DocumentTemplate;
 use Modules\TemplateBuilder\Platform\ResolutionResult;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
 use Modules\TemplateBuilder\Services\DataSource\DocumentResolutionContext;
+use Modules\TemplateBuilder\Services\DocumentRenderAuthorizer;
 use Modules\TemplateBuilder\Services\DocumentTemplateService;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -41,6 +42,7 @@ class DocumentRenderController extends Controller
         private readonly PdfGenerationServiceContract $pdf,
         private readonly DataSourceRegistry $dataSources,
         private readonly DocumentTemplateService $templates,
+        private readonly DocumentRenderAuthorizer $authorizer,
     ) {}
 
     public function invoicePdf(Request $request, string $id): Response
@@ -129,12 +131,30 @@ class DocumentRenderController extends Controller
 
     public function proformaInvoicePdf(Request $request, string $id): Response
     {
-        return $this->renderDocument('sales_proforma_invoice', $id, $request, 'proforma-'.$id.'.pdf');
+        return $this->proformaDisabled('sales_proforma_invoice')
+            ?? $this->renderDocument('sales_proforma_invoice', $id, $request, 'proforma-'.$id.'.pdf');
     }
 
     public function proformaInvoiceHtml(Request $request, string $id): Response
     {
-        return $this->renderDocument('sales_proforma_invoice', $id, $request, null, 'html');
+        return $this->proformaDisabled('sales_proforma_invoice')
+            ?? $this->renderDocument('sales_proforma_invoice', $id, $request, null, 'html');
+    }
+
+    /**
+     * Issue #551: Sales Settings → Sales Orders "Pro-forma invoice". When the
+     * tenant switched it off, no pro-forma invoice is rendered.
+     */
+    private function proformaDisabled(string $documentType): ?JsonResponse
+    {
+        if ($documentType !== 'sales_proforma_invoice' || app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled()) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'Pro-forma invoices are turned off in Sales Settings.',
+            'code' => 'PROFORMA_DISABLED',
+        ], 403);
     }
 
     public function creditNotePdf(Request $request, string $id): Response
@@ -219,6 +239,10 @@ class DocumentRenderController extends Controller
             return response()->json(['message' => "No render path for document type '{$documentType}'."], 404);
         }
 
+        if ($disabled = $this->proformaDisabled($documentType)) {
+            return $disabled;
+        }
+
         $denied = $this->authorizeRender($documentType, $id, $request);
         if ($denied !== null) {
             return $denied;
@@ -286,45 +310,12 @@ class DocumentRenderController extends Controller
 
     /**
      * Enforce the source document's own permission and legal-entity scope
-     * before any output is generated.
-     *
-     * A non-existent id answers exactly like an id outside the caller's
-     * entity (same 403 + same body) so the endpoint is not an existence
-     * oracle.
+     * before any output is generated (issue #611). The shared authorizer is
+     * also used by the template editor's real-document preview (#620).
      */
     private function authorizeRender(string $type, string $id, Request $request): ?Response
     {
-        $source = $this->dataSources->make($type);
-        $permission = $source->permission();
-
-        if (! \App\Http\Middleware\RequirePermission::allows($request, $permission)) {
-            return response()->json([
-                'message' => 'You do not have permission to perform this action.',
-                'required_permission' => $permission,
-            ], 403);
-        }
-
-        try {
-            $source->load($id);
-        } catch (ModelNotFoundException) {
-            return response()->json(['message' => 'Document not found.'], 403);
-        }
-
-        $documentEntityId = $source->legalEntityId();
-        $requestEntityId = $request->attributes->get('legal_entity_id');
-
-        // Entity scoping mirrors the platform's EnsureEntityAccess convention:
-        // when the request has an entity context and the document's entity is
-        // resolvable, they must match. Documents with no reachable entity link
-        // (or requests without an entity context — the single-entity tenant
-        // shortcut) are not blocked here.
-        if ($documentEntityId !== null
-            && $requestEntityId !== null
-            && (int) $documentEntityId !== (int) $requestEntityId) {
-            return response()->json(['message' => 'Document not found.'], 403);
-        }
-
-        return null;
+        return $this->authorizer->deny($type, $id, $request);
     }
 
     /**

@@ -189,7 +189,11 @@ final class BlockRenderer implements TemplateRendererInterface
         foreach ($rows as $index => $row) {
             $lineType = (string) ($row['line_type'] ?? 'product');
             if (in_array($lineType, ['note', 'section'], true)) {
-                $description = htmlspecialchars((string) ($row['description'] ?? ''), ENT_QUOTES);
+                // #1004: sanitized rich text renders verbatim; plain text is escaped.
+                $descriptionHtml = trim((string) ($row['description_html'] ?? ''));
+                $description = $descriptionHtml !== ''
+                    ? $descriptionHtml
+                    : htmlspecialchars((string) ($row['description'] ?? ''), ENT_QUOTES);
                 $textStyle = $lineType === 'section'
                     ? 'font-weight:700;background:#f3f4f6;color:#111827;'
                     : 'font-style:italic;background:#f9fafb;color:#6b7280;';
@@ -222,7 +226,15 @@ final class BlockRenderer implements TemplateRendererInterface
                 : '';
             $body .= '<tr class="'.$class.'"'.$markers.'>';
             foreach ($columns as $col) {
-                $body .= '<td style="'.$this->tdStyle($col).'">'.$this->renderCell($col, $row).'</td>';
+                $cell = $this->renderCell($col, $row);
+                // #1004: the description column renders the sanitized rich text.
+                if (($col['field'] ?? '') === 'description') {
+                    $rich = trim((string) ($row['description_html'] ?? ''));
+                    if ($rich !== '') {
+                        $cell = $rich;
+                    }
+                }
+                $body .= '<td style="'.$this->tdStyle($col).'">'.$cell.'</td>';
             }
             $body .= '</tr>';
         }
@@ -298,6 +310,14 @@ final class BlockRenderer implements TemplateRendererInterface
     /** @param array<string,mixed> $col */
     private function renderCell(array $col, array $row): string
     {
+        // Issue #621: a column with `foc_display: list_value` prints a FOC
+        // line as its list value struck through, followed by "FOC".
+        if (($col['foc_display'] ?? null) === 'list_value' && ! empty($row['is_foc'])) {
+            $listValue = $this->resolver->formatValue($row['list_value'] ?? 0, $col['format'] ?? 'money');
+
+            return '<s>'.htmlspecialchars((string) $listValue, ENT_QUOTES).'</s> FOC';
+        }
+
         $field = $col['field'] ?? '';
         $value = $field === 'index' ? ($row['index'] ?? '') : ($row[$field] ?? '');
         $value = $this->resolver->formatValue($value, $col['format'] ?? null);

@@ -49,6 +49,16 @@ import { DEFAULT_PIVOT_GROUPING } from './salesPivotRows';
 import { UnbilledDeliveriesView } from './UnbilledDeliveriesView';
 import { ProductUsageView } from './ProductUsageView';
 import { SavedViewBar, type SavedViewApplied } from './SavedViewBar';
+import { SalesDrilldownPanel, type SalesDrilldownRequest } from './SalesDrilldownPanel';
+import {
+  PERIOD_PRESETS,
+  activeFilterChips,
+  activePeriodPreset,
+  periodPresetRange,
+  type ChipFilterKey,
+} from './salesFilterBar';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 
 interface SalesAnalyticsPageProps {
   /** Open on the Product tab (kept for callers of the old product-only page). */
@@ -124,6 +134,48 @@ const FilterSelect = ({
     </Select>
   </div>
 );
+
+/**
+ * Issue #596: a report row's label as a drill-down trigger (opens the source
+ * documents panel), with the record's own page one click away when it has
+ * one.
+ */
+function DrillCell({
+  label,
+  onDrill,
+  recordHref,
+}: {
+  label: string;
+  onDrill: () => void;
+  recordHref?: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        aria-label={`Show documents for ${label}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDrill();
+        }}
+        className="text-left font-medium text-primary hover:underline"
+      >
+        {label}
+      </button>
+      {recordHref && (
+        <Link
+          to={recordHref}
+          aria-label={`Open ${label}`}
+          title={`Open ${label}`}
+          onClick={(event) => event.stopPropagation()}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Icon icon="solar:arrow-right-up-linear" className="h-3.5 w-3.5" />
+        </Link>
+      )}
+    </span>
+  );
+}
 
 /** True revenue-weighted AOV; averaging per-row AOVs skews large order counts. */
 const aov = (revenue: number, orders: number) => (orders > 0 ? revenue / orders : 0);
@@ -232,6 +284,12 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   // Issue #598: the pivot's grouping is page state so a saved view can carry
   // and restore it (row/column dimensions and measures).
   const [pivotGrouping, setPivotGrouping] = useState<SalesViewGrouping>(DEFAULT_PIVOT_GROUPING);
+  // Issue #596: the row whose source documents the side panel shows.
+  const [drilldown, setDrilldown] = useState<SalesDrilldownRequest | null>(null);
+  // Issue #597: names of what was picked in the search pickers (for chips)
+  // and whether the secondary filters are expanded.
+  const [pickedFilterLabels, setPickedFilterLabels] = useState<Partial<Record<ChipFilterKey, string>>>({});
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
 
   const productRef = useRef<HTMLDivElement>(null);
   const customerRef = useRef<HTMLDivElement>(null);
@@ -439,6 +497,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
   const applySavedView = ({ tab: savedTab, filters: savedFilters, grouping }: SavedViewApplied) => {
     setActiveTab(savedTab);
     setFilters(savedFilters);
+    // Issue #597: chip names now come from the option lists, not an old pick.
+    setPickedFilterLabels({});
     if (grouping) setPivotGrouping(grouping);
   };
 
@@ -499,10 +559,26 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Product',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.id
-          ? <Link to={`/products/${row.id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => (
+        <div className="min-w-0">
+          <DrillCell
+            label={String(value)}
+            recordHref={row?.id ? `/products/${row.id}` : undefined}
+            onDrill={() =>
+              setDrilldown({
+                dimension: 'product',
+                key: row?.id ? String(row.id) : 'none',
+                label: String(value),
+                rowValue: row?.total_revenue ?? 0,
+              })
+            }
+          />
+          {/* #1020: every product field renders name + short description. */}
+          {row?.short_description
+            ? <div className="text-xs text-muted-foreground">{row.short_description}</div>
+            : null}
+        </div>
+      ),
     },
     { key: 'sku', label: 'SKU', sortable: true, filterable: true },
     // Issue #600: free (FOC) units are shown apart from the paid quantity;
@@ -588,10 +664,20 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Customer',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.id
-          ? <Link to={`/customers/${row.id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => (
+        <DrillCell
+          label={String(value)}
+          recordHref={row?.id ? `/customers/${row.id}` : undefined}
+          onDrill={() =>
+            setDrilldown({
+              dimension: 'customer',
+              key: row?.id ? String(row.id) : 'none',
+              label: String(value),
+              rowValue: row?.total_revenue ?? 0,
+            })
+          }
+        />
+      ),
     },
     {
       key: 'total_orders',
@@ -658,10 +744,20 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Category',
       sortable: true,
       filterable: true,
-      format: (value: any, row: any) =>
-        row?.category_id
-          ? <Link to={`/products?category=${row.category_id}`} className="font-medium hover:underline">{value}</Link>
-          : value,
+      format: (value: any, row: any) => (
+        <DrillCell
+          label={String(value)}
+          recordHref={row?.category_id ? `/products?category=${row.category_id}` : undefined}
+          onDrill={() =>
+            setDrilldown({
+              dimension: 'category',
+              key: row?.category_id ? String(row.category_id) : 'none',
+              label: String(value),
+              rowValue: row?.total_revenue ?? 0,
+            })
+          }
+        />
+      ),
     },
     {
       key: 'product_count',
@@ -725,7 +821,23 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       label: 'Period',
       sortable: true,
       className: 'whitespace-nowrap',
-      format: (value) => formatTrendPeriod(String(value), filters.interval),
+      format: (value: any, row: any) => {
+        const label = formatTrendPeriod(String(value), filters.interval);
+        return (
+          <DrillCell
+            label={label}
+            onDrill={() =>
+              setDrilldown({
+                dimension: 'period',
+                key: String(value),
+                interval: filters.interval ?? 'day',
+                label,
+                rowValue: row?.total_revenue ?? 0,
+              })
+            }
+          />
+        );
+      },
     },
     {
       key: 'invoice_count',
@@ -809,196 +921,296 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     ]),
   ];
 
+  // ---------------------------------------------------------------------------
+  // Issue #597: one compact filter bar — preset periods, the shared customer /
+  // product search pickers, the #593 dimension filters, a chip per active
+  // filter and "Clear all". Tag and currency sit behind "More filters" (their
+  // chips still show when set).
+  // ---------------------------------------------------------------------------
+  const currentPreset = activePeriodPreset(filters);
+  const filterChips = activeFilterChips(
+    filters,
+    {
+      customers: filterCustomers,
+      products: filterProducts,
+      categories: filterCategories,
+      salespersons: filterSalespersons,
+      entities: filterEntities,
+    },
+    pickedFilterLabels,
+  );
+
+  const removeFilter = (key: ChipFilterKey) =>
+    setFilters((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      if (key === 'comparison') {
+        delete next.compare_start_date;
+        delete next.compare_end_date;
+      }
+      return next;
+    });
+
+  const clearAllFilters = () => {
+    setFilters(defaultFilters());
+    setPickedFilterLabels({});
+  };
+
   const filterCard = (
     <Card className="rounded-xl p-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-muted-foreground">Period</Label>
-          <div className="flex items-center gap-1.5">
-            <Input
-              type="date"
-              aria-label="Start date"
-              value={filters.start_date || ''}
-              onChange={(e) => updateFilter('start_date', e.target.value)}
-              className="h-9 w-[150px] rounded-full text-sm"
-            />
-            <span className="text-xs text-muted-foreground">→</span>
-            <Input
-              type="date"
-              aria-label="End date"
-              value={filters.end_date || ''}
-              onChange={(e) => updateFilter('end_date', e.target.value)}
-              className="h-9 w-[150px] rounded-full text-sm"
-            />
+      <div role="search" aria-label="Sales report filters" className="space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">Period</Label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div role="group" aria-label="Preset periods" className="flex flex-wrap gap-1 rounded-full bg-muted p-0.5">
+                {PERIOD_PRESETS.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    aria-pressed={currentPreset === preset.value}
+                    onClick={() => setFilters((prev) => ({ ...prev, ...periodPresetRange(preset.value) }))}
+                    className={`h-8 rounded-full px-3 text-xs font-medium transition-colors ${
+                      currentPreset === preset.value
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <Input
+                type="date"
+                aria-label="Start date"
+                value={filters.start_date || ''}
+                onChange={(e) => updateFilter('start_date', e.target.value)}
+                className="h-9 w-[145px] rounded-full text-sm"
+              />
+              <span className="text-xs text-muted-foreground">→</span>
+              <Input
+                type="date"
+                aria-label="End date"
+                value={filters.end_date || ''}
+                onChange={(e) => updateFilter('end_date', e.target.value)}
+                className="h-9 w-[145px] rounded-full text-sm"
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-muted-foreground">Tagged orders</Label>
-          <TagFilterSelect
-            className="h-9 w-[190px] rounded-full text-sm"
-            value={filters.tag || ''}
-            onChange={(value) => updateFilter('tag', value || undefined)}
-            placeholder="All orders"
-          />
-        </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">Interval</Label>
+            <Select
+              value={filters.interval}
+              onValueChange={(value) => updateFilter('interval', value as 'day' | 'week' | 'month' | 'year')}
+            >
+              <SelectTrigger className="h-9 w-[140px] rounded-full text-sm" aria-label="Interval">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">Daily</SelectItem>
+                <SelectItem value="week">Weekly</SelectItem>
+                <SelectItem value="month">Monthly</SelectItem>
+                <SelectItem value="year">Yearly</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-muted-foreground">Currency</Label>
-          <Select
-            value={filters.currency_code || 'all'}
-            onValueChange={(value) => updateFilter('currency_code', value === 'all' ? undefined : value)}
-          >
-            <SelectTrigger className="h-9 w-[140px] rounded-full text-sm" aria-label="Currency">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All currencies</SelectItem>
-              {(sellableCurrencies as any[]).map((currency: any) => (
-                <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          {/* Issue #595: comparison period — derived (previous period / same
+              period last year) or an explicit custom range. Every tab then shows
+              Δ and Δ% columns for its headline metric. */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">Compare</Label>
+            <Select value={filters.comparison ?? 'none'} onValueChange={updateComparison}>
+              <SelectTrigger className="h-9 w-[200px] rounded-full text-sm" aria-label="Comparison period">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No comparison</SelectItem>
+                <SelectItem value="previous_period">Previous period</SelectItem>
+                <SelectItem value="same_period_last_year">Same period last year</SelectItem>
+                <SelectItem value="custom">Custom range</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        <FilterSelect
-          label="Customer"
-          allLabel="All customers"
-          value={filters.customer_id ? String(filters.customer_id) : 'all'}
-          onChange={(value) => updateFilter('customer_id', value === undefined ? undefined : Number(value))}
-          options={filterCustomers.map((customer) => ({ value: String(customer.id), label: customer.name }))}
-        />
-
-        <FilterSelect
-          label="Product"
-          allLabel="All products"
-          value={filters.product_id ? String(filters.product_id) : 'all'}
-          onChange={(value) => updateFilter('product_id', value === undefined ? undefined : Number(value))}
-          options={filterProducts.map((product) => ({ value: String(product.id), label: product.name }))}
-        />
-
-        <FilterSelect
-          label="Category"
-          allLabel="All categories"
-          value={filters.category_id ? String(filters.category_id) : 'all'}
-          onChange={(value) => updateFilter('category_id', value === undefined ? undefined : Number(value))}
-          options={filterCategories.map((category) => ({ value: String(category.id), label: category.name }))}
-        />
-
-        <FilterSelect
-          label="Salesperson"
-          allLabel="All salespeople"
-          value={filters.salesperson_id ? String(filters.salesperson_id) : 'all'}
-          onChange={(value) => updateFilter('salesperson_id', value === undefined ? undefined : Number(value))}
-          options={filterSalespersons.map((person) => ({ value: String(person.id), label: person.name }))}
-        />
-
-        <FilterSelect
-          label="Channel"
-          allLabel="All channels"
-          value={filters.channel || 'all'}
-          onChange={(value) => updateFilter('channel', value as ReportFiltersType['channel'])}
-          options={[
-            { value: 'pos', label: 'POS' },
-            { value: 'admin', label: 'Admin' },
-            { value: 'ecommerce', label: 'E-commerce' },
-            { value: 'storefront', label: 'Storefront' },
-          ]}
-        />
-
-        <FilterSelect
-          label="Legal entity"
-          allLabel="All entities"
-          width="w-[170px]"
-          value={filters.legal_entity_id ? String(filters.legal_entity_id) : 'all'}
-          onChange={(value) => updateFilter('legal_entity_id', value === undefined ? undefined : Number(value))}
-          options={filterEntities.map((entity) => ({ value: String(entity.id), label: entity.name }))}
-        />
-
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-muted-foreground">Interval</Label>
-          <Select
-            value={filters.interval}
-            onValueChange={(value) => updateFilter('interval', value as 'day' | 'week' | 'month' | 'year')}
-          >
-            <SelectTrigger className="h-9 w-[140px] rounded-full text-sm" aria-label="Interval">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="day">Daily</SelectItem>
-              <SelectItem value="week">Weekly</SelectItem>
-              <SelectItem value="month">Monthly</SelectItem>
-              <SelectItem value="year">Yearly</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Issue #595: comparison period — derived (previous period / same
-            period last year) or an explicit custom range. Every tab then shows
-            Δ and Δ% columns for its headline metric. */}
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium text-muted-foreground">Compare</Label>
-          <Select value={filters.comparison ?? 'none'} onValueChange={updateComparison}>
-            <SelectTrigger className="h-9 w-[200px] rounded-full text-sm" aria-label="Comparison period">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No comparison</SelectItem>
-              <SelectItem value="previous_period">Previous period</SelectItem>
-              <SelectItem value="same_period_last_year">Same period last year</SelectItem>
-              <SelectItem value="custom">Custom range</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {filters.comparison === 'custom' && (
-          <>
-            <div className="space-y-1.5">
-              <Label htmlFor="sales-compare-from" className="text-xs font-medium text-muted-foreground">
-                Compare from
-              </Label>
-              <Input
-                id="sales-compare-from"
-                type="date"
-                aria-label="Compare from"
-                value={filters.compare_start_date || ''}
-                onChange={(e) => updateFilter('compare_start_date', e.target.value)}
-                className="h-9 w-[150px] rounded-full text-sm"
-              />
-            </div>
-            <span className="pb-2 text-xs text-muted-foreground">→</span>
-            <div className="space-y-1.5">
-              <Label htmlFor="sales-compare-to" className="text-xs font-medium text-muted-foreground">
-                Compare to
-              </Label>
-              <Input
-                id="sales-compare-to"
-                type="date"
-                aria-label="Compare to"
-                value={filters.compare_end_date || ''}
-                onChange={(e) => updateFilter('compare_end_date', e.target.value)}
-                className="h-9 w-[150px] rounded-full text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {filters.comparison === 'custom' &&
-          (!filters.compare_start_date || !filters.compare_end_date) && (
-            <span className="pb-2 text-xs text-amber-600">Select a complete custom range</span>
+          {filters.comparison === 'custom' && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="sales-compare-from" className="text-xs font-medium text-muted-foreground">
+                  Compare from
+                </Label>
+                <Input
+                  id="sales-compare-from"
+                  type="date"
+                  aria-label="Compare from"
+                  value={filters.compare_start_date || ''}
+                  onChange={(e) => updateFilter('compare_start_date', e.target.value)}
+                  className="h-9 w-[150px] rounded-full text-sm"
+                />
+              </div>
+              <span className="pb-2 text-xs text-muted-foreground">→</span>
+              <div className="space-y-1.5">
+                <Label htmlFor="sales-compare-to" className="text-xs font-medium text-muted-foreground">
+                  Compare to
+                </Label>
+                <Input
+                  id="sales-compare-to"
+                  type="date"
+                  aria-label="Compare to"
+                  value={filters.compare_end_date || ''}
+                  onChange={(e) => updateFilter('compare_end_date', e.target.value)}
+                  className="h-9 w-[150px] rounded-full text-sm"
+                />
+              </div>
+            </>
           )}
 
-        {hasCustomFilters && (
+          {filters.comparison === 'custom' &&
+            (!filters.compare_start_date || !filters.compare_end_date) && (
+              <span className="pb-2 text-xs text-amber-600">Select a complete custom range</span>
+            )}
+
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-[200px] space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">Customer</Label>
+            <CustomerSearchCombobox
+              compact
+              className="h-9 text-sm"
+              value={filters.customer_id ? String(filters.customer_id) : ''}
+              onValueChange={(value, customer) => {
+                updateFilter('customer_id', value ? Number(value) : undefined);
+                setPickedFilterLabels((prev) => ({ ...prev, customer_id: customer?.name || undefined }));
+              }}
+            />
+          </div>
+
+          <div className="w-[220px] space-y-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">Product</Label>
+            <ProductSearchCombobox
+              value={filters.product_id ? String(filters.product_id) : ''}
+              onValueChange={(value, product) => {
+                updateFilter('product_id', value ? Number(value) : undefined);
+                setPickedFilterLabels((prev) => ({ ...prev, product_id: product?.name || undefined }));
+              }}
+            />
+          </div>
+
+          <FilterSelect
+            label="Category"
+            allLabel="All categories"
+            value={filters.category_id ? String(filters.category_id) : 'all'}
+            onChange={(value) => updateFilter('category_id', value === undefined ? undefined : Number(value))}
+            options={filterCategories.map((category) => ({ value: String(category.id), label: category.name }))}
+          />
+
+          <FilterSelect
+            label="Salesperson"
+            allLabel="All salespeople"
+            value={filters.salesperson_id ? String(filters.salesperson_id) : 'all'}
+            onChange={(value) => updateFilter('salesperson_id', value === undefined ? undefined : Number(value))}
+            options={filterSalespersons.map((person) => ({ value: String(person.id), label: person.name }))}
+          />
+
+          <FilterSelect
+            label="Channel"
+            allLabel="All channels"
+            value={filters.channel || 'all'}
+            onChange={(value) => updateFilter('channel', value as ReportFiltersType['channel'])}
+            options={[
+              { value: 'pos', label: 'POS' },
+              { value: 'admin', label: 'Admin' },
+              { value: 'ecommerce', label: 'E-commerce' },
+              { value: 'storefront', label: 'Storefront' },
+            ]}
+          />
+
+          <FilterSelect
+            label="Legal entity"
+            allLabel="All entities"
+            width="w-[170px]"
+            value={filters.legal_entity_id ? String(filters.legal_entity_id) : 'all'}
+            onChange={(value) => updateFilter('legal_entity_id', value === undefined ? undefined : Number(value))}
+            options={filterEntities.map((entity) => ({ value: String(entity.id), label: entity.name }))}
+          />
+
           <HeaderActionButton
             variant="ghost"
-            icon="solar:restart-bold"
-            onClick={() => setFilters(defaultFilters())}
+            icon={showMoreFilters ? 'solar:alt-arrow-up-linear' : 'solar:tuning-2-linear'}
+            aria-expanded={showMoreFilters}
+            onClick={() => setShowMoreFilters((open) => !open)}
           >
-            Reset
+            {showMoreFilters ? 'Fewer filters' : 'More filters'}
           </HeaderActionButton>
+        </div>
+
+        {showMoreFilters && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Tagged orders</Label>
+              <TagFilterSelect
+                className="h-9 w-[190px] rounded-full text-sm"
+                value={filters.tag || ''}
+                onChange={(value) => updateFilter('tag', value || undefined)}
+                placeholder="All orders"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Currency</Label>
+              <Select
+                value={filters.currency_code || 'all'}
+                onValueChange={(value) => updateFilter('currency_code', value === 'all' ? undefined : value)}
+              >
+                <SelectTrigger className="h-9 w-[140px] rounded-full text-sm" aria-label="Currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All currencies</SelectItem>
+                  {(sellableCurrencies as any[]).map((currency: any) => (
+                    <SelectItem key={currency.code} value={currency.code}>{currency.code}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+          </div>
         )}
+
+        {(filterChips.length > 0 || hasCustomFilters) && (
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            {filterChips.length > 0 && (
+              <ul role="list" aria-label="Active filters" className="flex flex-wrap gap-1.5">
+                {filterChips.map((chip) => (
+                  <li
+                    key={chip.key}
+                    className="inline-flex items-center gap-1 rounded-full border bg-muted/50 py-0.5 pl-2.5 pr-1 text-xs font-medium"
+                  >
+                    <span>{chip.label}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${chip.label}`}
+                      onClick={() => removeFilter(chip.key)}
+                      className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <Icon icon="solar:close-circle-linear" className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {hasCustomFilters && (
+              <HeaderActionButton variant="ghost" icon="solar:restart-bold" onClick={clearAllFilters}>
+                Clear all
+              </HeaderActionButton>
+            )}
+          </div>
+        )}
+
         {filters.tag && (
-          <p className="mt-3 flex w-full items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+          <p className="flex w-full items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
             <Icon icon="solar:info-circle-bold" className="h-4 w-4 shrink-0" />
             {"POS sales excluded (POS orders can't be tagged)"}
           </p>
@@ -1043,6 +1255,11 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
         />
       )}
       {filterCard}
+      <SalesDrilldownPanel
+        request={drilldown}
+        filters={queryFilters}
+        onClose={() => setDrilldown(null)}
+      />
 
       {/* MRD FR-8.1: order-currency dimension — document revenue with the
           snapshot-rate base equivalent per currency. */}

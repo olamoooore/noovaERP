@@ -7,6 +7,7 @@ import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
@@ -34,12 +35,20 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-/** First and last day of the selected month — what a statement period is. */
+/** Local calendar date (YYYY-MM-DD) — never via toISOString (timezone shift). */
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** First and last day of the selected month — the month picker is a preset. */
 function monthWindow(year: number, monthIndex: number) {
-  const start = new Date(year, monthIndex, 1)
-  const end = new Date(year, monthIndex + 1, 0)
-  const iso = (d: Date) => d.toISOString().split('T')[0]
-  return { start: iso(start), end: iso(end) }
+  return {
+    start: toIsoDate(new Date(year, monthIndex, 1)),
+    end: toIsoDate(new Date(year, monthIndex + 1, 0)),
+  }
 }
 
 export const CustomerStatements = () => {
@@ -48,28 +57,37 @@ export const CustomerStatements = () => {
   const { toast } = useToast()
   const [customerId, setCustomerId] = useState(searchParams.get('customer_id') || '')
   const now = new Date()
+  const initialWindow = monthWindow(now.getFullYear(), now.getMonth())
   const [month, setMonth] = useState(String(now.getMonth()))
   const [year, setYear] = useState(String(now.getFullYear()))
+  // #1018: the statement period is a custom From/To range; the month picker is
+  // only a quick preset for it.
+  const [startDate, setStartDate] = useState(initialWindow.start)
+  const [endDate, setEndDate] = useState(initialWindow.end)
   const years = useMemo(() => yearsFor(new Date().getFullYear()), [])
 
   useEffect(() => {
     setCustomerId(searchParams.get('customer_id') || '')
   }, [searchParams])
 
-  const period = useMemo(
-    () => monthWindow(Number(year), Number(month)),
-    [year, month]
-  )
+  const range = useMemo(() => ({ start: startDate, end: endDate }), [startDate, endDate])
+  const rangeInvalid = Boolean(startDate && endDate && endDate < startDate)
+
+  const applyMonthPreset = (nextMonth: string, nextYear: string) => {
+    const window = monthWindow(Number(nextYear), Number(nextMonth))
+    setStartDate(window.start)
+    setEndDate(window.end)
+  }
 
   const transactionsQuery = useQuery({
-    queryKey: ['customer-account-statement-transactions', customerId, period.start, period.end],
+    queryKey: ['customer-account-statement-transactions', customerId, range.start, range.end],
     queryFn: async () => {
       const response = await api.get('/accounting/customers/transactions', {
         params: {
           customer_id: customerId,
           transaction_type: 'invoice',
-          start_date: period.start,
-          end_date: period.end,
+          start_date: range.start,
+          end_date: range.end,
           per_page: 1000,
         },
       })
@@ -77,7 +95,7 @@ export const CustomerStatements = () => {
         (transaction) => transaction.status === 'posted' || transaction.status === 'paid'
       )
     },
-    enabled: Boolean(customerId),
+    enabled: Boolean(customerId) && !rangeInvalid,
   })
 
   const selectedCustomerQuery = useQuery({
@@ -103,7 +121,7 @@ export const CustomerStatements = () => {
   // #618: the shared print/send menu renders through the existing statement
   // endpoint (which persists the statement record) and resolves its default
   // template from the selected customer's own context (#612 dimensions).
-  const statementPdfPath = `/accounting/customers/${customerId}/statement?start_date=${period.start}&end_date=${period.end}`
+  const statementPdfPath = `/accounting/customers/${customerId}/statement?start_date=${range.start}&end_date=${range.end}`
   const statementResolutionPath = useMemo(() => {
     const params = new URLSearchParams()
     if (selectedCustomer?.legal_entity_id != null) params.set('entity_id', String(selectedCustomer.legal_entity_id))
@@ -117,8 +135,8 @@ export const CustomerStatements = () => {
   const emailStatement = useMutation({
     mutationFn: async () => {
       const response = await api.post(`/accounting/customers/${customerId}/statement`, {
-        start_date: period.start,
-        end_date: period.end,
+        start_date: range.start,
+        end_date: range.end,
         send_email: true,
       })
       return response.data
@@ -140,7 +158,7 @@ export const CustomerStatements = () => {
         <div>
           <h1 className="text-3xl font-bold">Customer Account Statement</h1>
           <p className="mt-1 text-muted-foreground">
-            Pick a customer and a month to review their transactions and generate a statement PDF.
+            Pick a customer and a date range to review their transactions and generate a statement PDF.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -152,7 +170,7 @@ export const CustomerStatements = () => {
               compact
             />
           </div>
-          <Select value={month} onValueChange={setMonth}>
+          <Select value={month} onValueChange={(value) => { setMonth(value); applyMonthPreset(value, year) }}>
             <SelectTrigger className="h-8 w-[128px] rounded-full text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -162,7 +180,7 @@ export const CustomerStatements = () => {
               ))}
             </SelectContent>
           </Select>
-          <Select value={year} onValueChange={setYear}>
+          <Select value={year} onValueChange={(value) => { setYear(value); applyMonthPreset(month, value) }}>
             <SelectTrigger className="h-8 w-[96px] rounded-full text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -172,11 +190,28 @@ export const CustomerStatements = () => {
               ))}
             </SelectContent>
           </Select>
-          {customerId && (
+          <Input
+            type="date"
+            aria-label="From date"
+            value={startDate}
+            max={endDate || undefined}
+            onChange={(event) => setStartDate(event.target.value)}
+            className="h-8 w-[150px] rounded-full text-xs"
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input
+            type="date"
+            aria-label="To date"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={(event) => setEndDate(event.target.value)}
+            className="h-8 w-[150px] rounded-full text-xs"
+          />
+          {customerId && !rangeInvalid && (
             <PrintSendMenu
               documentType="customer_statement"
               pdfPath={statementPdfPath}
-              filename={`SOA_${selectedCustomer?.code || customerId || 'UNKNOWN'}_${period.end.split('-').join('')}.pdf`}
+              filename={`SOA_${selectedCustomer?.code || customerId || 'UNKNOWN'}_${range.end.split('-').join('')}.pdf`}
               title="Statement of Account"
               resolutionPath={statementResolutionPath}
               onEmail={() => {
@@ -191,6 +226,11 @@ export const CustomerStatements = () => {
                 emailStatement.mutate()
               }}
             />
+          )}
+          {rangeInvalid && (
+            <p className="basis-full text-xs text-destructive">
+              The To date must be on or after the From date.
+            </p>
           )}
         </div>
       </div>
@@ -209,7 +249,7 @@ export const CustomerStatements = () => {
               <CardTitle>
                 Transactions
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  {MONTHS[Number(month)]} {year}
+                  {formatDate(startDate)} – {formatDate(endDate)}
                 </span>
               </CardTitle>
               <div className="flex gap-4 text-sm">

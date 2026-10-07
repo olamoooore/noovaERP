@@ -26,14 +26,20 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import type { SalesDashboardData } from '@/types/reports';
 import { SavedViewWidgets } from './SavedViewWidgets';
+import { SalesActionQueues } from './SalesActionQueues';
 
 // Analytics API returns `total_revenue` per product (see
 // SalesAnalyticsService::getSalesByProduct) — never `total_sales`.
-type ProductPayload = { products?: Array<{ total_revenue?: number; total_quantity?: number }> };
+type ProductPayload = {
+  products?: Array<{ total_revenue?: number; total_quantity?: number }>;
+  summary?: { base_currency?: string };
+};
 const sumRevenue = (payload: ProductPayload) =>
   (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_revenue) || 0), 0);
 const sumUnits = (payload: ProductPayload) =>
   (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_quantity) || 0), 0);
+// #363: analytics amounts are in the tenant base currency, named in the summary.
+const baseCurrencyOf = (payload: ProductPayload) => payload?.summary?.base_currency || undefined;
 
 const PERIODS: SalesDashboardPeriod[] = ['today', 'week', 'month', 'year', 'custom'];
 const YEARS_OFFERED = 10;
@@ -87,6 +93,7 @@ export const SalesDashboard: React.FC = () => {
         current: sumRevenue(currentData),
         previous: sumRevenue(previousData),
         units: sumUnits(currentData),
+        baseCurrency: baseCurrencyOf(currentData),
       };
     },
     staleTime: 5 * 60 * 1000,
@@ -106,7 +113,7 @@ export const SalesDashboard: React.FC = () => {
   });
 
   // Fetch dashboard data for selected period
-  const { data, isLoading, error, refetch } = useQuery<Omit<SalesDashboardData, 'metrics'>>({
+  const { data, isLoading, error, refetch } = useQuery<Omit<SalesDashboardData, 'metrics'> & { base_currency?: string }>({
     queryKey: ['sales-dashboard', currentFilters],
     enabled: currentFilters !== null,
     queryFn: async () => {
@@ -120,6 +127,7 @@ export const SalesDashboard: React.FC = () => {
       ]);
 
       return {
+        base_currency: baseCurrencyOf(salesByProduct),
         sales_by_product: (salesByProduct?.products ?? []).map((p) => ({
           product: p.name || 'Unknown',
           amount: Number(p.total_revenue) || 0,
@@ -183,8 +191,10 @@ export const SalesDashboard: React.FC = () => {
       : change > 0
         ? 'text-emerald-600 dark:text-emerald-400'
         : 'text-rose-600 dark:text-rose-400';
+  const baseCurrency = kpis?.baseCurrency ?? data?.base_currency;
+  const money = (value: number) => formatCurrency(value, baseCurrency);
   const kpiValue = (value: number | undefined) =>
-    !resolved ? '—' : kpisLoading ? '…' : formatCurrency(value ?? 0);
+    !resolved ? '—' : kpisLoading ? '…' : money(value ?? 0);
 
   const KPIS = [
     {
@@ -219,12 +229,12 @@ export const SalesDashboard: React.FC = () => {
           ? '—'
           : change === null
             ? 'No sales in the previous period'
-            : `${delta >= 0 ? '+' : '−'}${formatCurrency(Math.abs(delta))}`,
+            : `${delta >= 0 ? '+' : '−'}${money(Math.abs(delta))}`,
     },
     {
       id: 'kpi-today',
       label: "Today's sales",
-      value: todayLoading ? '…' : formatCurrency(todaySales ?? 0),
+      value: todayLoading ? '…' : money(todaySales ?? 0),
       valueClass: 'text-slate-900 dark:text-slate-100',
       icon: 'solar:calendar-bold-duotone',
       tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
@@ -346,6 +356,9 @@ export const SalesDashboard: React.FC = () => {
           section hides itself when the user has no pins (or no reports.view). */}
       <SavedViewWidgets />
 
+      {/* Issue #365: action queues — what to do next, each tile opens its filtered list. */}
+      <SalesActionQueues />
+
       {/* KPI tiles — #358: the selected period vs its comparison period */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {KPIS.map((kpi) => (
@@ -391,6 +404,7 @@ export const SalesDashboard: React.FC = () => {
                 xKey="period"
                 yKeys={['amount']}
                 formatYAxis="currency"
+                currency={baseCurrency}
                 height={280}
                 colors={['#3b82f6']}
               />
@@ -414,6 +428,7 @@ export const SalesDashboard: React.FC = () => {
                 nameKey="category"
                 valueKey="amount"
                 formatValue="currency"
+                currency={baseCurrency}
                 height={280}
               />
             ) : (
@@ -439,6 +454,7 @@ export const SalesDashboard: React.FC = () => {
                 xKey="product"
                 yKeys={['amount']}
                 formatYAxis="currency"
+                currency={baseCurrency}
                 height={330}
                 horizontal={true}
                 colors={['#10b981']}
@@ -488,7 +504,7 @@ export const SalesDashboard: React.FC = () => {
                       <span className="truncate text-sm font-medium">{customer.customer}</span>
                     </div>
                     <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(customer.amount)}
+                      {money(customer.amount)}
                     </span>
                   </div>
                 ))}
