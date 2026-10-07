@@ -2691,6 +2691,13 @@ class InvoiceController extends Controller
                 'data' => $posted,
                 'credit_check' => $creditCheck,
             ]);
+        } catch (\App\Accounting\Exceptions\TaxPeriodLockedException $e) {
+            // #278: the invoice date falls in a closed (filed) tax period.
+            return response()->json([
+                'message' => 'The tax period of this invoice is closed. Post a correction dated in an open period instead.',
+                'code' => $e::REASON_CODE,
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\RuntimeException $e) {
             if (str_contains($e->getMessage(), 'Cannot resolve GL account')) {
                 return response()->json([

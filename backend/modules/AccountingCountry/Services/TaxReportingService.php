@@ -222,17 +222,42 @@ class TaxReportingService
      */
     public function readiness(string $period, ?int $legalEntityId = null): array
     {
-        $locked = app(\App\Services\TaxPeriodClosingService::class)
-            ->isPeriodLocked($period, (int) (tenant('id') ?? 0), $legalEntityId);
+        // #278: a quarterly/bi-monthly period is locked only when every
+        // month inside it is.
+        $months = self::expandFilingPeriod($period) ?: [$period];
+        $lockService = app(\App\Services\TaxPeriodClosingService::class);
+        $tenantKey = (int) (tenant('id') ?? 0);
+        $locked = $months !== [] && collect($months)->every(
+            fn (string $month) => $lockService->isPeriodLocked($month, $tenantKey, $legalEntityId)
+        );
 
+        // #278: the filed baseline is the latest current filing whose filing
+        // period covers this period — a quarterly F5 ("2026-Q3") files each
+        // of its months, so a monthly close must see it as filed.
         $filing = DB::table('statutory_return_filings')
             ->whereNull('superseded_at')
-            ->where('period', $period)
             ->where('entity_key', $legalEntityId ?? 0)
-            ->orderByDesc('filing_version')
-            ->first();
+            ->where(function ($q) use ($period, $months) {
+                $q->where('period', $period);
 
-        $reconciliation = $this->reconciliation($period);
+                foreach (array_unique(array_map(fn ($m) => substr($m, 0, 4), $months)) as $year) {
+                    $q->orWhere('period', 'like', $year.'-%');
+                }
+            })
+            ->orderByDesc('filing_version')
+            ->orderByDesc('id')
+            ->get()
+            ->first(function ($row) use ($period, $months) {
+                if ((string) $row->period === $period) {
+                    return true;
+                }
+
+                $covered = self::expandFilingPeriod((string) $row->period, (string) $row->country);
+
+                return $covered !== [] && array_diff($months, $covered) === [];
+            });
+
+        $reconciliation = $this->reconciliation($period, $legalEntityId);
 
         $fact = [
             'period' => $period,

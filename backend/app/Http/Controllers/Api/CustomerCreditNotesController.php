@@ -304,6 +304,13 @@ class CustomerCreditNotesController extends Controller
                 'credit_note' => $posted,
             ]);
 
+        } catch (\App\Accounting\Exceptions\TaxPeriodLockedException $e) {
+            // #278: post the correction in an open period instead.
+            return response()->json([
+                'message' => 'The tax period of this credit note is closed. Date the credit note in an open period.',
+                'code' => $e::REASON_CODE,
+                'error' => $e->getMessage(),
+            ], 422);
         } catch (\RuntimeException $e) {
             return response()->json([
                 'message' => 'Failed to post credit note',

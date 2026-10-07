@@ -12,6 +12,9 @@ class PostingResult
         public readonly ?JournalEntry $journalEntry = null,
         public readonly ?int $auditLogId = null,
         public readonly ?string $error = null,
+        // #278: canonical ReasonCode value when the failure is a governed
+        // block (e.g. TAX_PERIOD_LOCKED), so callers need not parse $error.
+        public readonly ?string $reasonCode = null,
     ) {}
 
     public static function success(JournalEntry $entry, ?int $auditLogId = null): self
@@ -24,11 +27,12 @@ class PostingResult
         );
     }
 
-    public static function failure(string $error): self
+    public static function failure(string $error, ?string $reasonCode = null): self
     {
         return new self(
             success: false,
             error: $error,
+            reasonCode: $reasonCode,
         );
     }
 }
