@@ -131,16 +131,22 @@ class SensitiveFieldGuard
 
         $records = array_map(fn (array $ids) => array_keys($ids), $this->revealedRecords);
         $referenceType = array_key_first($records);
+        $referenceKey = (string) $records[$referenceType][0];
         $fields = array_keys($this->revealedFields);
 
         $this->revealedRecords = [];
         $this->revealedFields = [];
 
+        // audit_logs.reference_id is an unsigned big integer. A non-numeric
+        // key (UUID) must not be cast into it — "9f3a…" would become 9, an
+        // unrelated record — so it is logged as 0 and the full key is kept in
+        // metadata.reference_key.
         app(AuditLogger::class)->log(
             operation: 'sensitive_fields.read',
             referenceType: $referenceType,
-            referenceId: (int) $records[$referenceType][0],
+            referenceId: ctype_digit($referenceKey) ? (int) $referenceKey : 0,
             metadata: [
+                'reference_key' => $referenceKey,
                 'fields' => $fields,
                 'records' => $records,
             ],
