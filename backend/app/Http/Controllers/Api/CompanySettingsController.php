@@ -989,6 +989,11 @@ class CompanySettingsController extends Controller
                 // markers. Not accepted by updateSalesSettings; a reset is a
                 // normal PUT of the default value.
                 'default_values' => \App\Services\SalesSettings::defaults(),
+                // Issue #921 (SS5) / #555: read-only "where used" per field —
+                // store key, type, default, scope, edit permission and the
+                // code paths that read it — generated from the registry.
+                'where_used' => app(\App\Platform\Settings\Contracts\SettingsRegistryContract::class)
+                    ->whereUsed(\App\Platform\Settings\SettingsRegistry::SCREEN_SALES),
             ],
         ]);
     }
@@ -1051,39 +1056,12 @@ class CompanySettingsController extends Controller
             'pricelist.display' => 'nullable|in:show_discount,net_price',
         ]);
 
-        $map = [
-            'invoice.allow_custom_number' => 'sales.invoice.allow_custom_number',
-            'invoice.field_profile' => 'sales.invoice.field_profile',
-            'invoice.default_requires_approval' => 'sales.invoice.default_requires_approval',
-            'invoice.approval_expiry_days' => 'sales.invoice.approval_expiry_days',
-            'invoice.reviewer_user_ids' => 'sales.invoice.reviewer_user_ids',
-            'invoice.reviewer_roles' => 'sales.invoice.reviewer_roles',
-            'invoice.auto_send_to_customer_on_post' => 'sales.invoice.auto_send_to_customer_on_post',
-            'invoice.allow_partial_payments' => 'sales.invoice.allow_partial_payments',
-            'invoice.default_payment_terms_days' => 'sales.invoice.default_payment_terms_days',
-            'invoice.default_notes' => 'sales.invoice.default_notes',
-            'invoice.default_terms' => 'sales.invoice.default_terms',
-            'portal.acceptance_enabled' => 'sales.portal.acceptance_enabled',
-            'portal.require_signature' => 'sales.portal.require_signature',
-            'portal.acceptance_link_expiry_days' => 'sales.portal.acceptance_link_expiry_days',
-            'portal.payment_link_expiry_days' => 'sales.portal.payment_link_expiry_days',
-            'delivery.attach_pdf' => 'sales.delivery.attach_pdf',
-            'delivery.cc_internal_email' => 'sales.delivery.cc_internal_email',
-            'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
-            'delivery_order.default_requires_approval' => 'sales.delivery_order.default_requires_approval',
-            'quotation.reviewer_user_ids' => 'sales.quotation.reviewer_user_ids',
-            'quotation.reviewer_roles' => 'sales.quotation.reviewer_roles',
-            'sales_order.reviewer_user_ids' => 'sales.sales_order.reviewer_user_ids',
-            'sales_order.reviewer_roles' => 'sales.sales_order.reviewer_roles',
-            'invoice_threshold.reviewer_user_ids' => 'sales.invoice_threshold.reviewer_user_ids',
-            'invoice_threshold.reviewer_roles' => 'sales.invoice_threshold.reviewer_roles',
-            'delivery_order.reviewer_user_ids' => 'sales.delivery_order.reviewer_user_ids',
-            'delivery_order.reviewer_roles' => 'sales.delivery_order.reviewer_roles',
-            // Issue #553: new-document defaults + pricelist display.
-            'defaults.salesperson_mode' => 'sales.defaults.salesperson_mode',
-            'defaults.team_by_user' => 'sales.defaults.team_by_user',
-            'pricelist.display' => 'sales.pricelist.display',
-        ];
+        // Issue #921 (SS5): the field => store-key map comes from the
+        // platform settings registry, so the screen can only persist a
+        // setting that is declared there together with the code that reads
+        // it. (JSON-block fields — tax, cash_rounding — are merged below.)
+        $map = app(\App\Platform\Settings\Contracts\SettingsRegistryContract::class)
+            ->storeKeysForScreen(\App\Platform\Settings\SettingsRegistry::SCREEN_SALES);
 
         // MRD R10.3: tax writes go to the ONE canonical Setting tax block
         // the engine reads. default_tax_rate re-points default_tax_id to a
