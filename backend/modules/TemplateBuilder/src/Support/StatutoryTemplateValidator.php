@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Support;
 
 use App\Models\LegalEntity;
-use App\Models\Setting;
 use Modules\TemplateBuilder\Models\DocumentTemplate;
 
 /**
@@ -80,13 +79,12 @@ final class StatutoryTemplateValidator
 
     /**
      * The tenant's issuing country — the first legal entity (same source the
-     * e-invoice supplier identity uses), falling back to company settings.
+     * e-invoice supplier identity uses). #921: no fallback to undeclared
+     * company_country / business_country keys — nothing writes them.
      */
     private function jurisdiction(): ?string
     {
-        $country = LegalEntity::query()->orderBy('id')->value('country_code')
-            ?? Setting::getValue('company_country')
-            ?? Setting::getValue('business_country');
+        $country = LegalEntity::query()->orderBy('id')->value('country_code');
 
         $country = strtoupper(trim((string) $country));
 

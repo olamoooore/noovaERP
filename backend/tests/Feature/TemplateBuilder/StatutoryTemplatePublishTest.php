@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\TemplateBuilder;
 
-use App\Models\Setting;
+use App\Models\LegalEntity;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +52,36 @@ class StatutoryTemplatePublishTest extends TenantTestCase
         ]);
     }
 
+    /**
+     * The validator reads the issuing country from the tenant's first legal
+     * entity (#921: no undeclared company_country / business_country keys).
+     */
+    private function setIssuingCountry(string $country): void
+    {
+        $first = LegalEntity::query()->orderBy('id')->first();
+
+        if ($first !== null) {
+            $first->update(['country_code' => $country]);
+
+            return;
+        }
+
+        $groupId = DB::table('entity_groups')->insertGetId([
+            'name' => 'Statutory Publish Group',
+            'code' => 'SPG-'.Str::upper(Str::random(4)),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        LegalEntity::create([
+            'group_id' => $groupId,
+            'name' => 'Statutory Publish Entity',
+            'code' => 'SPE-'.Str::upper(Str::random(4)),
+            'status' => 'active',
+            'country_code' => $country,
+        ]);
+    }
+
     private function createTemplate(array $blocks, string $type = 'invoice'): DocumentTemplate
     {
         return app(DocumentTemplateServiceContract::class)->create([
@@ -64,7 +94,7 @@ class StatutoryTemplatePublishTest extends TenantTestCase
 
     public function test_sg_pack_blocks_publishing_an_invoice_template_without_the_uen_token(): void
     {
-        Setting::setValue('company_country', 'SG');
+        $this->setIssuingCountry('SG');
         $template = $this->createTemplate([
             ['type' => 'text', 'content' => 'No statutory tokens here'],
         ]);
@@ -83,7 +113,7 @@ class StatutoryTemplatePublishTest extends TenantTestCase
 
     public function test_sg_pack_publishes_once_the_uen_token_is_present(): void
     {
-        Setting::setValue('company_country', 'SG');
+        $this->setIssuingCountry('SG');
         $template = $this->createTemplate([
             ['type' => 'text', 'content' => 'UEN: {{ company.tin }}'],
         ]);
@@ -97,7 +127,7 @@ class StatutoryTemplatePublishTest extends TenantTestCase
 
     public function test_generic_pack_requires_no_statutory_tokens(): void
     {
-        Setting::setValue('company_country', 'US');
+        $this->setIssuingCountry('US');
         $template = $this->createTemplate([
             ['type' => 'text', 'content' => 'Plain template'],
         ]);
@@ -109,7 +139,7 @@ class StatutoryTemplatePublishTest extends TenantTestCase
 
     public function test_non_tax_document_types_are_not_blocked(): void
     {
-        Setting::setValue('company_country', 'SG');
+        $this->setIssuingCountry('SG');
         $template = $this->createTemplate(
             [['type' => 'text', 'content' => 'Quote with no UEN']],
             'quotation',
