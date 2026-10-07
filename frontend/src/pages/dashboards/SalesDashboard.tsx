@@ -28,18 +28,10 @@ import type { SalesDashboardData } from '@/types/reports';
 import { SavedViewWidgets } from './SavedViewWidgets';
 import { SalesActionQueues } from './SalesActionQueues';
 
-// Analytics API returns `total_revenue` per product (see
-// SalesAnalyticsService::getSalesByProduct) — never `total_sales`.
-type ProductPayload = {
-  products?: Array<{ total_revenue?: number; total_quantity?: number }>;
-  summary?: { base_currency?: string };
-};
-const sumRevenue = (payload: ProductPayload) =>
-  (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_revenue) || 0), 0);
-const sumUnits = (payload: ProductPayload) =>
-  (payload?.products ?? []).reduce((sum, p) => sum + (Number(p.total_quantity) || 0), 0);
 // #363: analytics amounts are in the tenant base currency, named in the summary.
-const baseCurrencyOf = (payload: ProductPayload) => payload?.summary?.base_currency || undefined;
+const baseCurrencyOf = (payload: unknown) =>
+  (payload as { summary?: { base_currency?: string } } | undefined)?.summary?.base_currency ||
+  undefined;
 
 const PERIODS: SalesDashboardPeriod[] = ['today', 'week', 'month', 'year', 'custom'];
 const YEARS_OFFERED = 10;
@@ -76,43 +68,51 @@ export const SalesDashboard: React.FC = () => {
   const currentFilters: DateRange | null = resolved?.current ?? null;
   const previousFilters: DateRange | null = resolved?.previous ?? null;
 
-  // KPI row: selected period vs its comparison period.
+  // KPI row: selected period vs its comparison period, plus today's sales.
   // #351 (S3): tile values come straight from this query, never from a value
   // cached inside the dashboard query below.
+  // #361: ONE call to the summary endpoint — the server aggregates the period,
+  // its comparison window (the resolved previous range, as a #595 custom
+  // comparison) and today, instead of the client pulling the full by-product
+  // report per window and adding up its rows.
+  // Today is deliberately independent of the period filter and labelled as
+  // such; with no valid period the call asks for today alone.
+  const today = formatLocalDate(now);
   const {
     data: kpis,
     isLoading: kpisLoading,
     refetch: refetchKpis,
   } = useQuery({
-    queryKey: ['sales-kpis', currentFilters, previousFilters],
-    enabled: resolved !== null,
+    queryKey: ['sales-kpis', currentFilters, previousFilters, today],
     queryFn: async () => {
-      const [currentData, previousData] = await Promise.all([
-        reportApi.getSalesByProduct(currentFilters!),
-        reportApi.getSalesByProduct(previousFilters!),
-      ]);
+      if (!currentFilters || !previousFilters) {
+        const todayOnly = await reportApi.getSalesSummary({ start_date: today, end_date: today });
+        return {
+          period: null,
+          today: Number(todayOnly?.summary?.total_revenue) || 0,
+          baseCurrency: baseCurrencyOf(todayOnly),
+        };
+      }
+      const result = await reportApi.getSalesSummary({
+        ...currentFilters,
+        comparison: 'custom',
+        compare_start_date: previousFilters.start_date,
+        compare_end_date: previousFilters.end_date,
+        include_today: true,
+      });
       return {
-        current: sumRevenue(currentData),
-        previous: sumRevenue(previousData),
-        units: sumUnits(currentData),
-        baseCurrency: baseCurrencyOf(currentData),
+        period: {
+          current: Number(result?.summary?.total_revenue) || 0,
+          previous: Number(result?.comparison?.summary?.total_revenue?.previous) || 0,
+          units: Number(result?.summary?.total_quantity) || 0,
+        },
+        today: Number(result?.today?.total_revenue) || 0,
+        baseCurrency: baseCurrencyOf(result),
       };
     },
     staleTime: 5 * 60 * 1000,
   });
-
-  // Live pulse: today's sales, deliberately independent of the period filter
-  // and labelled as such.
-  const todayRange = { start_date: formatLocalDate(now), end_date: formatLocalDate(now) };
-  const {
-    data: todaySales,
-    isLoading: todayLoading,
-    refetch: refetchToday,
-  } = useQuery({
-    queryKey: ['sales-kpi-today', todayRange.start_date],
-    queryFn: async () => sumRevenue(await reportApi.getSalesByProduct(todayRange)),
-    staleTime: 5 * 60 * 1000,
-  });
+  const periodKpis = kpis?.period ?? undefined;
 
   // Fetch dashboard data for selected period
   const { data, isLoading, error, refetch } = useQuery<Omit<SalesDashboardData, 'metrics'> & { base_currency?: string }>({
@@ -157,9 +157,8 @@ export const SalesDashboard: React.FC = () => {
     // Refresh must re-run the KPI queries too (#351) — not only the charts.
     if (resolved) {
       refetch();
-      refetchKpis();
     }
-    refetchToday();
+    refetchKpis();
   };
 
   if (error) {
@@ -186,8 +185,8 @@ export const SalesDashboard: React.FC = () => {
 
   const yearOptions = Array.from({ length: YEARS_OFFERED }, (_, i) => now.getFullYear() - i);
 
-  const change = kpis ? percentChange(kpis.current, kpis.previous) : null;
-  const delta = kpis ? kpis.current - kpis.previous : 0;
+  const change = periodKpis ? percentChange(periodKpis.current, periodKpis.previous) : null;
+  const delta = periodKpis ? periodKpis.current - periodKpis.previous : 0;
   const changeText =
     change === null ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`;
   const changeTone =
@@ -205,18 +204,18 @@ export const SalesDashboard: React.FC = () => {
     {
       id: 'kpi-selected',
       label: 'Net revenue',
-      value: kpiValue(kpis?.current),
+      value: kpiValue(periodKpis?.current),
       valueClass: 'text-slate-900 dark:text-slate-100',
       icon: 'solar:chart-2-bold-duotone',
       tile: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300',
       sub: resolved
-        ? `${resolved.label}${kpis ? ` · ${kpis.units.toLocaleString()} units sold` : ''}`
+        ? `${resolved.label}${periodKpis ? ` · ${periodKpis.units.toLocaleString()} units sold` : ''}`
         : 'Select a valid period',
     },
     {
       id: 'kpi-previous',
       label: 'Previous period',
-      value: kpiValue(kpis?.previous),
+      value: kpiValue(periodKpis?.previous),
       valueClass: 'text-slate-900 dark:text-slate-100',
       icon: 'solar:history-bold-duotone',
       tile: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
@@ -230,7 +229,7 @@ export const SalesDashboard: React.FC = () => {
       icon: 'solar:graph-up-bold-duotone',
       tile: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
       sub:
-        !resolved || !kpis
+        !resolved || !periodKpis
           ? '—'
           : change === null
             ? 'No sales in the previous period'
@@ -239,7 +238,7 @@ export const SalesDashboard: React.FC = () => {
     {
       id: 'kpi-today',
       label: "Today's sales",
-      value: todayLoading ? '…' : money(todaySales ?? 0),
+      value: kpisLoading ? '…' : money(kpis?.today ?? 0),
       valueClass: 'text-slate-900 dark:text-slate-100',
       icon: 'solar:calendar-bold-duotone',
       tile: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',

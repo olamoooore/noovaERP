@@ -39,6 +39,12 @@ const reportApiMock = vi.hoisted(() => ({
     thisMonth: { start_date: '2026-10-01', end_date: '2026-10-31' },
     thisYear: { start_date: '2026-01-01', end_date: '2026-10-14' },
   }),
+  // #361: the KPI tiles read the summary endpoint (period, comparison, today).
+  getSalesSummary: vi.fn(async () => ({
+    period: { start_date: '2026-10-01', end_date: '2026-10-31' },
+    summary: { total_revenue: 500, total_quantity: 5 },
+    today: { total_revenue: 500, total_quantity: 5, date: '2026-10-14' },
+  })),
   getSalesByProduct: vi.fn(async () => ({
     products: [{ name: 'Widget', total_revenue: 500, total_quantity: 5 }],
   })),

@@ -475,6 +475,33 @@ export interface SalesByProductData {
   comparison?: ReportComparison;
 }
 
+/**
+ * Issue #361: the dashboard KPI totals for one window
+ * (SalesAnalyticsService::getSalesSummary), in the tenant base currency.
+ */
+export interface SalesSummaryTotals {
+  total_revenue: number;
+  invoiced_revenue: number;
+  bookings_revenue: number;
+  total_quantity: number;
+  order_count: number;
+  average_order_value: number;
+  base_currency?: string;
+  revenue_basis?: string;
+  includes_tax?: boolean;
+}
+
+/** Issue #361: GET /analytics/sales/summary — period, #595 comparison, today. */
+export interface SalesSummaryData {
+  period: { start_date: string; end_date: string };
+  summary: SalesSummaryTotals;
+  /** Present only when a comparison was requested. */
+  comparison?: ReportComparison;
+  /** Present only when include_today was requested. */
+  today?: SalesSummaryTotals & { date: string };
+  pos_excluded_by_tag?: boolean;
+}
+
 export interface SalesByCustomerData {
   customers: Array<{
     id: number | null;

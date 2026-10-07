@@ -69,6 +69,7 @@ const reportApiMock = vi.hoisted(() => ({
     thisMonth: { start_date: '2026-10-01', end_date: '2026-10-31' },
     thisYear: { start_date: '2026-01-01', end_date: '2026-10-14' },
   }),
+  getSalesSummary: vi.fn(),
   getSalesByProduct: vi.fn(),
   getSalesByCustomer: vi.fn(async () => ({ customers: [] })),
   getSalesByCategory: vi.fn(async () => ({ categories: [] })),
@@ -88,6 +89,38 @@ vi.mock('@/lib/reportApi', () => ({
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(2026, 9, 14, 10, 0, 0))
+  // #361: the KPI tiles read the summary endpoint — the period, its comparison
+  // window (compare_start_date..compare_end_date) and today in one call.
+  const revenueFor = (start?: string, end?: string) =>
+    REVENUE_BY_RANGE[`${start}_${end}`] ?? 0
+  reportApiMock.getSalesSummary.mockImplementation(
+    async (filters: {
+      start_date: string
+      end_date: string
+      compare_start_date?: string
+      compare_end_date?: string
+      include_today?: boolean
+    }) => ({
+      period: { start_date: filters.start_date, end_date: filters.end_date },
+      summary: { total_revenue: revenueFor(filters.start_date, filters.end_date), total_quantity: 1 },
+      ...(filters.compare_start_date
+        ? {
+            comparison: {
+              mode: 'custom',
+              period: { start_date: filters.compare_start_date, end_date: filters.compare_end_date },
+              summary: {
+                total_revenue: {
+                  previous: revenueFor(filters.compare_start_date, filters.compare_end_date),
+                },
+              },
+            },
+          }
+        : {}),
+      ...(filters.include_today
+        ? { today: { total_revenue: revenueFor('2026-10-14', '2026-10-14'), date: '2026-10-14' } }
+        : {}),
+    }),
+  )
   reportApiMock.getSalesByProduct.mockImplementation(
     async (filters: { start_date: string; end_date: string }) => {
       const revenue = REVENUE_BY_RANGE[`${filters.start_date}_${filters.end_date}`] ?? 0
@@ -100,6 +133,7 @@ afterEach(() => {
   cleanup()
   vi.useRealTimers()
   reportApiMock.getSalesByProduct.mockReset()
+  reportApiMock.getSalesSummary.mockReset()
 })
 
 function renderDashboard() {
@@ -192,5 +226,10 @@ describe('SalesDashboard KPI row follows the selected period (#358)', () => {
       ([f]) => `${f.start_date}_${f.end_date}`,
     )
     expect(calls).not.toContain('2026-09-10_2026-09-01')
+    // #361: the KPI range now goes to the summary endpoint — same rule there.
+    const summaryCalls = reportApiMock.getSalesSummary.mock.calls.map(
+      ([f]) => `${f.start_date}_${f.end_date}`,
+    )
+    expect(summaryCalls).not.toContain('2026-09-10_2026-09-01')
   })
 })

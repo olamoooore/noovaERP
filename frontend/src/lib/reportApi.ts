@@ -14,6 +14,7 @@ import type {
   SalesRecordsData,
   SalesRecordsFilters,
   SalesByProductData,
+  SalesSummaryData,
   SalesByCustomerData,
   SalesTrendsData,
   SalesByCategoryData,
@@ -616,6 +617,25 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales by Product');
+      throw error;
+    }
+  }
+
+  /**
+   * #361: the dashboard KPI totals — the period, its comparison window and
+   * (with include_today) today — in one call.
+   */
+  async getSalesSummary(
+    filters: ReportFilters & { include_today?: boolean }
+  ): Promise<SalesSummaryData> {
+    try {
+      const response = await api.get<ApiResponse<SalesSummaryData>>(
+        '/analytics/sales/summary',
+        { params: this.salesParams(filters) }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales Summary');
       throw error;
     }
   }

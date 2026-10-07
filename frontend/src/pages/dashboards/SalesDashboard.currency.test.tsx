@@ -57,6 +57,12 @@ const summary = { base_currency: 'MYR', revenue_basis: 'net', includes_tax: fals
 
 vi.mock('@/lib/reportApi', () => ({
   default: {
+    // #361: the KPI tiles read the summary endpoint (period, comparison, today).
+    getSalesSummary: vi.fn(async () => ({
+      period: { start_date: '2026-10-01', end_date: '2026-10-31' },
+      summary: { total_revenue: 12400, total_quantity: 5, ...summary },
+      today: { total_revenue: 12400, total_quantity: 5, ...summary, date: '2026-10-14' },
+    })),
     getSalesByProduct: vi.fn(async () => ({
       products: [{ name: 'Widget', total_revenue: 12400, total_quantity: 5 }],
       summary,
