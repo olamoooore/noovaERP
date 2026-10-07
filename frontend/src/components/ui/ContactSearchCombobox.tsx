@@ -133,7 +133,12 @@ export function ContactSearchCombobox({
       const res = await api.get(`/contacts/${value}`)
       return res.data?.data ?? res.data
     },
-    enabled: !usesCustomerRecords && !!value && !searchResults?.find(c => String(c.id) === value),
+    // #1007: a saved invoice contact is a core contact UUID that may not be in
+    // the customer's current contact list — resolve its name instead of
+    // showing "Loading..." forever.
+    enabled: !!value
+      && (!usesCustomerRecords || (source === 'customer_contacts' && value.includes('-') && !!customerRecord))
+      && !searchResults?.find(c => String(c.id) === value),
   })
 
   const getDisplayValue = useCallback(() => {

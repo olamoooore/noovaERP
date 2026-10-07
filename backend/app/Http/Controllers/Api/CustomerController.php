@@ -201,11 +201,14 @@ class CustomerController extends Controller
                 $needle = mb_strtolower($search);
 
                 if ($customer->relationLoaded('customerContacts')) {
-                    $customer->matched_contacts = $customer->customerContacts
+                    $matchedContacts = $customer->customerContacts
                         ->filter(fn ($contact) => $contact->name && str_contains(mb_strtolower($contact->name), $needle))
-                        ->pluck('name')
                         ->take(3)
                         ->values();
+                    $customer->matched_contacts = $matchedContacts->pluck('name')->values();
+                    // #1007: ids aligned with matched_contacts so the invoice
+                    // picker can pre-select the matched person as billing contact.
+                    $customer->matched_contact_ids = $matchedContacts->pluck('id')->values();
                     unset($customer->customerContacts);
                 }
 

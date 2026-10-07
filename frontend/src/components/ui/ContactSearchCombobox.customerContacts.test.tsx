@@ -38,6 +38,7 @@ beforeEach(() => {
   apiGet.mockReset()
   apiGet.mockImplementation(async (url: string) => {
     if (url === '/customers/7') return { data: { data: customer } }
+    if (url === '/contacts/uuid-saved-old') return { data: { data: { id: 'uuid-saved-old', display_name: 'Former Accounts Person' } } }
     return { data: { data: [] } }
   })
 })
@@ -84,5 +85,10 @@ describe('ContactSearchCombobox customer contacts (#301)', () => {
     fireEvent.click(screen.getByRole('combobox'))
     expect(await screen.findByText('Aminah Yusof')).toBeTruthy()
     expect(customerFetches()).toBe(1)
+  })
+
+  it('#1007: a saved core-contact UUID outside the customer list shows its name, not "Loading..."', async () => {
+    renderPicker('uuid-saved-old')
+    await waitFor(() => expect(screen.getByRole('combobox').textContent).toContain('Former Accounts Person'))
   })
 })

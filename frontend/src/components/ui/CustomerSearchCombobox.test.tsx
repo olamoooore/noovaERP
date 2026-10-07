@@ -60,4 +60,30 @@ describe('CustomerSearchCombobox', () => {
 
     expect(await screen.findByText('No customers found.')).toBeTruthy()
   })
+
+  it('#1007: picking a customer matched through one contact person passes that contact id', async () => {
+    apiGet.mockImplementation(async () => ({
+      data: {
+        data: [
+          {
+            id: 60,
+            name: 'Northpoint Medical Group',
+            matched_contacts: ['Dr Elisa Koh'],
+            matched_contact_ids: [601],
+          },
+        ],
+      },
+    }))
+    const onValueChange = vi.fn()
+
+    renderPicker(onValueChange)
+    fireEvent.click(screen.getByRole('combobox'))
+    fireEvent.click(await screen.findByText('Northpoint Medical Group'))
+
+    expect(onValueChange).toHaveBeenCalledWith(
+      '60',
+      expect.objectContaining({ id: 60 }),
+      '601',
+    )
+  })
 })

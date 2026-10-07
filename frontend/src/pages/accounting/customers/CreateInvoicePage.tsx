@@ -479,6 +479,9 @@ export const CreateInvoicePage: React.FC = () => {
   // #317: customer id of a restored local draft — its header values are the
   // user's own, so the customer-default effects must not overwrite them.
   const restoredCustomerRef = useRef<string | null>(null);
+  // #1007: the contact person the customer search matched on (picker's
+  // "Contact: …" line), applied as the billing contact for that customer.
+  const matchedContactRef = useRef<{ customerId: string; contactId: string } | null>(null);
   // Guards the async Contact-Master address lookups per section: a stale
   // response must not overwrite the address of a contact picked later.
   const contactAddressRequestRef = useRef<{ billing: number; shipping: number }>({ billing: 0, shipping: 0 });
@@ -650,7 +653,11 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
-    const primaryContact = getPrimaryCustomerContact(selectedCustomer);
+    const matchedContact = matchedContactRef.current?.customerId === String(selectedCustomer.id)
+      ? (selectedCustomer.customer_contacts ?? selectedCustomer.customerContacts ?? [])
+        .find((contact) => String(contact.id) === matchedContactRef.current?.contactId)
+      : undefined;
+    const primaryContact = matchedContact ?? getPrimaryCustomerContact(selectedCustomer);
     const shippingContact = getCustomerContactForRole(selectedCustomer, 'shipping');
     const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
     const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
@@ -889,16 +896,8 @@ export const CreateInvoicePage: React.FC = () => {
     if (!isEditMode || !existingInvoice || !selectedCustomerDetail) return;
 
     const contacts = selectedCustomerDetail.customer_contacts ?? selectedCustomerDetail.customerContacts ?? [];
-    const billingName = existingInvoice.billing_contact?.display_name?.trim().toLowerCase();
-    const shippingName = existingInvoice.shipping_contact?.display_name?.trim().toLowerCase();
     const doctorName = (existingInvoice.doctor?.display_name || existingInvoice.doctor?.full_name || existingInvoice.doctor?.name)?.trim().toLowerCase();
     const requestorName = (existingInvoice.requestor?.display_name || existingInvoice.requestor?.full_name || existingInvoice.requestor?.name)?.trim().toLowerCase();
-    const billingMatch = billingName
-      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === billingName)
-      : undefined;
-    const shippingMatch = shippingName
-      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === shippingName)
-      : undefined;
     const doctorMatch = doctorName
       ? contacts.find((contact) => contact.name?.trim().toLowerCase() === doctorName)
       : undefined;
@@ -909,19 +908,25 @@ export const CreateInvoicePage: React.FC = () => {
     // Invoices raised before contact defaults were stored show no contact;
     // render the customer's default billing/shipping contact instead of blank,
     // without touching the invoice's saved snapshots or addresses.
+    // #1007: only an invoice with NO saved contact gets the default. A saved
+    // contact that is not in the customer's current list keeps its saved id
+    // (core contact UUID), so re-saving never re-points the invoice.
     const billingDefault = getCustomerContactForRole(selectedCustomerDetail, 'billing');
     const shippingDefault = getCustomerContactForRole(selectedCustomerDetail, 'shipping');
+    const savedBillingId = existingInvoice.billing_contact_id ? String(existingInvoice.billing_contact_id) : '';
+    const savedShippingId = existingInvoice.shipping_contact_id ? String(existingInvoice.shipping_contact_id) : '';
+    // A customer contact linked to the saved person is the same person, so it
+    // is shown by its customer-contact id; a name match is NOT (it may be a
+    // different person with the same name) and is no longer used here.
+    const resolveContact = (savedId: string, fallback: { id?: unknown } | undefined) => {
+      const linked = savedId ? contacts.find((contact) => contact.core_contact_uuid === savedId) : undefined;
+      if (linked?.id != null) return String(linked.id);
+      if (savedId) return savedId;
+      return fallback?.id != null ? String(fallback.id) : '';
+    };
 
-    setBillingContactId(
-      billingMatch?.id != null
-        ? String(billingMatch.id)
-        : (billingDefault?.id != null ? String(billingDefault.id) : ''),
-    );
-    setShippingContactId(
-      shippingMatch?.id != null
-        ? String(shippingMatch.id)
-        : (shippingDefault?.id != null ? String(shippingDefault.id) : ''),
-    );
+    setBillingContactId(resolveContact(savedBillingId, billingDefault));
+    setShippingContactId(resolveContact(savedShippingId, shippingDefault));
     setDoctorContactId(doctorMatch?.id != null ? String(doctorMatch.id) : '');
     setRequestorContactId(requestorMatch?.id != null ? String(requestorMatch.id) : '');
   }, [existingInvoice, isEditMode, selectedCustomerDetail]);
@@ -2089,7 +2094,7 @@ export const CreateInvoicePage: React.FC = () => {
 
   const detailsSummary = [
     documentSnapshot.customer_reference ? `PO ${documentSnapshot.customer_reference}` : null,
-    contactNameById(billingContactId) || documentSnapshot.attention_to || null,
+    documentSnapshot.attention_to || contactNameById(billingContactId) || null,
     showCases && caseCount > 0 ? `cases ${caseCount}` : null,
     notes ? 'notes' : null,
   ]
@@ -2194,8 +2199,9 @@ export const CreateInvoicePage: React.FC = () => {
                     <CustomerSearchCombobox
                       compact
                       value={customerId}
-                      onValueChange={(id, customer) => {
+                      onValueChange={(id, customer, matchedContactId) => {
                         fieldErrors.clear('customer_id')
+                        matchedContactRef.current = id && matchedContactId ? { customerId: id, contactId: matchedContactId } : null
                         setCustomerId(id)
                         // D1: keep the match explanation so the operator can see
                         // the pick came from a contact/tag/address search.
