@@ -165,47 +165,10 @@ class PaymentPostingService
                 return $this->repairPostedStatus($payment);
             }
 
-            $bankGlAccountId = null;
-            if (! empty($payment->bank_account_id)) {
-                $bankGlAccountId = BankAccount::find($payment->bank_account_id)?->gl_account_id;
-            }
-
-            // ── #44: policy-driven payment method → GL account mapping ──
-            $method = $payment->method ?? 'cash';
-
-            // 'other' is accepted by PaymentController::store() and produced by
-            // PaymentImportService::resolveMethod() for unclassified import
-            // values — it MUST be postable here too, otherwise imported
-            // payments are permanently stuck in `recorded` with no GL entry
-            // (production report 2026-09-24). Unclassified receipts post to
-            // the default bank account, matching the platform's dominant
-            // settlement path.
-            // #486: the tenant method master drives allowance + mapping; the
-            // hardcoded map stays as the fallback for unseeded tenants.
-            $master = PaymentMethod::query()->active()->where('code', $method)->first();
-
-            $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway', 'other'];
-            if ($master === null && ! in_array($method, $allowedMethods, true)) {
-                throw new \RuntimeException(
-                    "Unsupported payment method: '{$method}'. ".
-                    'Allowed: '.implode(', ', array_unique([...$allowedMethods, ...PaymentMethod::query()->active()->pluck('code')->all()]))
-                );
-            }
-
-            $cashMappingKey = $master?->mapping_key ?? match ($method) {
-                'bank_transfer' => 'bank',
-                'card' => 'card_clearing',
-                'check' => 'cheque_clearing',
-                'cash' => 'cash',
-                'gateway' => 'gateway_receivable',
-                'other' => 'bank',
-            };
-
-            // Master may pin a default deposit journal for the method — used
-            // when the payment itself carries no explicit bank account.
-            if ($bankGlAccountId === null && $master?->default_bank_account_id) {
-                $bankGlAccountId = BankAccount::find($master->default_bank_account_id)?->gl_account_id;
-            }
+            [$cashMappingKey, $bankGlAccountId] = $this->resolveCashAccount(
+                $payment->bank_account_id ? (int) $payment->bank_account_id : null,
+                $payment->method,
+            );
 
             // ── MRD pricelist-multicurrency FR-7.2/7.3 / AC-4 ────────────
             // #490: the settlement maths lives in settlementPreview() so the
@@ -411,6 +374,61 @@ class PaymentPostingService
 
             return $payment->fresh(['customer', 'invoice', 'journalEntry']);
         });
+    }
+
+    /**
+     * The cash side of a customer payment: the GL account of the chosen bank
+     * account (or the method's default deposit account), else the method's
+     * account mapping key. Shared with outbound customer refunds (#528) so
+     * money in and money out use the same mapping.
+     *
+     * @return array{0: string, 1: int|null} [mapping key, explicit GL account id]
+     */
+    public function resolveCashAccount(?int $bankAccountId, ?string $method): array
+    {
+        $bankGlAccountId = null;
+        if (! empty($bankAccountId)) {
+            $bankGlAccountId = BankAccount::find($bankAccountId)?->gl_account_id;
+        }
+
+        // ── #44: policy-driven payment method → GL account mapping ──
+        $method = $method ?? 'cash';
+
+        // 'other' is accepted by PaymentController::store() and produced by
+        // PaymentImportService::resolveMethod() for unclassified import
+        // values — it MUST be postable here too, otherwise imported
+        // payments are permanently stuck in `recorded` with no GL entry
+        // (production report 2026-09-24). Unclassified receipts post to
+        // the default bank account, matching the platform's dominant
+        // settlement path.
+        // #486: the tenant method master drives allowance + mapping; the
+        // hardcoded map stays as the fallback for unseeded tenants.
+        $master = PaymentMethod::query()->active()->where('code', $method)->first();
+
+        $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway', 'other'];
+        if ($master === null && ! in_array($method, $allowedMethods, true)) {
+            throw new \RuntimeException(
+                "Unsupported payment method: '{$method}'. ".
+                'Allowed: '.implode(', ', array_unique([...$allowedMethods, ...PaymentMethod::query()->active()->pluck('code')->all()]))
+            );
+        }
+
+        $cashMappingKey = $master?->mapping_key ?? match ($method) {
+            'bank_transfer' => 'bank',
+            'card' => 'card_clearing',
+            'check' => 'cheque_clearing',
+            'cash' => 'cash',
+            'gateway' => 'gateway_receivable',
+            'other' => 'bank',
+        };
+
+        // Master may pin a default deposit journal for the method — used
+        // when the payment itself carries no explicit bank account.
+        if ($bankGlAccountId === null && $master?->default_bank_account_id) {
+            $bankGlAccountId = BankAccount::find($master->default_bank_account_id)?->gl_account_id;
+        }
+
+        return [$cashMappingKey, $bankGlAccountId];
     }
 
     /**

@@ -835,6 +835,15 @@ class CustomerCreditNoteService
             throw new \Exception('Only posted credit notes can be voided');
         }
 
+        // #528: credit already paid out to the customer cannot be released by
+        // a void — the refund must be voided first (its journal reversed),
+        // otherwise the note's invoice would lose credit it no longer holds.
+        if ($creditNote->refunds()->whereNull('voided_at')->exists()) {
+            throw new \InvalidArgumentException(
+                "Credit note {$creditNote->credit_note_number} has been refunded to the customer. Void the refund before voiding the credit note."
+            );
+        }
+
         $actorId = TenantUserHelper::requireTenantUserId(Auth::id() ?? $creditNote->posted_by);
 
         DB::beginTransaction();

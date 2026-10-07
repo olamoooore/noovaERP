@@ -25,6 +25,10 @@ use Illuminate\Support\Facades\DB;
  * #495: remaining credit can be applied to other open invoices of the same
  * customer (customer_credit_note_applications); live applications count as
  * applied, so remaining = total − applied to own invoice − applied elsewhere.
+ *
+ * #528: remaining credit can also be paid out to the customer
+ * (customer_credit_note_refunds); live refunds are consumed too, so
+ * remaining = total − applied to own invoice − applied elsewhere − refunded.
  */
 class CustomerCreditNoteOutcomeService
 {
@@ -45,8 +49,13 @@ class CustomerCreditNoteOutcomeService
             ->when($invoiceIds !== null, fn ($q) => $q->whereIn('cn.invoice_id', $invoiceIds))
             ->select('cn.id', 'cn.total_amount')
             ->selectRaw("LEAST(cn.total_amount, GREATEST(0, {$openBalance} - ({$creditedBefore}))) AS applied_amount")
-            ->selectRaw('('.self::APPLIED_ELSEWHERE_SQL.') AS applied_elsewhere');
+            ->selectRaw('('.self::APPLIED_ELSEWHERE_SQL.') AS applied_elsewhere')
+            ->selectRaw('('.self::REFUNDED_SQL.') AS refunded');
     }
+
+    /** #528: live (not voided) refunds of the note's credit to the customer. */
+    private const REFUNDED_SQL = 'SELECT COALESCE(SUM(cr.amount), 0) FROM customer_credit_note_refunds cr '
+        .'WHERE cr.credit_note_id = cn.id AND cr.voided_at IS NULL';
 
     /** #495: live applications of the note's credit to other invoices. */
     private const APPLIED_ELSEWHERE_SQL = 'SELECT COALESCE(SUM(ca.applied_amount), 0) FROM customer_credit_note_applications ca '
@@ -65,7 +74,7 @@ class CustomerCreditNoteOutcomeService
 
         $row = $this->postedOutcomeQuery([(int) $note->invoice_id])->get()->firstWhere('id', $note->id);
 
-        return (float) ($this->outcomeFor($note, $row?->applied_amount, $row?->applied_elsewhere)['remaining_credit'] ?? 0.0);
+        return (float) ($this->outcomeFor($note, $row?->applied_amount, $row?->applied_elsewhere, $row?->refunded)['remaining_credit'] ?? 0.0);
     }
 
     /**
@@ -78,8 +87,8 @@ class CustomerCreditNoteOutcomeService
     public function applyFilter(Builder $query, string $outcome): void
     {
         $condition = match ($outcome) {
-            'applied' => 'o.total_amount - o.applied_amount - o.applied_elsewhere <= 0',
-            'customer_credit' => 'o.total_amount - o.applied_amount - o.applied_elsewhere > 0',
+            'applied' => 'o.total_amount - o.applied_amount - o.applied_elsewhere - o.refunded <= 0',
+            'customer_credit' => 'o.total_amount - o.applied_amount - o.applied_elsewhere - o.refunded > 0',
             default => null,
         };
 
@@ -120,14 +129,14 @@ class CustomerCreditNoteOutcomeService
 
         foreach ($notes as $note) {
             $row = $applied->get($note->id);
-            $note->setAttribute('outcome', $this->outcomeFor($note, $row?->applied_amount, $row?->applied_elsewhere));
+            $note->setAttribute('outcome', $this->outcomeFor($note, $row?->applied_amount, $row?->applied_elsewhere, $row?->refunded));
             $note->setAttribute('einvoice_status', in_array($note->status, ['posted', 'voided'], true)
                 ? ($einvoice[(int) $note->id] ?? 'not_submitted')
                 : null);
         }
     }
 
-    private function outcomeFor(CustomerCreditNote $note, mixed $appliedAmount, mixed $appliedElsewhere = 0): ?array
+    private function outcomeFor(CustomerCreditNote $note, mixed $appliedAmount, mixed $appliedElsewhere = 0, mixed $refunded = 0): ?array
     {
         if ($note->status === 'voided') {
             return [
@@ -136,6 +145,7 @@ class CustomerCreditNoteOutcomeService
                 'remaining_credit' => 0.0,
                 'applied_to' => null,
                 'applied_elsewhere' => 0.0,
+                'refunded_amount' => 0.0,
             ];
         }
 
@@ -148,17 +158,20 @@ class CustomerCreditNoteOutcomeService
         // #495: credit applied to other invoices from the outstanding-credits action.
         $elsewhere = round(max(0.0, min($total - $ownApplied, (float) $appliedElsewhere)), 2);
         $applied = round($ownApplied + $elsewhere, 2);
-        $remaining = round($total - $applied, 2);
+        // #528: credit paid out to the customer is consumed like applied credit.
+        $refundedAmount = round(max(0.0, min($total - $applied, (float) $refunded)), 2);
+        $remaining = round($total - $applied - $refundedAmount, 2);
 
         return [
             'state' => match (true) {
                 $remaining <= 0 => 'applied',
-                $applied <= 0 => 'customer_credit',
+                $applied + $refundedAmount <= 0 => 'customer_credit',
                 default => 'partially_applied',
             },
             'applied_amount' => $applied,
             'remaining_credit' => $remaining,
             'applied_elsewhere' => $elsewhere,
+            'refunded_amount' => $refundedAmount,
             'applied_to' => $ownApplied > 0 && $note->invoice_id
                 ? [
                     'invoice_id' => (int) $note->invoice_id,

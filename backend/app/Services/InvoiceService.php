@@ -2505,6 +2505,19 @@ class InvoiceService
         $this->adjustCreditNoteOnInvoice($to, $amount, $reason);
     }
 
+    /**
+     * Issue #528: a credit note's remaining customer credit, parked on its
+     * own invoice as credited_amount beyond the open balance (#510), is paid
+     * out to the customer. Releasing it from credited_amount takes it out of
+     * the customer credit balance; the invoice balance is unchanged because
+     * only credit the invoice could not absorb is refundable. A negative
+     * amount puts the credit back (the refund was voided).
+     */
+    public function releaseRefundedCustomerCredit(Invoice $origin, float $amount, string $reason): void
+    {
+        $this->adjustCreditNoteOnInvoice($origin, -$amount, $reason);
+    }
+
     private function adjustCreditNoteOnInvoice(Invoice $invoice, float $delta, ?string $reason = null): Invoice
     {
         $invoice->refresh();

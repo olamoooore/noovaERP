@@ -16,6 +16,22 @@ export interface CustomerCreditNote {
   einvoice_status?: string | null;
   currency_code?: string | null;
   legal_entity_id?: number | null;
+  /** #528: refunds of the note's credit to the customer (detail endpoint). */
+  refunds?: CreditNoteRefund[];
+}
+
+/** #528: an outbound refund of a credit note's remaining credit. */
+export interface CreditNoteRefund {
+  id: number;
+  credit_note_id: number;
+  payment_id: number | null;
+  amount: number | string;
+  currency_code: string | null;
+  journal_entry_id: number | null;
+  voided_at: string | null;
+  reversal_journal_entry_id: number | null;
+  created_at: string;
+  payment?: { id: number; payment_number: string; payment_date: string; method: string | null } | null;
 }
 
 export type CreditNoteOutcomeState = 'applied' | 'partially_applied' | 'customer_credit' | 'voided';
@@ -27,6 +43,8 @@ export interface CreditNoteOutcome {
   applied_to: { invoice_id: number; invoice_number: string | null } | null;
   /** #495: credit applied to other invoices from "Outstanding credits". */
   applied_elsewhere?: number;
+  /** #528: credit paid out to the customer by live refunds. */
+  refunded_amount?: number;
 }
 
 export interface CreditNoteFilters {

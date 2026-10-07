@@ -20,6 +20,7 @@ import { formatCurrency } from '@/lib/utils';
 import EInvoicePanel from '../components/EInvoicePanel';
 import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
 import { CreditNoteOutcomeBadge } from '../components/CreditNoteOutcomeBadge';
+import { CreditNoteRefunds } from '../components/CreditNoteRefunds';
 import type { CreditNoteOutcome } from '@/types/creditNote';
 import { formatCountdown } from '../components/einvoiceStatus';
 import { useEInvoiceDocument } from '../components/useEInvoice';
@@ -308,6 +309,19 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           </Card>
         );
       })()}
+
+      {/* #528: refund the remaining credit to the customer. */}
+      {creditNote.status !== 'draft' && (
+        <CreditNoteRefunds
+          creditNoteId={creditNoteId}
+          creditNoteNumber={creditNote.credit_note_number}
+          currencyCode={creditNote.currency_code}
+          remainingCredit={Number((creditNote.outcome as CreditNoteOutcome | null)?.remaining_credit ?? 0)}
+          refunds={creditNote.refunds ?? []}
+          canPost={canPost}
+          isPosted={creditNote.status === 'posted'}
+        />
+      )}
 
       {/* Line Items */}
       {creditNote.lines && creditNote.lines.length > 0 && (

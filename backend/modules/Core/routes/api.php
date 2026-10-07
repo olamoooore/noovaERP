@@ -1137,6 +1137,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // authority as a #155 payment allocation.
         Route::post('/customers/credit-notes/{creditNote}/applications', [CustomerCreditNotesController::class, 'applyCredit'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+        // #528: refund the note's remaining credit to the customer (outbound
+        // payment, Dr AR / Cr Bank) and void such a refund — both post to the
+        // GL, so they carry the same accounting.post gate as /post and /void.
+        Route::post('/customers/credit-notes/{creditNote}/refunds', [CustomerCreditNotesController::class, 'refund'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
+        Route::post('/customers/credit-notes/{creditNote}/refunds/{refundId}/void', [CustomerCreditNotesController::class, 'voidRefund'])
+            ->whereNumber('refundId')
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
 
         // #527: credit note reversal wizard (full refund / full refund + new
         // draft invoice) — creates AND posts a credit note, so it carries the
