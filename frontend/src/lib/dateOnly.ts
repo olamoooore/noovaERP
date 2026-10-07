@@ -6,11 +6,18 @@
 // it never constructs a locally-parsed midnight and re-serializes with
 // toISOString(), which was the original shift-on-negative-UTC-offset bug.
 
-export function todayDateOnly(now: Date = new Date()): string {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
+// Local calendar date (YYYY-MM-DD) of any Date — never via toISOString(),
+// which is the UTC day (at +0800 local midnight on the 1st serialises as the
+// previous day). #1018/#1020: shared by report/statement period defaults.
+export function toLocalIsoDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+export function todayDateOnly(now: Date = new Date()): string {
+  return toLocalIsoDate(now);
 }
 
 export function addCalendarDays(invDate: string, days: number): string {

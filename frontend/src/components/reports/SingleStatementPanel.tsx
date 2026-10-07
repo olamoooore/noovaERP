@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { toLocalIsoDate } from '@/lib/dateOnly'
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils'
 
 interface StatementCustomer {
@@ -39,11 +40,9 @@ interface StatementPayload {
   aging: Aging
 }
 
-const isoDate = (date: Date) => date.toISOString().split('T')[0]
-
 const firstOfMonth = () => {
   const now = new Date()
-  return isoDate(new Date(now.getFullYear(), now.getMonth(), 1))
+  return toLocalIsoDate(new Date(now.getFullYear(), now.getMonth(), 1))
 }
 
 const AGING_BUCKETS: Array<{ key: keyof Aging; label: string }> = [
@@ -66,9 +65,12 @@ export function SingleStatementPanel() {
   const [selectedCustomer, setSelectedCustomer] = useState<StatementCustomer | null>(null)
   const [mode, setMode] = useState<'range' | 'as_of'>('range')
   const [startDate, setStartDate] = useState(firstOfMonth)
-  const [endDate, setEndDate] = useState(() => isoDate(new Date()))
-  const [asOf, setAsOf] = useState(() => isoDate(new Date()))
+  const [endDate, setEndDate] = useState(() => toLocalIsoDate(new Date()))
+  const [asOf, setAsOf] = useState(() => toLocalIsoDate(new Date()))
   const [includePaid, setIncludePaid] = useState(false)
+  // #1018: a range whose To precedes its From is rejected client-side (the
+  // API answers 422) — no preview request and no print/send for it.
+  const rangeInvalid = mode === 'range' && Boolean(startDate && endDate && endDate < startDate)
 
   const periodParams = useMemo<Record<string, string>>(() => {
     const params: Record<string, string> = {}
@@ -89,7 +91,7 @@ export function SingleStatementPanel() {
       })
       return response.data as { statement_id: string; filename: string; payload: StatementPayload }
     },
-    enabled: Boolean(customerId),
+    enabled: Boolean(customerId) && !rangeInvalid,
   })
 
   const sendStatement = useMutation({
@@ -185,9 +187,15 @@ export function SingleStatementPanel() {
                     id="single-statement-end"
                     type="date"
                     value={endDate}
+                    min={startDate || undefined}
                     onChange={(event) => setEndDate(event.target.value)}
                   />
                 </div>
+                {rangeInvalid && (
+                  <p className="col-span-2 text-xs text-destructive">
+                    The To date must be on or after the From date.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -212,7 +220,7 @@ export function SingleStatementPanel() {
               Include fully paid invoices (with their payments and credit notes)
             </label>
 
-            {customerId && (
+            {customerId && !rangeInvalid && (
               <PrintSendMenu
                 documentType="customer_statement"
                 pdfPath={statementPdfPath}
@@ -234,7 +242,7 @@ export function SingleStatementPanel() {
             Select a customer to preview their statement and aging.
           </CardContent>
         </Card>
-      ) : previewQuery.isLoading ? (
+      ) : rangeInvalid ? null : previewQuery.isLoading ? (
         <Card><CardContent className="py-12 text-center text-muted-foreground">Loading statement preview...</CardContent></Card>
       ) : previewQuery.isError ? (
         <Card><CardContent className="py-12 text-center text-destructive">Could not load the statement preview.</CardContent></Card>

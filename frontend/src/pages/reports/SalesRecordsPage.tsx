@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import reportApi from '@/lib/reportApi';
+import { toLocalIsoDate } from '@/lib/dateOnly';
 import type {
   SalesRecordsFilters,
   SalesRecordsGroupBy,
@@ -40,7 +41,7 @@ export default function SalesRecordsPage() {
   const now = new Date();
   const [filters, setFilters] = useState<SalesRecordsFilters>({
     start_date: `${now.getFullYear()}-01-01`,
-    end_date: now.toISOString().split('T')[0],
+    end_date: toLocalIsoDate(now),
     group_by: 'item_code',
   });
   const [itemCodeInput, setItemCodeInput] = useState('');

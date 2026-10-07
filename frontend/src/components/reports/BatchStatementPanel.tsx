@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { toLocalIsoDate } from '@/lib/dateOnly'
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils'
 
 interface BatchRow {
@@ -36,11 +37,9 @@ interface BatchProgress {
   channel?: string | null
 }
 
-const isoDate = (date: Date) => date.toISOString().split('T')[0]
-
 const firstOfMonth = () => {
   const now = new Date()
-  return isoDate(new Date(now.getFullYear(), now.getMonth(), 1))
+  return toLocalIsoDate(new Date(now.getFullYear(), now.getMonth(), 1))
 }
 
 /**
@@ -59,8 +58,8 @@ export function BatchStatementPanel() {
   const [customerGroup, setCustomerGroup] = useState('')
   const [mode, setMode] = useState<'range' | 'as_of'>('range')
   const [startDate, setStartDate] = useState(firstOfMonth)
-  const [endDate, setEndDate] = useState(() => isoDate(new Date()))
-  const [asOf, setAsOf] = useState(() => isoDate(new Date()))
+  const [endDate, setEndDate] = useState(() => toLocalIsoDate(new Date()))
+  const [asOf, setAsOf] = useState(() => toLocalIsoDate(new Date()))
   const [includePaid, setIncludePaid] = useState(false)
   const [channel, setChannel] = useState<'email' | 'whatsapp'>('email')
   const [rows, setRows] = useState<BatchRow[]>([])
@@ -69,6 +68,9 @@ export function BatchStatementPanel() {
   const [batchError, setBatchError] = useState<string | null>(null)
 
   const periodEnd = mode === 'range' ? endDate : asOf
+  // #1018: a range whose To precedes its From is rejected client-side (the
+  // API answers 422) — preview and send stay disabled until it is fixed.
+  const rangeInvalid = mode === 'range' && Boolean(startDate && endDate && endDate < startDate)
 
   const filterPayload = useMemo(() => ({
     with_balance: withBalance,
@@ -296,9 +298,15 @@ export function BatchStatementPanel() {
                     id="batch-statement-end"
                     type="date"
                     value={endDate}
+                    min={startDate || undefined}
                     onChange={(event) => setEndDate(event.target.value)}
                   />
                 </div>
+                {rangeInvalid && (
+                  <p className="col-span-2 text-xs text-destructive">
+                    The To date must be on or after the From date.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -350,7 +358,7 @@ export function BatchStatementPanel() {
               type="button"
               variant="outline"
               onClick={() => preview.mutate()}
-              disabled={preview.isPending}
+              disabled={preview.isPending || rangeInvalid}
             >
               <Icon icon="solar:magnifier-bold" className="mr-2 h-4 w-4" />
               {preview.isPending ? 'Loading...' : 'Preview list'}
@@ -371,7 +379,7 @@ export function BatchStatementPanel() {
             <Button
               type="button"
               onClick={() => sendBatch.mutate()}
-              disabled={selectedIds.length === 0 || sendBatch.isPending}
+              disabled={selectedIds.length === 0 || sendBatch.isPending || rangeInvalid}
             >
               <Icon icon="solar:letter-bold" className="mr-2 h-4 w-4" />
               {sendBatch.isPending ? 'Queuing...' : `Generate & send (${selectedIds.length})`}
