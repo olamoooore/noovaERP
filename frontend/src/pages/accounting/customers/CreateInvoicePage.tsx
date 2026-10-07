@@ -172,6 +172,8 @@ interface CustomerContact {
 interface CustomerRecord {
   id: number;
   type?: 'individual' | 'company';
+  // #1007: the company an individual is billed through (customers.parent_id).
+  parent_id?: number | null;
   name?: string;
   company?: string | null;
   code?: string | null;
@@ -2258,6 +2260,13 @@ export const CreateInvoicePage: React.FC = () => {
                       {customerMatch.addresses.length > 0 && (
                         <span className="truncate">Address: {customerMatch.addresses.join(' · ')}</span>
                       )}
+                    </p>
+                  )}
+                  {selectedCustomer?.type === 'individual' && !selectedCustomer.parent_id && (
+                    // #1007: an individual with no linked company bills to the
+                    // person — say so instead of silently defaulting.
+                    <p role="status" data-testid="individual-no-company-warning" className="mt-1 text-[11px] leading-snug text-amber-600">
+                      This customer is an individual with no linked company — the invoice will be billed to the person. Link a company on the customer record if a company should be billed.
                     </p>
                   )}
                 </div>

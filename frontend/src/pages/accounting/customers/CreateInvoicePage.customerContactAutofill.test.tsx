@@ -351,4 +351,38 @@ describe('CreateInvoicePage — customer/contact billing defaults', () => {
     // The bill-to address still defaults to the company billing address.
     await waitFor(() => expect(billingStreetInput().value).toBe('2 Ali Billing St'))
   })
+
+  it('#1007: an individual customer with no linked company shows a bill-to-person warning', async () => {
+    const base = apiGet.getMockImplementation()!
+    apiGet.mockImplementation(async (url: string, ...rest: unknown[]) =>
+      url === '/customers/1'
+        ? { data: { ...ali, type: 'individual', name: 'Pat Person', parent_id: null } }
+        : base(url, ...rest))
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali'))
+
+    expect(await screen.findByTestId('individual-no-company-warning')).toBeTruthy()
+  })
+
+  it('#1007: a company customer (or an individual with a linked company) shows no warning', async () => {
+    const base = apiGet.getMockImplementation()!
+    apiGet.mockImplementation(async (url: string, ...rest: unknown[]) =>
+      url === '/customers/1'
+        ? { data: { ...ali, type: 'individual', name: 'Pat Person', parent_id: 7 } }
+        : base(url, ...rest))
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali'))
+    openDetails()
+    // The customer detail has loaded once its billing address renders.
+    await waitFor(() => expect(billingStreetInput().value).toBe('2 Ali Billing St'))
+    expect(screen.queryByTestId('individual-no-company-warning')).toBeNull()
+
+    cleanup()
+    apiGet.mockImplementation(base)
+    renderPage()
+    fireEvent.click(await screen.findByText('pick-ali'))
+    openDetails()
+    await waitFor(() => expect(billingStreetInput().value).toBe('2 Ali Billing St'))
+    expect(screen.queryByTestId('individual-no-company-warning')).toBeNull()
+  })
 })
