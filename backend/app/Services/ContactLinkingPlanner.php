@@ -69,6 +69,11 @@ use Modules\Contact\src\Support\ContactTaxonomyRegistry;
  *    the same registration number or name on separate records;
  *  - `dependents` on `linked_contact_deleted` rows (L3): addresses,
  *    relationships and sites still hanging off the deleted record.
+ *
+ * Review of linking plan revision 2 (2026-10-07): a decision depends on its
+ * TARGET too (candidate organisation, matched person, merge survivor), so
+ * each row's `fingerprint` covers the source row AND the current state of
+ * every target in `targetIds()`.
  */
 class ContactLinkingPlanner
 {
@@ -125,6 +130,7 @@ class ContactLinkingPlanner
         $this->mergedIds = CoreContact::where('tenant_id', $tenantId)->where('is_duplicate', true)->pluck('merged_into_id', 'id')->all();
         $this->damagedPeople = collect($this->damage->plan($tenantId)['people'])->pluck('severity', 'person_id')->all();
         $this->batchPeople = [];
+        $this->targetPrints = [];
         $this->buildRegistrationIndexes($tenantId, $existingIds);
         $survivorCustomers = Customer::whereNotNull('core_contact_uuid')->pluck('id', 'core_contact_uuid')->all();
         $index = $this->organisationIndex($tenantId);
@@ -149,9 +155,11 @@ class ContactLinkingPlanner
                     'customer_name' => $customer->name,
                     'fingerprint' => $this->customerFingerprint($customer),
                 ];
-                $organisations[] = $this->mergedCustomer($customer, $base, $survivorCustomers)
-                    ?? $this->badLink($customer->core_contact_uuid, $base)
-                    ?? $this->planOrganisation($customer, $index, $links) + ['fingerprint' => $base['fingerprint']];
+                $organisations[] = $this->withTargetFingerprint(
+                    $this->mergedCustomer($customer, $base, $survivorCustomers)
+                        ?? $this->badLink($customer->core_contact_uuid, $base)
+                        ?? $this->planOrganisation($customer, $index, $links) + ['fingerprint' => $base['fingerprint']]
+                );
             }
         });
 
@@ -169,7 +177,7 @@ class ContactLinkingPlanner
 
         $people = [];
         foreach ($unlinkedPeople as $contact) {
-            $people[] = $this->planPerson($tenantId, $contact, $links, $sharedInBatch);
+            $people[] = $this->withTargetFingerprint($this->planPerson($tenantId, $contact, $links, $sharedInBatch));
         }
 
         return [
@@ -545,6 +553,62 @@ class ContactLinkingPlanner
             $contact->contact_category, $contact->contact_type, $contact->department_name, $contact->core_contact_uuid,
             $contact->deleted_at?->toIso8601String(),
         ]));
+    }
+
+    /**
+     * The Contact Master records a decision on this row would act on.
+     *
+     * @param  array<string, mixed>  $row
+     * @return list<string>
+     */
+    public static function targetIds(array $row): array
+    {
+        $targets = array_column($row['candidates'] ?? [], 'contact_id');
+        foreach (['person_id', 'candidate_person_id', 'linked_contact_id', 'merged_into_id'] as $key) {
+            if (! empty($row[$key])) {
+                $targets[] = (string) $row[$key];
+            }
+        }
+
+        return array_values(array_unique($targets));
+    }
+
+    /** @var array<string, string> target id → print (cached per run) */
+    private array $targetPrints = [];
+
+    /**
+     * Fold the current state of every target into the row's fingerprint.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function withTargetFingerprint(array $row): array
+    {
+        $prints = [];
+        foreach (self::targetIds($row) as $id) {
+            $prints[$id] = $this->targetPrints[$id] ??= $this->targetPrint($id);
+        }
+        ksort($prints);
+        $row['fingerprint'] = hash('sha256', json_encode([$row['fingerprint'], $prints]));
+
+        return $row;
+    }
+
+    private function targetPrint(string $id): string
+    {
+        // `batch:<customer_contact_id>` is a person the run would create from
+        // another row; that row's own fingerprint covers its source.
+        if (str_starts_with($id, 'batch:')) {
+            return $id;
+        }
+
+        $contact = CoreContact::withTrashed()->whereKey($id)->first();
+
+        return json_encode($contact === null ? null : [
+            $contact->id, $contact->display_name, $contact->email, $contact->mobile, $contact->phone,
+            $contact->contact_type, $contact->is_active, $contact->is_duplicate, $contact->merged_into_id,
+            $contact->deleted_at?->toIso8601String(), $contact->updated_at?->toIso8601String(),
+        ]);
     }
 
     /**
