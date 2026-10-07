@@ -89,12 +89,18 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
     }
 
     /**
-     * Hostile review of the fix: a row that fails during COMMIT for a
-     * business reason (here a batch staged BEFORE the fix, still carrying
-     * CLINICAL as `valid`) must reject only that row — its writes rolled back
-     * — and the rest of the batch must still import.
+     * A row that fails WHILE BEING WRITTEN (here a batch staged before the
+     * vocabulary check, still carrying CLINICAL as `valid`) fails the whole
+     * commit, even though another row could be written: 422 with every
+     * reason, nothing written, rows left as staged, the batch open. After
+     * the cause is fixed the same batch commits both rows.
+     *
+     * Revised by the hostile review of the 422 change (2026-10-07): this test
+     * first asserted a partial import (200, imported 1, rejected 1). The rule
+     * changed on review to "any row failing while written rolls the commit
+     * back", so a single successful row cannot close the batch on the rest.
      */
-    public function test_a_row_failing_at_commit_is_rejected_alone_and_rolled_back(): void
+    public function test_a_row_failing_while_written_rolls_back_the_whole_commit(): void
     {
         $headers = $this->authorisedHeaders();
         $csv = "name,code,contact_name,contact_category,contact_type\n".
@@ -104,34 +110,51 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
         $batchId = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
             ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile($csv)])
             ->assertOk()->json('batch_id');
-
-        // What a batch staged before the fix looks like: CLINICAL resolved
-        // from the static mapping and the row marked commit-ready.
         $first = DB::table('contact_import_staging')->where('batch_id', $batchId)->orderBy('row_number')->first();
-        $mapped = json_decode((string) $first->mapped_data, true);
-        $mapped['_taxonomy']['functional_category'] = 'CLINICAL';
-        $mapped['_taxonomy']['functional_category_label'] = 'Clinical';
-        $mapped['_taxonomy']['unknown'] = [];
-        DB::table('contact_import_staging')->where('id', $first->id)->update(['mapped_data' => json_encode($mapped), 'status' => 'valid']);
+        $this->stageAsClinical($batchId, (string) $first->id);
 
-        $commit = $this->withHeaders($headers)
-            ->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")
-            ->assertOk();
-        $this->assertSame(1, $commit->json('imported'));
+        $commit = $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit");
+        $commit->assertStatus(422);
+        $this->assertSame(0, $commit->json('imported'));
         $this->assertSame(1, $commit->json('rejected'));
-
-        // The response says WHY, per row, and does not read as a clean import.
-        $this->assertSame('Import committed: 1 imported, 1 rejected.', $commit->json('message'));
         $this->assertSame([[
             'row_number' => (int) $first->row_number,
             'reason' => 'Rejected at COMMIT: UNKNOWN_TAXONOMY_VALUE (functional_category CLINICAL is not in this tenant\'s vocabulary)',
         ]], $commit->json('rejections'));
-
-        $row = DB::table('contact_import_staging')->where('id', $first->id)->first();
-        $this->assertSame('error', $row->status);
-        $this->assertStringContainsString('UNKNOWN_TAXONOMY_VALUE', (string) $row->errors);
         $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
-        $this->assertDatabaseHas('customers', ['code' => 'VC0002', 'name' => 'Bayu Trading']);
+        $this->assertDatabaseMissing('customers', ['code' => 'VC0002']);
+        $this->assertNotSame('completed', DB::table('contact_import_batches')->where('id', $batchId)->value('status'));
+        $this->assertSame(['valid', 'valid'], DB::table('contact_import_staging')->where('batch_id', $batchId)->orderBy('row_number')->pluck('status')->all(), 'Rows are left as staged.');
+
+        Setting::setValue(ContactTaxonomyRegistry::HEALTHCARE_SETTING_KEY, true);
+        $retry = $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")->assertOk();
+        $this->assertSame(2, $retry->json('imported'));
+        $this->assertSame('Import committed.', $retry->json('message'));
+        $this->assertDatabaseHas('customers', ['code' => 'VC0001']);
+        $this->assertDatabaseHas('customers', ['code' => 'VC0002']);
+    }
+
+    /**
+     * The commit locks the batch row, so two commits of one batch run one
+     * after the other. Proven from the row itself (each test runs in one
+     * uncommitted transaction, so a second connection cannot contend): on a
+     * rolled-back commit nothing writes the batch row, so a changed `xmax`
+     * can only come from the commit's FOR UPDATE.
+     */
+    public function test_the_commit_locks_the_batch_row(): void
+    {
+        $headers = $this->authorisedHeaders();
+        $batchId = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
+            ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile("name,code,contact_name,contact_category,contact_type\nAcme Corp,VC0001,John Doe,Finance,Primary")])
+            ->assertOk()->json('batch_id');
+        $this->stageAsClinical($batchId);
+        $before = DB::selectOne('select xmax::text as xmax, status from contact_import_batches where id = ?', [$batchId]);
+
+        $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit")->assertStatus(422);
+
+        $after = DB::selectOne('select xmax::text as xmax, status from contact_import_batches where id = ?', [$batchId]);
+        $this->assertSame($before->status, $after->status, 'Precondition: the rolled-back commit wrote nothing to the batch row.');
+        $this->assertNotSame($before->xmax, $after->xmax, 'The commit locked the batch row (FOR UPDATE stamps xmax).');
     }
 
     /**
@@ -186,10 +209,30 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
         $this->assertTrue($commit->json('rejections_truncated'));
     }
 
-    /** What a batch staged before the vocabulary check looks like: CLINICAL, commit-ready. */
-    private function stageAsClinical(string $batchId): void
+    /** The cap also applies when the whole commit is rolled back (422). */
+    public function test_the_rejections_list_is_capped_on_a_rolled_back_commit(): void
     {
-        foreach (DB::table('contact_import_staging')->where('batch_id', $batchId)->get() as $row) {
+        $headers = $this->authorisedHeaders();
+        $lines = ['name,code,contact_name,contact_category,contact_type'];
+        for ($i = 1; $i <= 502; $i++) {
+            $lines[] = "Customer {$i},C{$i},Person {$i},Finance,Primary";
+        }
+        $batchId = $this->withHeaders($headers + ['Content-Type' => 'multipart/form-data'])
+            ->postJson('/api/v1/accounting/customers/import', ['file' => $this->csvFile(implode("\n", $lines))])
+            ->assertOk()->json('batch_id');
+        $this->stageAsClinical($batchId);
+
+        $commit = $this->withHeaders($headers)->postJson("/api/v1/accounting/customers/import/{$batchId}/commit");
+        $commit->assertStatus(422);
+        $this->assertSame(502, $commit->json('rejected'));
+        $this->assertCount(500, $commit->json('rejections'));
+        $this->assertTrue($commit->json('rejections_truncated'));
+    }
+
+    /** What a batch staged before the vocabulary check looks like: CLINICAL, commit-ready. */
+    private function stageAsClinical(string $batchId, ?string $onlyRowId = null): void
+    {
+        foreach (DB::table('contact_import_staging')->where('batch_id', $batchId)->when($onlyRowId, fn ($q) => $q->where('id', $onlyRowId))->get() as $row) {
             $mapped = json_decode((string) $row->mapped_data, true);
             $mapped['_taxonomy']['functional_category'] = 'CLINICAL';
             $mapped['_taxonomy']['functional_category_label'] = 'Clinical';

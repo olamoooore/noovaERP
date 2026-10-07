@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ImportCommitRolledBackException;
 use App\Models\Customer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -58,9 +59,6 @@ class CustomerImportService
         private readonly CanonicalCustomerService $canonicalCustomers,
         private readonly ContactTaxonomyService $taxonomy,
     ) {}
-
-    /** #1037: marker that rolls back a commit which imported nothing. */
-    private const NOTHING_COMMITTED = 'IMPORT_NOTHING_COMMITTED';
 
     /** #1037: at most this many rejections are returned and audited. */
     public const MAX_REPORTED_REJECTIONS = 500;
@@ -266,8 +264,6 @@ class CustomerImportService
             throw new \DomainException('IMPORT_BATCH_ALREADY_COMPLETED');
         }
 
-        $rows = ContactImportStaging::where('batch_id', $batch->id)->orderBy('row_number')->get();
-
         $imported = 0;
         $rejected = 0;
         // #1037: why each row was not imported, returned to the caller.
@@ -278,7 +274,16 @@ class CustomerImportService
 
         $committed = true;
         try {
-            DB::transaction(function () use ($rows, $tenantId, $legalEntityId, &$imported, &$rejected, &$rejections, &$failedAtCommit, &$batch) {
+            DB::transaction(function () use ($tenantId, $legalEntityId, &$imported, &$rejected, &$rejections, &$failedAtCommit, &$batch) {
+                // #1037: lock the batch so two commits of the same batch (a
+                // double click, two tabs, a retry after a 422) run one after
+                // the other; the second then sees `completed` and gets 409.
+                $batch = ContactImportBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
+                if ($batch->status === 'completed') {
+                    throw new \DomainException('IMPORT_BATCH_ALREADY_COMPLETED');
+                }
+                $rows = ContactImportStaging::where('batch_id', $batch->id)->orderBy('row_number')->get();
+
                 foreach ($rows as $staging) {
                     if (in_array($staging->status, [self::STATUS_IMPORTED], true)) {
                         continue;
@@ -312,9 +317,10 @@ class CustomerImportService
                     // #1037: one savepoint per row. A business rejection raised while
                     // writing (an unknown taxonomy code in a batch staged before the
                     // vocabulary check, a vocabulary changed since staging, an
-                    // invalid site, a contact that vanished) rolls back only this
-                    // row's writes and rejects it with its reason; the rest of the
-                    // batch still imports. Other errors still abort the commit.
+                    // invalid site, a contact that vanished) is recorded with its
+                    // reason and the loop goes on, so the caller gets every reason;
+                    // the whole commit is then rolled back below. Other errors
+                    // still abort the commit immediately.
                     try {
                         DB::transaction(fn () => $this->writeAuthoritative($mapped, $taxonomy, $tenantId, $legalEntityId));
                     } catch (\DomainException|\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -348,23 +354,23 @@ class CustomerImportService
                     $imported++;
                 }
 
-                // #1037: a commit that imports nothing because rows FAILED WHILE
-                // BEING WRITTEN is a failed commit (a systemic cause, or a batch
-                // staged before a vocabulary change). Roll it all back (rows stay as
-                // staged, the batch stays open) so the same batch can be committed
-                // again once the cause is fixed. A batch whose rows were all
-                // flagged at staging still completes with 0 imported (VEN-NT-01).
-                if ($imported === 0 && $failedAtCommit > 0) {
-                    throw new \RuntimeException(self::NOTHING_COMMITTED);
+                // #1037: if ANY row failed while being written (a systemic cause,
+                // a batch staged before a vocabulary change), the commit fails as
+                // a whole: roll everything back (rows stay as staged, the batch
+                // stays open) so the same batch can be committed again once the
+                // cause is fixed. Rows flagged at STAGING do not count: the user
+                // commits knowing they are skipped, and a batch of only such
+                // rows completes with 0 imported (VEN-NT-01).
+                if ($failedAtCommit > 0) {
+                    throw new ImportCommitRolledBackException('IMPORT_COMMIT_ROLLED_BACK');
                 }
 
                 $batch->update(['status' => 'completed', 'imported_at' => now()]);
             });
-        } catch (\RuntimeException $e) {
-            if ($e->getMessage() !== self::NOTHING_COMMITTED) {
-                throw $e;
-            }
+        } catch (ImportCommitRolledBackException) {
             $committed = false;
+            // Nothing was written: report what the caller now has.
+            $imported = 0;
         }
 
         // #1037: bounded response and audit entry.
@@ -387,6 +393,7 @@ class CustomerImportService
 
         return [
             'committed' => $committed,
+            'failed_at_commit' => $failedAtCommit,
             'imported' => $imported,
             'rejected' => $rejected,
             'rejections' => $rejections,

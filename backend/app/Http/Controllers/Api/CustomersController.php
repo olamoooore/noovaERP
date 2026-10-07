@@ -226,8 +226,8 @@ class CustomersController extends Controller
             );
 
             // #1037: a commit with rejected rows must not read as a clean
-            // import, and one that imported nothing is a failure (422) that
-            // leaves the batch open for another commit.
+            // import, and one rolled back because rows failed while being
+            // written is a failure (422) that leaves the batch open.
             $body = [
                 'imported' => $result['imported'],
                 'rejected' => $result['rejected'],
@@ -237,7 +237,7 @@ class CustomersController extends Controller
             ];
             if (! $result['committed']) {
                 return response()->json($body + [
-                    'message' => "Nothing imported: {$result['rejected']} rows rejected. The batch is still open; fix the cause and commit it again.",
+                    'message' => "Nothing imported: {$result['failed_at_commit']} rows failed while being written, so the whole commit was rolled back ({$result['rejected']} rows rejected in total). The batch is still open; fix the cause and commit it again.",
                 ], 422);
             }
 
