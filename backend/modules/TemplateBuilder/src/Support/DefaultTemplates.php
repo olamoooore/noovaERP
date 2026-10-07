@@ -132,6 +132,17 @@ final class DefaultTemplates
                     ]],
                     ['type' => 'spacer', 'height' => 16],
                     ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ invoice.terms }}'],
+                    // #1019: standard signature area — authorised signature,
+                    // received-by and a company stamp box. GST registration
+                    // number, TIN and the per-code tax summary are already
+                    // emitted above/footer (#614); labels come from the
+                    // country pack, never hardcoded here.
+                    ['type' => 'spacer', 'height' => 18],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<div style="font-size:9px;color:#6b7280;">Authorised Signature:</div><div style="border-top:1px solid #9ca3af;margin-top:36px;width:200px;"></div><div style="font-size:8px;color:#9ca3af;">{{ company.name }}</div>'],
+                        ['type' => 'text', 'content' => '<div style="font-size:9px;color:#6b7280;">Received By (Name / Date):</div><div style="border-top:1px solid #9ca3af;margin-top:36px;width:200px;"></div>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="border:1px dashed #9ca3af;width:130px;height:64px;margin-left:auto;text-align:center;color:#9ca3af;font-size:8px;line-height:64px;">Company Stamp</div>'],
+                    ]],
                     ['type' => 'spacer', 'height' => 8],
                     ['type' => 'footer', 'children' => [
                         ['type' => 'divider'],
