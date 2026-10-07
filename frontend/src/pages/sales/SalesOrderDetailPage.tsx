@@ -39,6 +39,8 @@ import { SalesOrderDownPaymentAction } from '@/components/sales/SalesOrderDownPa
 import { SalesOrderBillingRecurrenceCard } from '@/components/sales/SalesOrderBillingRecurrenceCard'
 import { LineFulfilmentBar } from '@/components/sales/LineFulfilmentBar'
 import { useSalesOrderFulfilment } from '@/components/sales/lineFulfilment'
+import { SalesOrderHealthPanel } from '@/components/sales/SalesOrderHealthPanel'
+import { salesOrderHealthQueryKey } from '@/components/sales/salesOrderHealth'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
 import { extractSaveConflict, type ActiveEditor, type SaveConflict } from '@/lib/recordConflict'
 import { useAuthStore } from '@/store/authStore'
@@ -434,6 +436,8 @@ export function SalesOrderDetailPage() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['sales-order', id] })
     queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+    // Issue #412: the health dry run follows the order's lines/totals.
+    queryClient.invalidateQueries({ queryKey: salesOrderHealthQueryKey(id) })
   }
 
   const actionMutation = useMutation({
@@ -1127,6 +1131,10 @@ export function SalesOrderDetailPage() {
           </button>
         )}
       </div>
+
+      {/* Issue #412 (DX2): order health before Confirm — stock per line,
+          credit, approval need and (cost-gated) margin. Advisory. */}
+      {order.status === 'draft' && <SalesOrderHealthPanel orderId={order.id} />}
 
       {/* Order Details */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
 use Illuminate\Support\Facades\Auth;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderLine;
 
 /**
  * Issue #338 ([SALES-ODOO]): margin per quotation line and for the document.
@@ -68,9 +70,13 @@ class QuotationMarginService
     }
 
     /**
+     * Issue #412: also used for a sales order (the order health panel) —
+     * same cost basis, same revenue rule; a sales order has no optional
+     * lines, so every line counts.
+     *
      * @return array{lines: array<int, array{revenue: float, cost: float, margin: float, margin_percent: float|null}>, total: array{revenue: float, cost: float, margin: float, margin_percent: float|null, currency_code: string|null}}
      */
-    public function calculate(Quotation $quotation): array
+    public function calculate(Quotation|SalesOrder $quotation): array
     {
         $rate = (float) ($quotation->exchange_rate ?? 1);
         $rate = $rate > 0 ? $rate : 1.0;
@@ -122,7 +128,7 @@ class QuotationMarginService
     /**
      * The line's cost in base currency, on the COGS cost basis.
      */
-    private function baseCost(QuotationLine $line): float
+    private function baseCost(QuotationLine|SalesOrderLine $line): float
     {
         $product = $line->product;
 

@@ -1136,6 +1136,25 @@ class SalesOrderController extends Controller
         ] + app(\App\Services\SalesDocumentProgress::class)->forSalesOrderLines((int) $order->id));
     }
 
+    /**
+     * Issue #412 (DX2): order health panel before Confirm/Send — stock per
+     * line, credit exposure, approval need and (cost-permission gated)
+     * margin. Read-only dry run; same sales.view gate and entity scope as
+     * show(). Confirmation keeps its own hard gates.
+     */
+    public function health(Request $request, $id)
+    {
+        $order = $this->findScopedOrder($request, $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        return response()->json(
+            app(\Modules\Sales\Services\SalesOrderHealthService::class)->run($order)
+        );
+    }
+
     public function channelReferences($id)
     {
         $order = $this->findScopedOrder(request(), $id);

@@ -104,6 +104,12 @@ Route::middleware([
             Route::get('/sales/orders/{id}/fulfilment', [SalesOrderController::class, 'fulfilment'])
                 ->whereNumber('id');
 
+            // Issue #412 (DX2): read-only order health dry run before
+            // Confirm/Send — reuses the sales.view literal of the order show
+            // route (no new permission) and show()'s entity scope.
+            Route::get('/sales/orders/{id}/health', [SalesOrderController::class, 'health'])
+                ->whereNumber('id');
+
             // Lifecycle history (immutable audit)
             Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);
 

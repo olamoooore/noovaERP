@@ -509,13 +509,7 @@ class SalesOrderService
                 $customer = \App\Models\Customer::whereKey($order->customer_id)->lockForUpdate()->first();
 
                 if ($customer !== null) {
-                    $committedOrdersTotal = $this->committedOrdersTotal((int) $customer->id, (int) $order->id);
-
-                    $creditCheck = $this->creditCheckService->checkCreditLimit(
-                        $customer,
-                        $this->baseCurrencyAmount($order, (float) $order->total),
-                        (float) $committedOrdersTotal
-                    );
+                    $creditCheck = $this->confirmCreditCheck($order, $customer);
                     $this->lastCreditCheck = $creditCheck;
 
                     if (! $creditCheck->approved) {
@@ -547,6 +541,23 @@ class SalesOrderService
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
 
         });
+    }
+
+    /**
+     * The credit verdict confirmation is gated on: the customer's stored
+     * outstanding balance + other open orders' uninvoiced remainder
+     * (#240/#384), against this order's total in base currency (#383).
+     * Issue #412: shared with the order health dry run so the panel reports
+     * exactly the rule confirm enforces. Pure read — the caller decides
+     * whether the customer row is locked.
+     */
+    public function confirmCreditCheck(SalesOrder $order, \App\Models\Customer $customer): CreditCheckResult
+    {
+        return $this->creditCheckService->checkCreditLimit(
+            $customer,
+            $this->baseCurrencyAmount($order, (float) $order->total),
+            (float) $this->committedOrdersTotal((int) $customer->id, (int) $order->id)
+        );
     }
 
     /**
