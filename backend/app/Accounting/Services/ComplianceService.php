@@ -1403,17 +1403,36 @@ class ComplianceService
     public function syncPendingSubmissions(string $countryCode, bool $scheduledSweep = false): int
     {
         $countryCode = strtoupper($countryCode);
+        $now = now();
         $query = ComplianceSubmission::where('country_code', $countryCode)
             ->where('tenant_id', $this->currentTenantId())
-            ->whereIn('submission_status', [
-                'pending',
-                'ack',
-                'rejection_requested',            // buyer has requested rejection — check if still pending or auto-expired
-                'rejection_declined_pending_expiry', // supplier declined — poll until LHDN clears rejectRequestDateTime
-            ]);
+            ->where(function ($status) use ($scheduledSweep, $now) {
+                $status->whereIn('submission_status', [
+                    'pending',
+                    'ack',
+                    'rejection_requested',            // buyer has requested rejection — check if still pending or auto-expired
+                    'rejection_declined_pending_expiry', // supplier declined — poll until LHDN clears rejectRequestDateTime
+                ]);
+
+                if ($scheduledSweep) {
+                    // #666: a buyer can only request rejection of a document
+                    // that is already Valid (within 72h of validation), and
+                    // the document stays Valid while the request is pending.
+                    // Without polling accepted submissions the sweep could
+                    // never see rejectRequestDateTime. Hourly, and only up to
+                    // 7 days after submission, to keep the sweep bounded.
+                    $status->orWhere(function ($accepted) use ($now) {
+                        $accepted->where('submission_status', 'accepted')
+                            ->where('submitted_at', '>', $now->copy()->subDays(7))
+                            ->where(function ($due) use ($now) {
+                                $due->whereNull('last_status_check')
+                                    ->orWhere('last_status_check', '<', $now->copy()->subHour());
+                            });
+                    });
+                }
+            });
 
         if ($scheduledSweep) {
-            $now = now();
             $query->where(function ($window) use ($now) {
                 $window->whereNull('submitted_at')
                     // Recent: poll on every sweep (every 10 minutes).
