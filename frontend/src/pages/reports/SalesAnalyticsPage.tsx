@@ -1095,6 +1095,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
                 updateFilter('product_id', value ? Number(value) : undefined);
                 setPickedFilterLabels((prev) => ({ ...prev, product_id: product?.name || undefined }));
               }}
+              activeOnly={false}
             />
           </div>
 

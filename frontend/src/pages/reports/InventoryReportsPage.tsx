@@ -467,6 +467,7 @@ const valuationTotal = Number(valuationData?.total_value ?? 0);
               product_id: value ? Number(value) : undefined,
             }))}
             placeholder="All products"
+            activeOnly={false}
           />
         </div>
         <div className="min-w-[280px] flex-1">

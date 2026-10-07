@@ -39,6 +39,8 @@ interface ProductCatalogPickerDialogProps {
   /** Search text typed in the inline picker — retained when the catalog opens. */
   initialSearch?: string
   onSelect: (product: CatalogProduct) => void
+  /** #1003: transactional pickers list active products only. */
+  activeOnly?: boolean
 }
 
 const PAGE_SIZE = 20
@@ -55,6 +57,7 @@ export function ProductCatalogPickerDialog({
   onOpenChange,
   initialSearch = '',
   onSelect,
+  activeOnly = true,
 }: ProductCatalogPickerDialogProps) {
   const [search, setSearch] = useState(initialSearch)
   const [debounced, setDebounced] = useState(initialSearch)
@@ -98,13 +101,14 @@ export function ProductCatalogPickerDialog({
   })
 
   const { data, isLoading } = useQuery<{ items: CatalogProduct[]; total: number; lastPage: number }>({
-    queryKey: ['product-catalog', debounced, brandId, categoryId, page],
+    queryKey: ['product-catalog', debounced, brandId, categoryId, page, activeOnly],
     enabled: open,
     queryFn: async () => {
       const params: Record<string, string | number> = { per_page: PAGE_SIZE, page }
       if (debounced) params.search = debounced
       if (brandId !== 'all') params.brand_id = brandId
       if (categoryId !== 'all') params.category_id = categoryId
+      if (activeOnly) params.is_active = 'true'
 
       const res = await api.get('/products', { params })
       const body = res.data ?? {}

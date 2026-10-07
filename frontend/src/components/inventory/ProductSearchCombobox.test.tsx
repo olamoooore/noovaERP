@@ -70,11 +70,11 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-function renderPicker(onValueChange = vi.fn()) {
+function renderPicker(onValueChange = vi.fn(), activeOnly?: boolean) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
-      <ProductSearchCombobox value="" onValueChange={onValueChange} />
+      <ProductSearchCombobox value="" onValueChange={onValueChange} activeOnly={activeOnly} />
     </QueryClientProvider>,
   )
   return onValueChange
@@ -116,5 +116,32 @@ describe('ProductSearchCombobox (#1003)', () => {
 
     await waitFor(() => expect(onValueChange).toHaveBeenCalledWith('1', expect.objectContaining({ id: 1 })))
     expect(dialog).toBeTruthy()
+  })
+
+  it('lists active products only by default, in the inline list and the catalog', async () => {
+    renderPicker()
+
+    fireEvent.click(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByPlaceholderText('Search name, SKU, barcode, lot or serial...'), {
+      target: { value: 'HTx60' },
+    })
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/products', { params: expect.objectContaining({ search: 'HTx60', is_active: 'true' }) }))
+
+    fireEvent.click(await screen.findByText(/Show more \(42 results\)/, {}, { timeout: 3000 }))
+    await screen.findByRole('dialog')
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/products', { params: expect.objectContaining({ page: 1, is_active: 'true' }) }))
+  })
+
+  it('keeps inactive products findable when activeOnly is false (report filters)', async () => {
+    renderPicker(vi.fn(), false)
+
+    fireEvent.click(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByPlaceholderText('Search name, SKU, barcode, lot or serial...'), {
+      target: { value: 'HTx60' },
+    })
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/products', { params: expect.objectContaining({ search: 'HTx60' }) }))
+    for (const [, config] of apiGet.mock.calls.filter(([url]) => url === '/products')) {
+      expect(config?.params?.is_active).toBeUndefined()
+    }
   })
 })

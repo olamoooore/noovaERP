@@ -153,6 +153,7 @@ export default function SalesRecordsPage() {
               value={filters.product_id ? String(filters.product_id) : ''}
               onValueChange={(value) => update({ product_id: value ? Number(value) : undefined })}
               placeholder="All products"
+              activeOnly={false}
             />
           </div>
           <div className="space-y-1.5">
