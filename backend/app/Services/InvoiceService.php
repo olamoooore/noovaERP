@@ -258,6 +258,9 @@ class InvoiceService
 
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
+                    // #1006: bonus-scheme FOC hint; the pairing service below
+                    // normalises order/links for the whole invoice.
+                    'is_foc' => (bool) ($lineData['is_foc'] ?? false),
                     // Issue #138: stable link to the originating order line.
                     'sales_order_line_id' => $lineData['sales_order_line_id'] ?? null,
                     'sequence' => $lineData['sequence'] ?? $lineIndex,
@@ -313,6 +316,10 @@ class InvoiceService
             }
 
             $invoice->refresh();
+
+            // #1006: paid line first, its FOC bonus line directly beneath.
+            app(InvoiceFocLinePairingService::class)->normalize($invoice);
+
             $invoice->calculateTotals();
 
             // The tenant policy / explicit caller decision is captured BEFORE

@@ -518,6 +518,9 @@ class InvoiceController extends Controller
             'lines.*.description' => 'required|string',
             // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
             'lines.*.description_html' => 'nullable|string|max:20000',
+            // #1006: the client may flag a bonus-scheme FOC line; the pairing
+            // service links/orders it under its paid source line either way.
+            'lines.*.is_foc' => 'nullable|boolean',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -936,6 +939,8 @@ class InvoiceController extends Controller
 
                 $existingInvoice->lines()->create(array_merge([
                     'line_type' => $line['line_type'] ?? 'product',
+                    // #1006: bonus-scheme FOC hint; normalised below.
+                    'is_foc' => (bool) ($line['is_foc'] ?? false),
                     'sequence' => $line['sequence'] ?? 0,
                     'product_id' => $line['product_id'] ?? null,
                     // Issue #884 (UX2): the draft keeps its line override and
@@ -974,6 +979,8 @@ class InvoiceController extends Controller
             }
 
             $existingInvoice->load('lines');
+            // #1006: paid line first, its FOC bonus line directly beneath.
+            app(\App\Services\InvoiceFocLinePairingService::class)->normalize($existingInvoice);
             $existingInvoice->calculateTotals();
 
             // Issue #647: a re-import replaces the draft's totals — the same
@@ -1016,6 +1023,14 @@ class InvoiceController extends Controller
                 $unitPrice = $uomConverter->salesPriceToBase($lineUom, (float) $unitPrice);
             }
 
+            // #1006: a bonus-scheme FOC line stays free — the pricing engine
+            // must not reprice it to the list price (which made the free unit
+            // look paid). Payload price 0 + 'legacy' keeps it untouched.
+            $isFocLine = (bool) ($line['is_foc'] ?? false);
+            if ($isFocLine) {
+                $unitPrice = 0.0;
+            }
+
             $salesLines[] = array_filter([
                 'line_type' => $lineType,
                 'sequence' => $line['sequence'] ?? 0,
@@ -1037,7 +1052,9 @@ class InvoiceController extends Controller
                 'unit_price' => $unitPrice,
                 // MRD FR-4/FR-6: the editor's pricing intent travels with the
                 // line (auto/manual/carried + override reason for the floor audit).
-                'price_mode' => $line['price_mode'] ?? null,
+                // #1006: an FOC line is carried at its supplied 0 price —
+                // 'legacy' with 0 falls through to auto pricing.
+                'price_mode' => $isFocLine ? 'carried' : ($line['price_mode'] ?? null),
                 'override_reason' => $line['override_reason'] ?? null,
                 'tax_rate' => $line['tax_rate'] ?? 0,
                 // #303 (X3): null when the screen did not send it — the Sales Order
@@ -1055,6 +1072,12 @@ class InvoiceController extends Controller
                 'service_start_date' => $line['service_start_date'] ?? null,
                 'service_end_date' => $line['service_end_date'] ?? null,
             ], fn ($v) => $v !== null);
+
+            // #1006: array_filter above drops the falsy 0.0 price — put the
+            // free price back so an FOC line is never auto-repriced.
+            if ($isFocLine) {
+                $salesLines[array_key_last($salesLines)]['unit_price'] = 0;
+            }
         }
 
         // Resolve warehouse if any line references a stock-tracked product
@@ -1522,6 +1545,9 @@ class InvoiceController extends Controller
             'lines.*.description' => 'required|string',
             // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
             'lines.*.description_html' => 'nullable|string|max:20000',
+            // #1006: the client may flag a bonus-scheme FOC line; the pairing
+            // service links/orders it under its paid source line either way.
+            'lines.*.is_foc' => 'nullable|boolean',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -1703,7 +1729,15 @@ class InvoiceController extends Controller
                         $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                             ? \App\Models\Product::find($line['product_id'])
                             : null;
-                        $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                        // #1006: a bonus-scheme FOC line is re-created free —
+                        // the pricing engine must not reprice it.
+                        $isFocLine = (bool) ($line['is_foc'] ?? false);
+                        $mode = $isFocLine
+                            ? 'carried'
+                            : ($line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto'));
+                        if ($isFocLine) {
+                            $line['unit_price'] = 0;
+                        }
                         $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
 
                         // Issue #888: the regenerated line keeps (or accepts)
@@ -1718,6 +1752,8 @@ class InvoiceController extends Controller
 
                         $invoice->lines()->create(array_merge([
                             'line_type' => $line['line_type'] ?? 'product',
+                            // #1006: bonus-scheme FOC hint; normalised below.
+                            'is_foc' => (bool) ($line['is_foc'] ?? false),
                             'sequence' => $line['sequence'] ?? 0,
                             'product_id' => $line['product_id'] ?? null,
                             // Issue #884 (UX2): a draft edit keeps the line
@@ -1757,6 +1793,8 @@ class InvoiceController extends Controller
                 }
 
                 $invoice->refresh();
+                // #1006: paid line first, its FOC bonus line directly beneath.
+                app(\App\Services\InvoiceFocLinePairingService::class)->normalize($invoice);
                 $invoice->calculateTotals();
 
                 // Issue #180/#647: auto-promote `requires_approval` when the
