@@ -64,6 +64,11 @@ use Modules\Contact\src\Services\ContactTaxonomyService;
  * `link_fingerprint` covers that identity, the link's contact row and its
  * company relationship — it does not change when another link changes.
  * `documents_by_customer` sums documents per customer.
+ *
+ * Decision register R10 (2026-10-07): owned data cannot be traced to the
+ * contact it came from, so no link of a person holding owned data is
+ * `auto_split_eligible`; such links are marked
+ * `auto_split_blocked_by_owned_data` and go to a reviewer.
  */
 class PersonMergeDamagePlanner
 {
@@ -150,8 +155,14 @@ class PersonMergeDamagePlanner
             // C: a wrong link at the same organisation as a correct one shares
             // that org-person relationship (category, roles, site).
             $okOrganisations = array_filter(array_column(array_filter($links, fn ($l) => $l['status'] === 'ok'), 'organisation_id'));
+            // R10: owned data cannot be traced to the contact it came from,
+            // so a person holding any is never split automatically.
+            $owned = $this->ownedData($person->id);
+            $hasOwnedData = array_sum($owned) > 0;
             foreach ($links as &$link) {
-                $link['auto_split_eligible'] = $link['status'] === 'suspect' && $link['bug_signature'];
+                $signature = $link['status'] === 'suspect' && $link['bug_signature'];
+                $link['auto_split_eligible'] = $signature && ! $hasOwnedData;
+                $link['auto_split_blocked_by_owned_data'] = $signature && $hasOwnedData;
                 $link['shares_relationship_with_ok_link'] = $link['status'] !== 'ok'
                     && $link['organisation_id'] !== null
                     && in_array($link['organisation_id'], $okOrganisations, true);
@@ -161,7 +172,6 @@ class PersonMergeDamagePlanner
             $classifications = $this->classifications($tenantId, $person->id);
             $contactsById = $contacts->keyBy('id');
             $documents = $this->documents($person->id, $links);
-            $owned = $this->ownedData($person->id);
             $relationships = $this->relationships($tenantId, $person->id);
             $personRoles = ContactRole::where('tenant_id', $tenantId)
                 ->where('contact_id', $person->id)
@@ -205,7 +215,7 @@ class PersonMergeDamagePlanner
                 'classifications_not_explained_by_ok_links' => array_values(array_diff($classifications, $explained)),
                 'relationships' => $relationships,
                 'owned_data' => $owned,
-                'has_owned_data' => array_sum($owned) > 0,
+                'has_owned_data' => $hasOwnedData,
                 'manual_loyalty_points' => $this->manualLoyaltyPoints($person->id),
                 'person_roles' => $personRoles,
                 'documents' => $documents,
@@ -229,6 +239,7 @@ class PersonMergeDamagePlanner
                 'unverifiable_links' => $linkCount('unverifiable'),
                 'shared_identifier_links' => $linkCount('shared_identifier_different_name'),
                 'auto_split_eligible_links' => array_sum(array_map(fn ($p) => count(array_filter($p['links'], fn ($l) => $l['auto_split_eligible'])), $people)),
+                'links_blocked_by_owned_data' => array_sum(array_map(fn ($p) => count(array_filter($p['links'], fn ($l) => $l['auto_split_blocked_by_owned_data'])), $people)),
                 'suspect_links_for_review' => array_sum(array_map(fn ($p) => count(array_filter($p['links'], fn ($l) => $l['status'] === 'suspect' && ! $l['auto_split_eligible'])), $people)),
                 'issued_documents' => array_sum(array_map(fn ($p) => array_sum(array_column($p['documents'], 'issued')), $people)),
                 'draft_documents' => array_sum(array_map(fn ($p) => array_sum(array_column($p['documents'], 'draft')), $people)),
