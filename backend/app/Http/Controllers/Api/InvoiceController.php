@@ -521,6 +521,9 @@ class InvoiceController extends Controller
             // #1006: the client may flag a bonus-scheme FOC line; the pairing
             // service links/orders it under its paid source line either way.
             'lines.*.is_foc' => 'nullable|boolean',
+            // #1006: index (into this lines array) of the paid line an FOC
+            // line was earned from; wins over the same-product guess.
+            'lines.*.source_line_index' => 'nullable|integer|min:0',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -561,6 +564,11 @@ class InvoiceController extends Controller
 
         $confirmDuplicate = (bool) ($validated['confirm_duplicate'] ?? false);
         unset($validated['confirm_duplicate']);
+
+        // #1006: every FOC line needs a paid source line — resolved (or
+        // rejected with 422) before anything is written.
+        $validated['lines'] = app(\App\Services\InvoiceFocLinePairingService::class)
+            ->planFromPayload($validated['lines']);
 
         // #315: sales.invoice.allow_custom_number gates hand-typed numbers. A
         // client-supplied number is rejected (not silently ignored or
@@ -913,11 +921,22 @@ class InvoiceController extends Controller
             // engine at the draft's date — the sent % is not booked as final.
             $data['lines'] = app(\App\Services\SalesLineTaxResolver::class)->applyToLines($data['lines'], $draftDate, $draftCustomerId);
 
-            foreach ($data['lines'] as $line) {
+            $focPairing = app(\App\Services\InvoiceFocLinePairingService::class);
+            $reimportLineIds = [];
+            foreach ($data['lines'] as $lineIndex => $line) {
                 $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                     ? \App\Models\Product::find($line['product_id'])
                     : null;
-                $mode = $line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto');
+                // #1006: a bonus-scheme FOC line is carried free, with an
+                // audit reason on its pricing trace.
+                $isFocLine = (bool) ($line['is_foc'] ?? false);
+                if ($isFocLine) {
+                    $line['unit_price'] = 0;
+                    $line['pricing_trace'] = $focPairing->focPricingTrace($line, $draftContext['document_currency'] ?? null);
+                }
+                $mode = $isFocLine
+                    ? 'carried'
+                    : ($line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto'));
                 $priced = $pricing->priceLineArray($lineProduct, $line, $draftContext, $mode);
 
                 // Issue #685: a line entered in a sales UoM keeps that
@@ -937,7 +956,7 @@ class InvoiceController extends Controller
                         ->basePriceToSales($lineUom, (float) $priced['unit_price']);
                 }
 
-                $existingInvoice->lines()->create(array_merge([
+                $reimportLineIds[$lineIndex] = $existingInvoice->lines()->create(array_merge([
                     'line_type' => $line['line_type'] ?? 'product',
                     // #1006: bonus-scheme FOC hint; normalised below.
                     'is_foc' => (bool) ($line['is_foc'] ?? false),
@@ -975,12 +994,14 @@ class InvoiceController extends Controller
                     'tax_treatment' => $draftCustomerExempt ? 'exempt' : ($line['tax_treatment'] ?? null),
                     'discount_amount' => $line['discount_amount'] ?? 0,
                     'tax_exemption_reason' => $line['tax_exemption_reason'] ?? $draftExemptionReason,
-                ], array_filter($priced, fn ($v) => $v !== null)));
+                ], array_filter($priced, fn ($v) => $v !== null)))->id;
             }
 
+            // #1006: link each FOC line to its resolved paid line, then order
+            // paid line first, its FOC bonus line directly beneath.
+            $focPairing->linkPlannedLines($reimportLineIds, $data['lines']);
             $existingInvoice->load('lines');
-            // #1006: paid line first, its FOC bonus line directly beneath.
-            app(\App\Services\InvoiceFocLinePairingService::class)->normalize($existingInvoice);
+            $focPairing->normalize($existingInvoice);
             $existingInvoice->calculateTotals();
 
             // Issue #647: a re-import replaces the draft's totals — the same
@@ -1030,6 +1051,11 @@ class InvoiceController extends Controller
             if ($isFocLine) {
                 $unitPrice = 0.0;
             }
+            // #1006: the free unit skips the manual-price floor audit, so it
+            // carries its own audit reason on the pricing trace.
+            $focTrace = $isFocLine
+                ? app(\App\Services\InvoiceFocLinePairingService::class)->focPricingTrace($line, $data['currency_code'] ?? null)
+                : null;
 
             $salesLines[] = array_filter([
                 'line_type' => $lineType,
@@ -1055,7 +1081,8 @@ class InvoiceController extends Controller
                 // #1006: an FOC line is carried at its supplied 0 price —
                 // 'legacy' with 0 falls through to auto pricing.
                 'price_mode' => $isFocLine ? 'carried' : ($line['price_mode'] ?? null),
-                'override_reason' => $line['override_reason'] ?? null,
+                'override_reason' => $isFocLine ? $focTrace['override_reason'] : ($line['override_reason'] ?? null),
+                'pricing_trace' => $focTrace,
                 'tax_rate' => $line['tax_rate'] ?? 0,
                 // #303 (X3): null when the screen did not send it — the Sales Order
                 // then resolves it through the engine (product override included).
@@ -1199,8 +1226,30 @@ class InvoiceController extends Controller
                 $sourceBySequence[(string) ($line['sequence'] ?? $index)] = $line;
             }
         }
+        // #1006: the backing order has one line per submitted line, in
+        // order — map each invoice line back to its payload line through its
+        // order line (stable even after the FOC pairing re-sequenced lines).
+        $soLineIds = \Modules\Sales\Models\SalesOrderLine::query()
+            ->where('sales_order_id', $salesOrder->id)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+        $payloadIndexBySoLine = count($soLineIds) === count($sourceLines)
+            ? array_flip(array_map('intval', $soLineIds))
+            : [];
+        $invoiceLineIdByPayloadIndex = [];
+
         foreach ($invoice->lines->values() as $index => $invoiceLine) {
-            $sourceLine = $sourceBySequence[(string) ($invoiceLine->sequence ?? '')]
+            $payloadIndex = $invoiceLine->sales_order_line_id !== null
+                ? ($payloadIndexBySoLine[(int) $invoiceLine->sales_order_line_id] ?? null)
+                : null;
+
+            if ($payloadIndex !== null) {
+                $invoiceLineIdByPayloadIndex[$payloadIndex] = $invoiceLine->id;
+            }
+
+            $sourceLine = ($payloadIndex !== null ? $sourceLines[$payloadIndex] : null)
+                ?? $sourceBySequence[(string) ($invoiceLine->sequence ?? '')]
                 ?? $sourceLines[$index]
                 ?? [];
 
@@ -1235,6 +1284,13 @@ class InvoiceController extends Controller
                 'expiry_date' => $sourceLine['expiry_date'] ?? null,
             ], $deferredFields));
         }
+
+        // #1006: carry the FOC flag + resolved source link onto the invoice
+        // lines, then order each FOC line directly under its paid line.
+        $focPairing = app(\App\Services\InvoiceFocLinePairingService::class);
+        $focPairing->linkPlannedLines($invoiceLineIdByPayloadIndex, array_values($sourceLines));
+        $focPairing->normalize($invoice);
+        $invoice->load('lines');
 
         return $invoice;
     }
@@ -1548,6 +1604,9 @@ class InvoiceController extends Controller
             // #1006: the client may flag a bonus-scheme FOC line; the pairing
             // service links/orders it under its paid source line either way.
             'lines.*.is_foc' => 'nullable|boolean',
+            // #1006: index (into this lines array) of the paid line an FOC
+            // line was earned from; wins over the same-product guess.
+            'lines.*.source_line_index' => 'nullable|integer|min:0',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.serial_number' => 'nullable|string|max:100',
@@ -1613,6 +1672,16 @@ class InvoiceController extends Controller
             throw ValidationException::withMessages([
                 'invoice_number' => 'Custom invoice numbers are disabled by the sales setting sales.invoice.allow_custom_number. Keep the current number.',
             ]);
+        }
+
+        // #1006: every FOC line needs a paid source line (422 otherwise). A
+        // FOC line left behind when its paid line was removed from the draft
+        // goes with it (only for products already paired as FOC here).
+        if (isset($validated['lines'])) {
+            $validated['lines'] = app(\App\Services\InvoiceFocLinePairingService::class)->planFromPayload(
+                $validated['lines'],
+                $invoice->lines->where('is_foc', true)->pluck('product_id')->filter()->unique()->values()->all(),
+            );
         }
 
         $this->applyFormContactSelections($validated, (int) ($validated['customer_id'] ?? $invoice->customer_id));
@@ -1725,7 +1794,9 @@ class InvoiceController extends Controller
                     );
 
                     $invoice->lines()->delete();
-                    foreach ($lines as $line) {
+                    $focPairing = app(\App\Services\InvoiceFocLinePairingService::class);
+                    $editLineIds = [];
+                    foreach ($lines as $lineIndex => $line) {
                         $lineProduct = ($line['line_type'] ?? 'product') === 'product' && ! empty($line['product_id'])
                             ? \App\Models\Product::find($line['product_id'])
                             : null;
@@ -1737,6 +1808,8 @@ class InvoiceController extends Controller
                             : ($line['price_mode'] ?? (((float) ($line['unit_price'] ?? 0) > 0) ? 'legacy' : 'auto'));
                         if ($isFocLine) {
                             $line['unit_price'] = 0;
+                            // The free unit skips the floor audit — record why.
+                            $line['pricing_trace'] = $focPairing->focPricingTrace($line, $pricingContext['document_currency'] ?? null);
                         }
                         $priced = $pricing->priceLineArray($lineProduct, $line, $pricingContext, $mode);
 
@@ -1750,7 +1823,7 @@ class InvoiceController extends Controller
                             $invoice->invoice_date?->toDateString() ?? now()->toDateString()
                         );
 
-                        $invoice->lines()->create(array_merge([
+                        $editLineIds[$lineIndex] = $invoice->lines()->create(array_merge([
                             'line_type' => $line['line_type'] ?? 'product',
                             // #1006: bonus-scheme FOC hint; normalised below.
                             'is_foc' => (bool) ($line['is_foc'] ?? false),
@@ -1788,8 +1861,12 @@ class InvoiceController extends Controller
                             'is_deferred' => $deferredFields['is_deferred'],
                             'service_start_date' => $deferredFields['service_start_date'],
                             'service_end_date' => $deferredFields['service_end_date'],
-                        ], array_filter($priced, fn ($v) => $v !== null)));
+                        ], array_filter($priced, fn ($v) => $v !== null)))->id;
                     }
+
+                    // #1006: the FOC flag and its source link survive the
+                    // delete/recreate — re-linked to the new line ids.
+                    $focPairing->linkPlannedLines($editLineIds, array_values($lines));
                 }
 
                 $invoice->refresh();
