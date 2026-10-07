@@ -122,9 +122,12 @@ class CustomerContactSyncService
             // current value. A run that takes the same lock (contact rows
             // first, as this save does) is serialised with the save.
             // withTrashed(): a contact soft-deleted meanwhile keeps its link
-            // instead of reading as unlinked and being matched again.
+            // instead of reading as unlinked and being matched again; a row
+            // removed outright stops the save (ModelNotFoundException) rather
+            // than linking a person to a contact that no longer exists.
             if ($contact->exists) {
-                $contact->setAttribute('core_contact_uuid', CustomerContact::withTrashed()->whereKey($contact->getKey())->lockForUpdate()->value('core_contact_uuid'));
+                $current = CustomerContact::withTrashed()->whereKey($contact->getKey())->lockForUpdate()->firstOrFail(['id', 'core_contact_uuid']);
+                $contact->setAttribute('core_contact_uuid', $current->core_contact_uuid);
                 $contact->syncOriginalAttribute('core_contact_uuid');
             }
 

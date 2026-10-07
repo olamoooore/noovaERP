@@ -141,26 +141,41 @@ class Issue1023StaleContactSaveTest extends TenantTestCase
      * Each test runs inside one uncommitted transaction (RefreshDatabase), so
      * a second connection cannot see the rows to contend for them. Instead
      * the lock is read from the row itself: `SELECT … FOR UPDATE` stamps the
-     * locking transaction's id into the row's `xmax` without writing it. The
-     * save sends unchanged values, so no UPDATE runs (`updated_at` and the
-     * row's own values stay the same) — a non-zero `xmax` can then only come
-     * from a row lock: nothing in this flow writes a row that references the
-     * contact (which would take a key-share lock). Without `lockForUpdate()`
-     * `xmax` stays 0 (checked: the test fails with the lock removed).
+     * locking transaction's id into the row's `xmax` without writing it.
+     *
+     * A lock taken by an earlier save in this test would stay on the row, so
+     * the measured contact is never saved through the API before: its values
+     * are copied from a probe contact settled through the API, and the row is
+     * inserted directly (`xmax` 0). The measured save sends the same values,
+     * so it writes nothing to the row (`updated_at` unchanged); nothing in
+     * this flow writes a row that references the contact (which would take a
+     * key-share lock), so a non-zero `xmax` afterwards is THIS save's lock.
      */
     public function test_the_save_locks_the_contact_row_without_writing_it(): void
     {
-        [$clinic] = $this->createCustomer('Bayu Clinic');
-        $contactId = (int) $this->postJson("/api/v1/customers/{$clinic}/contacts", ['name' => 'Tan', 'email' => 'tan@bayu.test'])->assertCreated()->json('id');
-        // A first save settles every derived column, so the next identical
-        // save writes nothing.
-        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$contactId}", ['name' => 'Tan', 'email' => 'tan@bayu.test'])->assertSuccessful();
-        $before = DB::selectOne('select updated_at from customer_contacts where id = ?', [$contactId]);
+        [$clinic, $clinicOrg] = $this->createCustomer('Bayu Clinic');
+        $payload = ['name' => 'Tan', 'email' => 'tan@bayu.test'];
 
-        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$contactId}", ['name' => 'Tan', 'email' => 'tan@bayu.test'])->assertSuccessful();
+        // Probe: what a settled contact with this payload looks like.
+        $probeId = (int) $this->postJson("/api/v1/customers/{$clinic}/contacts", $payload)->assertCreated()->json('id');
+        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$probeId}", $payload)->assertSuccessful();
+        $settled = (array) DB::table('customer_contacts')->where('id', $probeId)->first(['contact_category', 'contact_type', 'department_name']);
 
-        $after = DB::selectOne('select updated_at, xmax::text as xmax from customer_contacts where id = ?', [$contactId]);
-        $this->assertSame((string) $before->updated_at, (string) $after->updated_at, 'Precondition: the second save writes nothing to the contact row.');
+        // The measured contact: same values, never saved through the API.
+        $person = (string) app(ContactMasterService::class)->create(['contact_type' => 'individual', 'display_name' => 'Tan', 'email' => 'tan@bayu.test'], $this->tenantId)->id;
+        $this->relationship($clinicOrg, $person);
+        $contactId = (int) DB::table('customer_contacts')->insertGetId($settled + $payload + [
+            'customer_id' => $clinic, 'core_contact_uuid' => $person, 'is_primary' => false,
+            'created_at' => now()->subMinute(), 'updated_at' => now()->subMinute(),
+        ]);
+        $before = DB::selectOne('select updated_at, xmax::text as xmax from customer_contacts where id = ?', [$contactId]);
+        $this->assertSame('0', $before->xmax, 'Precondition: no one has locked the measured row yet.');
+
+        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$contactId}", $payload)->assertSuccessful();
+
+        $after = DB::selectOne('select updated_at, xmax::text as xmax, core_contact_uuid from customer_contacts where id = ?', [$contactId]);
+        $this->assertSame((string) $before->updated_at, (string) $after->updated_at, 'Precondition: the save writes nothing to the contact row.');
+        $this->assertSame($person, $after->core_contact_uuid);
         $this->assertNotSame('0', $after->xmax, 'The save locked the contact row (FOR UPDATE stamps xmax).');
     }
 
@@ -185,6 +200,29 @@ class Issue1023StaleContactSaveTest extends TenantTestCase
 
         $this->assertSame($limPerson, DB::table('customer_contacts')->where('id', $limId)->value('core_contact_uuid'), 'A contact deleted mid-save keeps its person link.');
         $this->assertSame($peopleBefore, DB::table('core_contacts')->where('contact_type', 'individual')->count(), 'No person is created for a deleted contact.');
+    }
+
+    /**
+     * Hostile review of the follow-up: a contact HARD-deleted between the
+     * load and the re-read has no row. The save must stop (404) instead of
+     * reading the link as null, matching or creating a person for a row that
+     * no longer exists, and writing nothing.
+     */
+    public function test_a_contact_hard_deleted_during_the_save_stops_the_save(): void
+    {
+        [$clinic] = $this->createCustomer('Bayu Clinic');
+        $limId = (int) $this->postJson("/api/v1/customers/{$clinic}/contacts", ['name' => 'Lim'])->assertCreated()->json('id');
+        $peopleBefore = DB::table('core_contacts')->where('contact_type', 'individual')->count();
+        $relationshipsBefore = DB::table('contact_relationships')->count();
+
+        $this->whenLoaded($limId, function () use ($limId) {
+            DB::table('customer_contacts')->where('id', $limId)->delete();
+        });
+
+        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$limId}", ['name' => 'Lim', 'job_title' => 'Admin'])->assertNotFound();
+
+        $this->assertSame($peopleBefore, DB::table('core_contacts')->where('contact_type', 'individual')->count(), 'No person is created for a contact that no longer exists.');
+        $this->assertSame($relationshipsBefore, DB::table('contact_relationships')->count(), 'No relationship is written for it either.');
     }
 
     /** Runs $change once, the first time the request loads this contact. */
