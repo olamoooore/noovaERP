@@ -142,4 +142,45 @@ describe('CustomerStatements — shared print and send menu (#618)', () => {
     })
     expect(open).toHaveBeenCalled()
   })
+
+  it('uses a custom From/To range for the list and PDF, and rejects To < From (#1018)', async () => {
+    Object.defineProperty(window.URL, 'createObjectURL', { value: vi.fn(() => 'blob:mock'), configurable: true })
+    Object.defineProperty(window.URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    vi.spyOn(window, 'open').mockReturnValue(null)
+
+    renderPage()
+    await screen.findByText('Customer Account Statement')
+
+    const from = screen.getByLabelText('From date') as HTMLInputElement
+    const to = screen.getByLabelText('To date') as HTMLInputElement
+    fireEvent.change(from, { target: { value: '2026-01-15' } })
+    fireEvent.change(to, { target: { value: '2026-02-15' } })
+
+    // The list query uses the custom range crossing the month end.
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith(
+        '/accounting/customers/transactions',
+        expect.objectContaining({
+          params: expect.objectContaining({ start_date: '2026-01-15', end_date: '2026-02-15' }),
+        }),
+      )
+    })
+
+    // Preview/PDF use the same range.
+    fireEvent.pointerDown(await screen.findByRole('button', { name: /print \/ send/i }), { button: 0, ctrlKey: false })
+    await screen.findByText('Preview')
+    fireEvent.click(screen.getByText('Preview'))
+
+    await waitFor(() => {
+      expect(apiGet).toHaveBeenCalledWith(
+        expect.stringContaining('/accounting/customers/7/statement?start_date=2026-01-15&end_date=2026-02-15'),
+        expect.anything(),
+      )
+    })
+
+    // To before From: validation is shown and the print/send action is withheld.
+    fireEvent.change(to, { target: { value: '2026-01-01' } })
+    expect(await screen.findByText(/To date must be on or after the From date/)).toBeTruthy()
+    await waitFor(() => expect(screen.queryByRole('button', { name: /print \/ send/i })).toBeNull())
+  })
 })

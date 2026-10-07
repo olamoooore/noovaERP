@@ -98,6 +98,47 @@ class CustomerStatementTest extends TenantTestCase
         ]);
     }
 
+    /** #1018 — a custom range crossing month ends: opening before From, closing at To. */
+    public function test_custom_range_crossing_month_ends_reports_opening_before_from_and_closing_at_to(): void
+    {
+        // Before the From date — belongs to the opening balance only.
+        $this->invoice(['invoice_date' => '2026-01-05']);
+
+        // Inside the range.
+        $this->invoice([
+            'invoice_date' => '2026-02-05',
+            'subtotal' => 300,
+            'total' => 300,
+            'balance' => 300,
+        ]);
+
+        // After the To date — must be excluded from debits and closing.
+        $this->invoice([
+            'invoice_date' => '2026-02-25',
+            'subtotal' => 999,
+            'total' => 999,
+            'balance' => 999,
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson(
+            '/api/v1/accounting/customers/'.$this->customer->id.'/statement',
+            [
+                'start_date' => '2026-01-15',
+                'end_date' => '2026-02-15',
+                'period_type' => 'custom',
+            ]
+        );
+
+        $response->assertOk();
+        $this->assertEquals(1000.0, (float) $response->json('opening_balance'), 'Opening = balance before the From date (Jan 5 invoice).');
+        $this->assertEquals(300.0, (float) $response->json('total_debits'), 'Only the Feb 5 invoice is inside Jan 15 → Feb 15.');
+        $this->assertEquals(1300.0, (float) $response->json('closing_balance'), 'Closing = opening + in-range debits.');
+
+        $statement = CustomerStatement::findOrFail($response->json('id'));
+        $numbers = collect($statement->payload['transactions'])->pluck('document_number')->filter()->all();
+        $this->assertNotEmpty($numbers, 'The in-range invoice appears on the statement.');
+    }
+
     /** #191 — generate() must render the PDF instead of fataling, and the running balance must not double-count payments (#192). */
     public function test_generate_renders_pdf_and_payment_is_not_double_counted(): void
     {
