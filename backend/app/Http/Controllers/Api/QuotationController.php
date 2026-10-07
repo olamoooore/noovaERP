@@ -1174,6 +1174,40 @@ class QuotationController extends Controller
      * Create an invoice from a confirmed quotation.
      * Creates a new Invoice record linked back to the quotation.
      */
+    /**
+     * Issue #331: a down-payment invoice from a CONFIRMED quotation is raised
+     * on the sales order the confirmation released (the order carries the
+     * agreed lines, tax and total).
+     */
+    public function downPaymentInvoice(Request $request, $id)
+    {
+        $quotation = Quotation::with('salesOrder')->find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        $validated = $request->validate(SalesOrderService::downPaymentRequestRules());
+
+        if ($quotation->status !== 'confirmed' || ! $quotation->salesOrder) {
+            return response()->json(['message' => 'Confirm the quotation before invoicing a down payment.'], 422);
+        }
+
+        try {
+            $invoice = $this->salesOrderService->createDownPaymentInvoice(
+                $quotation->salesOrder,
+                $validated['method'],
+                isset($validated['percentage']) ? (float) $validated['percentage'] : null,
+                isset($validated['amount']) ? (float) $validated['amount'] : null,
+                $validated['invoice_date'] ?? null,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Down-payment invoice created', 'invoice' => $invoice], 201);
+    }
+
     public function createInvoice($id)
     {
         $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder'])->find($id);

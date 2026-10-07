@@ -959,6 +959,57 @@ class SalesOrderService
         });
     }
 
+    /**
+     * The invoice header every invoice raised from an order carries (the
+     * order → invoice action and the #331 down-payment invoice): customer,
+     * dates, payment term, references, Incoterm and the currency snapshot.
+     */
+    private function orderInvoiceHeader(SalesOrder $order, string $invoiceDate): array
+    {
+        // Issue #321/#324: the order's master payment term (carried from
+        // the quotation), else the customer's default master term, sets
+        // the due date (and the instalment schedule) — computed by
+        // InvoiceService from the final invoice date. Without a master
+        // term the customer's day count applies as before.
+        $paymentTermId = $order->payment_term_id ?: $order->customer?->payment_term_id;
+        $paymentTerm = $paymentTermId
+            ? \App\Models\PaymentTerm::query()->find($paymentTermId)
+            : null;
+        $dueDate = $paymentTerm
+            ? null
+            // #539: the tenant's default terms only when the customer has none.
+            : \Illuminate\Support\Carbon::parse($invoiceDate)->addDays(
+                $order->customer->payment_terms ?? app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays()
+            )->toDateString();
+
+        return [
+            'customer_id' => $order->customer_id,
+            'invoice_date' => $invoiceDate,
+            'due_date' => $dueDate,
+            'payment_term_id' => $paymentTerm?->id,
+            // #539: the tenant's default invoice notes lead, the order
+            // reference stays for traceability.
+            'notes' => implode("\n", array_filter([
+                app(\App\Services\SalesSettings::class)->defaultNotes(),
+                "Sales Order #{$order->sales_order_number}",
+            ])),
+            'sales_order_id' => $order->id,
+            // Carry the order's references into the invoice for end-to-end
+            // tracing (Customer Ref. / PO / Internal Ref.).
+            'customer_reference' => $order->customer_reference,
+            'internal_reference' => $order->internal_reference,
+            'po_number' => $order->po_number,
+            // Issue #333: the order's Incoterm (code + place) is part of
+            // the agreed trade term — it travels onto every invoice.
+            'incoterm_code' => $order->incoterm_code,
+            'incoterm_place' => $order->incoterm_place,
+            // MRD FR-5.5: currency + rate snapshot propagate unchanged.
+            'currency_code' => $order->currency_code,
+            'exchange_rate' => $order->exchange_rate,
+            'base_currency_code' => $order->base_currency_code,
+        ];
+    }
+
     public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceServiceOverride = null): \App\Models\Invoice
     {
         if (! $order->isFulfilled() && ! $order->isAllocated() && ! $order->isConfirmed() && ! $order->isInvoiced()) {
@@ -970,49 +1021,7 @@ class SalesOrderService
             $invoiceService = $invoiceServiceOverride ?? $this->invoiceService;
             $token = $invoiceService->issueCreationToken();
 
-            // Issue #321/#324: the order's master payment term (carried from
-            // the quotation), else the customer's default master term, sets
-            // the due date (and the instalment schedule) — computed by
-            // InvoiceService from the final invoice date. Without a master
-            // term the customer's day count applies as before.
-            $invoiceDate = now()->toDateString();
-            $paymentTermId = $order->payment_term_id ?: $order->customer?->payment_term_id;
-            $paymentTerm = $paymentTermId
-                ? \App\Models\PaymentTerm::query()->find($paymentTermId)
-                : null;
-            $dueDate = $paymentTerm
-                ? null
-                // #539: the tenant's default terms only when the customer has none.
-                : now()->addDays(
-                    $order->customer->payment_terms ?? app(\App\Services\SalesSettings::class)->defaultPaymentTermsDays()
-                )->toDateString();
-
-            $invoiceData = [
-                'customer_id' => $order->customer_id,
-                'invoice_date' => $invoiceDate,
-                'due_date' => $dueDate,
-                'payment_term_id' => $paymentTerm?->id,
-                // #539: the tenant's default invoice notes lead, the order
-                // reference stays for traceability.
-                'notes' => implode("\n", array_filter([
-                    app(\App\Services\SalesSettings::class)->defaultNotes(),
-                    "Sales Order #{$order->sales_order_number}",
-                ])),
-                'sales_order_id' => $order->id,
-                // Carry the order's references into the invoice for end-to-end
-                // tracing (Customer Ref. / PO / Internal Ref.).
-                'customer_reference' => $order->customer_reference,
-                'internal_reference' => $order->internal_reference,
-                'po_number' => $order->po_number,
-                // Issue #333: the order's Incoterm (code + place) is part of
-                // the agreed trade term — it travels onto every invoice.
-                'incoterm_code' => $order->incoterm_code,
-                'incoterm_place' => $order->incoterm_place,
-                // MRD FR-5.5: currency + rate snapshot propagate unchanged.
-                'currency_code' => $order->currency_code,
-                'exchange_rate' => $order->exchange_rate,
-                'base_currency_code' => $order->base_currency_code,
-            ];
+            $invoiceData = $this->orderInvoiceHeader($order, now()->toDateString());
 
             // ── Build invoice lines using per-line invoicing_policy ─────────
             // invoiceable_qty =
@@ -1144,6 +1153,19 @@ class SalesOrderService
                 $invoiceData['discount_amount'] = round($orderDiscount * $ratio, 2);
             }
 
+            // Issue #331: deduct the order's posted down payments — one
+            // negative "Less: down payment <number>" line per tax identity,
+            // never more than is left on each down payment nor more than this
+            // invoice's own goods net.
+            $deductions = $this->downPaymentDeductionLines(
+                $order,
+                round($invoicedNet - (float) ($invoiceData['discount_amount'] ?? 0), 2),
+                count($lines),
+            );
+            if ($deductions !== []) {
+                $invoiceData['lines'] = array_merge($invoiceData['lines'], $deductions);
+            }
+
             // Merge overrides into creation data so the Invoice creating boot hook
             // respects imported values (especially invoice_number) instead of auto-generating.
             if (! empty($totalOverrides)) {
@@ -1202,6 +1224,272 @@ class SalesOrderService
 
             return $invoice;
         });
+    }
+
+    /**
+     * Issue #331: request rules shared by the sales-order and quotation
+     * down-payment endpoints.
+     */
+    public static function downPaymentRequestRules(): array
+    {
+        return [
+            'method' => 'required|in:percentage,fixed',
+            'percentage' => 'required_if:method,percentage|nullable|numeric|gt:0|max:100',
+            'amount' => 'required_if:method,fixed|nullable|numeric|gt:0',
+            'invoice_date' => 'nullable|date',
+        ];
+    }
+
+    /**
+     * Issue #331 (Decision 7 Oct 2026): raise a down-payment invoice from a
+     * confirmed sales order (or a confirmed quotation's order) — a percentage
+     * of, or a fixed amount from, the order total (tax included).
+     *
+     * The amount is spread over the order's tax identities in proportion to
+     * their net, and each share's tax is resolved by the existing sales line
+     * tax resolver at the down-payment invoice date — no rate is introduced
+     * here. Posting (Dr AR / Cr Customer Deposit + Cr Output Tax) happens
+     * through the normal invoice posting path (InvoiceService → PostingEngine).
+     *
+     * @param  'percentage'|'fixed'  $method
+     */
+    public function createDownPaymentInvoice(
+        SalesOrder $order,
+        string $method,
+        ?float $percentage = null,
+        ?float $amount = null,
+        ?string $invoiceDate = null,
+    ): \App\Models\Invoice {
+        return DB::transaction(function () use ($order, $method, $percentage, $amount, $invoiceDate) {
+            // Serialise down payments per order so two requests can never
+            // together exceed the order total.
+            $order = SalesOrder::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            $order->load('lines', 'customer');
+
+            if ((! $order->isConfirmed() && ! $order->isAllocated() && ! $order->isFulfilled() && ! $order->isInvoiced())
+                || $order->isFullyInvoiced()) {
+                throw new \InvalidArgumentException('A down payment can only be invoiced on a confirmed sales order that is not fully invoiced.');
+            }
+
+            $orderTotal = round((float) $order->total, 2);
+            if ($orderTotal <= 0) {
+                throw new \InvalidArgumentException('The sales order has no total to take a down payment on.');
+            }
+
+            $requested = match ($method) {
+                'percentage' => round($orderTotal * (float) $percentage / 100, 2),
+                'fixed' => round((float) $amount, 2),
+                default => throw new \InvalidArgumentException('The down payment method must be percentage or fixed.'),
+            };
+
+            $alreadyDownPaid = round((float) \App\Models\Invoice::query()
+                ->where('sales_order_id', $order->id)
+                ->where('is_down_payment', true)
+                ->where('status', '!=', 'cancelled')
+                ->whereNotIn('lifecycle_status', ['voided', 'reversed'])
+                ->sum('total'), 2);
+            $remaining = round($orderTotal - $alreadyDownPaid, 2);
+
+            if ($requested <= 0) {
+                throw new \InvalidArgumentException('The down payment must be greater than zero.');
+            }
+            if ($requested > $remaining + 0.005) {
+                throw new \InvalidArgumentException(sprintf(
+                    'The down payment (%s) exceeds what is left on the order (%s of %s already down-paid).',
+                    number_format($requested, 2),
+                    number_format($alreadyDownPaid, 2),
+                    number_format($orderTotal, 2),
+                ));
+            }
+
+            $invoiceDate = $invoiceDate ?: now()->toDateString();
+            $ratio = $requested / $orderTotal;
+
+            // The order's net per tax identity, after the header discount.
+            $orderSubtotal = (float) $order->subtotal;
+            $discountFactor = $orderSubtotal > 0
+                ? max($orderSubtotal - (float) $order->discount_amount, 0) / $orderSubtotal
+                : 1.0;
+
+            $resolver = app(\App\Services\SalesLineTaxResolver::class);
+            $context = $resolver->context(
+                $invoiceDate,
+                (int) $order->customer_id,
+                $order->legal_entity_id !== null ? (int) $order->legal_entity_id : null,
+            );
+
+            $groups = [];
+            foreach ($order->lines as $index => $line) {
+                if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                    continue;
+                }
+
+                $net = ((float) $line->line_total - (float) $line->tax_amount) * $discountFactor;
+                if (abs($net) < 0.005) {
+                    continue;
+                }
+
+                // The order line's own tax choice (rule or rate), resolved by
+                // the engine at the down-payment invoice date.
+                $tax = $resolver->resolve([
+                    'line_type' => $line->line_type ?? 'product',
+                    'product_id' => $line->product_id,
+                    'variant_id' => $line->variant_id,
+                    'tax_rate' => $line->tax_rate,
+                    'tax_rule_id' => $line->tax_rule_id,
+                ], $invoiceDate, "lines.{$index}.tax_rule_id", $context);
+
+                $key = implode('|', [(float) $tax['tax_rate'], $tax['tax_rule_id'] ?? '', $tax['tax_code'] ?? '', $tax['tax_treatment'] ?? '']);
+                $groups[$key] ??= ['net' => 0.0, 'tax' => $tax];
+                $groups[$key]['net'] += $net;
+            }
+
+            if ($groups === []) {
+                throw new \InvalidArgumentException('The sales order has no billable lines to take a down payment on.');
+            }
+
+            $label = $method === 'percentage'
+                ? 'Down payment '.rtrim(rtrim(number_format((float) $percentage, 2, '.', ''), '0'), '.').'%'
+                : 'Down payment';
+
+            $lines = [];
+            foreach (array_values($groups) as $sequence => $group) {
+                $lineNet = round($group['net'] * $ratio, 2);
+                if ($lineNet <= 0) {
+                    continue;
+                }
+
+                $lines[] = [
+                    'line_type' => 'product',
+                    'sequence' => $sequence,
+                    'description' => trim("{$label} — Sales Order #{$order->sales_order_number}"
+                        .(count($groups) > 1 && $group['tax']['tax_code'] ? " ({$group['tax']['tax_code']})" : '')),
+                    'quantity' => 1,
+                    'unit_price' => $lineNet,
+                    'tax_rate' => $group['tax']['tax_rate'],
+                    'tax_inclusive' => false,
+                    'tax_rule_id' => $group['tax']['tax_rule_id'],
+                    'tax_code' => $group['tax']['tax_code'],
+                    'tax_treatment' => $group['tax']['tax_treatment'],
+                    'discount_amount' => 0,
+                ];
+            }
+
+            if ($lines === []) {
+                throw new \InvalidArgumentException('The down payment is too small to invoice.');
+            }
+
+            $invoiceData = $this->orderInvoiceHeader($order, $invoiceDate);
+            $invoiceData['is_down_payment'] = true;
+            $invoiceData['lines'] = $lines;
+
+            $invoice = $this->invoiceService->createInvoiceInternal(
+                $this->invoiceService->issueCreationToken(),
+                $invoiceData,
+            );
+
+            // The down payment is part of what the order has billed (credit
+            // exposure, #371): the final invoice's link then carries only the
+            // net it still bills, so the two add up to the order total.
+            SalesInvoiceLink::create([
+                'sales_order_id' => $order->id,
+                'invoice_id' => $invoice->id,
+                'link_type' => 'supplementary',
+                'link_state' => 'active',
+                'invoiced_qty' => 0,
+                'invoiced_value' => (float) $invoice->total,
+                'created_by' => TenantUserHelper::requireTenantUserId($order->created_by),
+            ]);
+
+            $this->logChatter($order, 'status_changed', "Raised down-payment invoice {$invoice->invoice_number} from sales order {$order->sales_order_number}", [
+                'to_state' => $order->status,
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+            ]);
+
+            return $invoice;
+        });
+    }
+
+    /**
+     * Issue #331: the "Less: down payment <number>" lines for a final invoice
+     * of this order — one per down-payment line still not deducted, with the
+     * down payment's own tax identity (so its tax is reversed exactly). Only
+     * POSTED down payments are deducted; what earlier (non-cancelled)
+     * invoices already deducted is skipped; the total never exceeds the
+     * invoice's own goods net ($capNet).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function downPaymentDeductionLines(SalesOrder $order, float $capNet, int $sequenceStart): array
+    {
+        if ($capNet <= 0) {
+            return [];
+        }
+
+        $downPayments = \App\Models\Invoice::query()
+            ->with('lines')
+            ->where('sales_order_id', $order->id)
+            ->where('is_down_payment', true)
+            ->whereNotNull('journal_entry_id')
+            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('lifecycle_status', ['voided', 'reversed'])
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $lines = [];
+        $sequence = $sequenceStart;
+
+        foreach ($downPayments as $downPayment) {
+            $deducted = \App\Models\InvoiceLine::query()
+                ->where('down_payment_invoice_id', $downPayment->id)
+                ->whereHas('invoice', fn ($query) => $query
+                    ->where('status', '!=', 'cancelled')
+                    ->whereNotIn('lifecycle_status', ['voided', 'reversed']))
+                ->get();
+
+            foreach ($downPayment->lines as $dpLine) {
+                if (in_array($dpLine->line_type ?? 'product', ['note', 'section'], true)) {
+                    continue;
+                }
+
+                $sameIdentity = fn ($line) => round((float) $line->tax_rate, 2) === round((float) $dpLine->tax_rate, 2)
+                    && (int) $line->tax_rule_id === (int) $dpLine->tax_rule_id
+                    && (string) $line->tax_code === (string) $dpLine->tax_code;
+
+                $dpNet = (float) $dpLine->line_total - (float) $dpLine->tax_amount;
+                $alreadyDeducted = -1 * (float) $deducted->filter($sameIdentity)
+                    ->sum(fn ($line) => (float) $line->line_total - (float) $line->tax_amount);
+                $available = round(min($dpNet - $alreadyDeducted, $capNet), 2);
+
+                if ($available <= 0) {
+                    continue;
+                }
+
+                $capNet = round($capNet - $available, 2);
+                $lines[] = [
+                    'line_type' => 'product',
+                    'sequence' => $sequence++,
+                    'description' => "Less: down payment {$downPayment->invoice_number}",
+                    'quantity' => 1,
+                    'unit_price' => -$available,
+                    'tax_rate' => $dpLine->tax_rate,
+                    'tax_inclusive' => false,
+                    'tax_rule_id' => $dpLine->tax_rule_id,
+                    'tax_code' => $dpLine->tax_code,
+                    'tax_treatment' => $dpLine->tax_treatment,
+                    'discount_amount' => 0,
+                    'down_payment_invoice_id' => $downPayment->id,
+                ];
+
+                if ($capNet <= 0) {
+                    return $lines;
+                }
+            }
+        }
+
+        return $lines;
     }
 
     public function recordChannelPayment(\App\Models\Invoice $invoice, array $paymentData): \App\Models\Payment

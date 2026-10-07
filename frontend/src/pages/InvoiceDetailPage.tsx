@@ -46,6 +46,8 @@ import { creditWarning } from '@/lib/creditCheck'
 interface Invoice {
   id: number
   invoice_number: string
+  /** Issue #331: a down-payment invoice (held in Customer Deposit). */
+  is_down_payment?: boolean
   customer_id: number
   customer?: {
     id: number
@@ -185,6 +187,8 @@ interface InvoiceLine {
   tax_amount: number
   discount_amount: number
   line_total: number
+  /** Issue #331: set on a final invoice's "Less: down payment" line. */
+  down_payment_invoice_id?: number | null
   /** Issue #332: revenue split across analytic accounts (totals 100%). */
   analytic_distribution?: Array<{
     analytic_account_id: number
@@ -1064,6 +1068,11 @@ export function InvoiceDetailPage() {
             <div>
               <h2 className="text-3xl font-bold mb-2">INVOICE</h2>
               <p className="text-muted-foreground">#{invoice.invoice_number}</p>
+              {invoice.is_down_payment && (
+                <Badge variant="outline" className="mt-2" data-testid="invoice-down-payment-badge">
+                  Down payment
+                </Badge>
+              )}
             </div>
             <div className="text-right">
               {getStatusBadge(invoice.status, invoice.approval_status)}
@@ -1207,6 +1216,11 @@ export function InvoiceDetailPage() {
                     </TableCell>
                     <TableCell>
                       <div>{line.description || '-'}</div>
+                      {line.down_payment_invoice_id && (
+                        <div className="mt-1 text-xs text-muted-foreground" data-testid={`invoice-line-down-payment-${line.id}`}>
+                          Deducted from Customer Deposit
+                        </div>
+                      )}
                       {line.analytic_distribution && line.analytic_distribution.length > 0 && (
                         <div className="mt-1 text-xs text-muted-foreground" data-testid={`invoice-line-analytic-${line.id}`}>
                           Analytic:{' '}

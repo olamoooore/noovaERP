@@ -896,6 +896,38 @@ class SalesOrderController extends Controller
     }
 
     /**
+     * Issue #331: raise a down-payment invoice (a percentage of, or a fixed
+     * amount from, the order total) on a confirmed order.
+     */
+    public function downPaymentInvoice(Request $request, $id)
+    {
+        $order = $this->findScopedOrder($request, $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        $validated = $request->validate(SalesOrderService::downPaymentRequestRules());
+
+        try {
+            $invoice = $this->orderService->createDownPaymentInvoice(
+                $order,
+                $validated['method'],
+                isset($validated['percentage']) ? (float) $validated['percentage'] : null,
+                isset($validated['amount']) ? (float) $validated['amount'] : null,
+                $validated['invoice_date'] ?? null,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        // Issue #647: same approval-threshold hand-off as the order → invoice action.
+        $invoice = $this->submitForApprovalIfRequired($invoice);
+
+        return response()->json(['message' => 'Down-payment invoice created', 'invoice' => $invoice], 201);
+    }
+
+    /**
      * Submit a freshly created invoice for approval when the threshold (or the
      * tenant policy) flagged it. Mirrors InvoiceController::autoSubmitForApproval:
      * failures are logged, never allowed to lose the created invoice.

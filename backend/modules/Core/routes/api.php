@@ -601,6 +601,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft'])->middleware(RequirePermission::using('documents.reset_to_draft'));
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice'])->middleware(RequirePermission::using('quotations.write'));
+        // Issue #331: down-payment invoice on a confirmed quotation's order (same quotations.write gate as create-invoice).
+        Route::post('/quotations/{id}/down-payment-invoice', [QuotationController::class, 'downPaymentInvoice'])->middleware(RequirePermission::using('quotations.write'));
         Route::post('/quotations/{id}/create-delivery-order', [QuotationController::class, 'createDeliveryOrder'])->middleware(RequirePermission::using('quotations.write'));
 
         // Issue #905 (PCU1): read-only audit tab under the quotation view gate.
