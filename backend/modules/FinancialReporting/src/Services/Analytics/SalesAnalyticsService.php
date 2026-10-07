@@ -225,9 +225,12 @@ class SalesAnalyticsService
                     DB::raw('SUM(li.base_revenue) as total_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
-                    DB::raw('SUM((li.quantity - li.foc_quantity) * COALESCE(p.cost, 0)) as total_cost'),
-                    DB::raw('SUM(li.base_revenue - ((li.quantity - li.foc_quantity) * COALESCE(p.cost, 0))) as total_profit'),
-                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - ((li.quantity - li.foc_quantity) * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
+                    // Issue #359: cost is the COGS posted at the time of sale
+                    // (li.base_cost), never today's products.cost; the #600
+                    // paid-unit share of it is what the margin is measured on.
+                    DB::raw('SUM(CASE WHEN li.quantity <> 0 THEN li.base_cost * (li.quantity - li.foc_quantity) / li.quantity ELSE 0 END) as total_cost'),
+                    DB::raw('SUM(li.base_revenue - (CASE WHEN li.quantity <> 0 THEN li.base_cost * (li.quantity - li.foc_quantity) / li.quantity ELSE 0 END)) as total_profit'),
+                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - (CASE WHEN li.quantity <> 0 THEN li.base_cost * (li.quantity - li.foc_quantity) / li.quantity ELSE 0 END)) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
                     // Issue #360: orders, not line rows — a product on two
                     // lines of one order is one order.
                     DB::raw('COUNT(DISTINCT li.order_ref) as order_count'),
@@ -255,7 +258,8 @@ class SalesAnalyticsService
             'invoiced_revenue' => round((float) $sales->sum('invoiced_revenue'), 2),
             'total_cost' => round((float) $sales->sum('total_cost'), 2),
             'total_profit' => round((float) $sales->sum('total_profit'), 2),
-            'average_profit_margin' => $sales->count() > 0 ? round((float) $sales->avg('profit_margin'), 2) : 0,
+            // Issue #359: weighted by revenue, not a simple average of rows.
+            'average_profit_margin' => $this->revenueWeightedMargin($sales->sum('total_profit'), $sales->sum('total_revenue')),
             'total_quantity_sold' => $this->roundQuantity($sales->sum('total_quantity')),
             'total_foc_quantity' => $this->roundQuantity($sales->sum('foc_quantity')),
             'total_foc_list_value' => round((float) $sales->sum('foc_list_value'), 2),
@@ -630,9 +634,10 @@ class SalesAnalyticsService
                     DB::raw('SUM(li.base_revenue) as total_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel = \'booking\' THEN li.base_revenue ELSE 0 END) as bookings_revenue'),
                     DB::raw('SUM(CASE WHEN li.channel <> \'booking\' THEN li.base_revenue ELSE 0 END) as invoiced_revenue'),
-                    DB::raw('SUM(li.quantity * COALESCE(p.cost, 0)) as total_cost'),
-                    DB::raw('SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) as total_profit'),
-                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0))) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
+                    // Issue #359: the COGS posted at the time of sale.
+                    DB::raw('SUM(li.base_cost) as total_cost'),
+                    DB::raw('SUM(li.base_revenue - li.base_cost) as total_profit'),
+                    DB::raw('CASE WHEN SUM(li.base_revenue) > 0 THEN (SUM(li.base_revenue - li.base_cost) / SUM(li.base_revenue) * 100) ELSE 0 END as profit_margin'),
                 ])
                 ->groupBy('c.id', 'c.name')
                 ->orderByDesc('total_revenue')
@@ -653,7 +658,7 @@ class SalesAnalyticsService
             'bookings_revenue' => round((float) $sales->sum('bookings_revenue'), 2),
             'invoiced_revenue' => round((float) $sales->sum('invoiced_revenue'), 2),
             'total_profit' => round((float) $sales->sum('total_profit'), 2),
-            'average_profit_margin' => $sales->count() > 0 ? round((float) $sales->avg('profit_margin'), 2) : 0,
+            'average_profit_margin' => $this->revenueWeightedMargin($sales->sum('total_profit'), $totalRevenue),
             'channels_included' => self::CHANNELS_INCLUDED,
         ]);
 
@@ -695,7 +700,8 @@ class SalesAnalyticsService
      *                 e.g. #560's list-price/100%-discount lines); FOC cost
      *                 still lands in `cost` so free goods are costed
      *   - net_revenue SUM(base_revenue) — the #355 definition
-     *   - cost        SUM(quantity × products.cost), the product/category source
+     *   - cost        SUM(base_cost): the COGS posted at the time of sale
+     *                 (#359), the same source the product/category reports use
      *   - margin      net_revenue − cost
      *
      * @param  list<string>  $rowDims  row group-bys, outermost first
@@ -1044,8 +1050,8 @@ class SalesAnalyticsService
             'paid_qty' => 'SUM(CASE WHEN li.document_revenue <> 0 THEN li.quantity ELSE 0 END)',
             'foc_qty' => 'SUM(CASE WHEN li.document_revenue = 0 THEN li.quantity ELSE 0 END)',
             'net_revenue' => 'SUM(li.base_revenue)',
-            'cost' => 'SUM(li.quantity * COALESCE(p.cost, 0))',
-            'margin' => 'SUM(li.base_revenue - (li.quantity * COALESCE(p.cost, 0)))',
+            'cost' => 'SUM(li.base_cost)',
+            'margin' => 'SUM(li.base_revenue - li.base_cost)',
             'qty_ordered' => 'SUM(li.ordered_quantity)',
             'qty_delivered' => 'SUM(li.delivered_quantity)',
             'qty_invoiced' => 'SUM(li.invoiced_quantity)',
@@ -1967,7 +1973,11 @@ class SalesAnalyticsService
                    COALESCE(po.currency, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(po.exchange_rate, 1.0) AS exchange_rate,
                    NULL::varchar(255) AS salesperson,
-                   NULL::varchar(255) AS sales_team
+                   NULL::varchar(255) AS sales_team,
+                   -- #359: a POS return is costed through the posting of the
+                   -- order it returns (its COGS reversal is linked there).
+                   'pos_order'::varchar(30) AS cost_doc_type,
+                   COALESCE(po.original_order_id, po.id) AS cost_doc_id
             FROM pos_order_items poi
             JOIN pos_orders po ON po.id = poi.pos_order_id
             WHERE {$posRevenueDate} BETWEEN '{$start}' AND '{$end}'
@@ -1994,7 +2004,9 @@ class SalesAnalyticsService
                    COALESCE(so.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(so.exchange_rate, 1.0) AS exchange_rate,
                    so.salesperson,
-                   so.sales_team
+                   so.sales_team,
+                   'sales_order'::varchar(30) AS cost_doc_type,
+                   so.id AS cost_doc_id
             FROM sales_order_lines sol
             JOIN sales_orders so ON so.id = sol.sales_order_id
             LEFT JOIN {$focBySalesOrderLine} foc_so ON foc_so.line_id = sol.id
@@ -2049,7 +2061,9 @@ class SalesAnalyticsService
                    COALESCE(i.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(i.exchange_rate, 1.0) AS exchange_rate,
                    (SELECT so.salesperson FROM sales_orders so WHERE so.id = i.sales_order_id) AS salesperson,
-                   (SELECT so.sales_team FROM sales_orders so WHERE so.id = i.sales_order_id) AS sales_team
+                   (SELECT so.sales_team FROM sales_orders so WHERE so.id = i.sales_order_id) AS sales_team,
+                   'invoice'::varchar(30) AS cost_doc_type,
+                   i.id AS cost_doc_id
             FROM invoice_lines il
             JOIN invoices i ON i.id = il.invoice_id
             LEFT JOIN sales_order_lines sol ON sol.id = il.sales_order_line_id
@@ -2086,7 +2100,9 @@ class SalesAnalyticsService
                    COALESCE(ccn.currency_code, {$baseCurrency}, 'USD') AS currency_code,
                    COALESCE(ccn.exchange_rate, 1.0) AS exchange_rate,
                    (SELECT so.salesperson FROM invoices i JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ccn.invoice_id) AS salesperson,
-                   (SELECT so.sales_team FROM invoices i JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ccn.invoice_id) AS sales_team
+                   (SELECT so.sales_team FROM invoices i JOIN sales_orders so ON so.id = i.sales_order_id WHERE i.id = ccn.invoice_id) AS sales_team,
+                   'credit_note'::varchar(30) AS cost_doc_type,
+                   ccn.id AS cost_doc_id
             FROM customer_credit_note_lines cnl
             JOIN customer_credit_notes ccn ON ccn.id = cnl.credit_note_id
             WHERE ccn.status = 'posted'
@@ -2103,30 +2119,253 @@ class SalesAnalyticsService
         // delivery or invoice contributes its own share of the line's value
         // at the same snapshot rate. A zero quantity contributes nothing
         // (NULLIF), never a division error.
-        $sql = "SELECT product_id,
-                       customer_id,
-                       quantity,
-                       ordered_quantity,
-                       delivered_quantity,
-                       invoiced_quantity,
-                       foc_quantity,
-                       revenue_date,
-                       channel,
-                       order_ref,
-                       line_type,
-                       currency_code,
-                       exchange_rate,
-                       salesperson,
-                       sales_team,
-                       document_revenue,
-                       ROUND(document_revenue * exchange_rate, 2) AS base_revenue,
-                       ROUND(foc_list_value * exchange_rate, 2) AS base_foc_list_value,
-                       ROUND(document_revenue * exchange_rate * ordered_quantity / NULLIF(quantity, 0), 2) AS base_ordered_amount,
-                       ROUND(document_revenue * exchange_rate * delivered_quantity / NULLIF(quantity, 0), 2) AS base_delivered_amount,
-                       ROUND(document_revenue * exchange_rate * invoiced_quantity / NULLIF(quantity, 0), 2) AS base_invoiced_amount
-                FROM ({$arms}) AS li_doc";
+        //
+        // Issue #359: `base_cost` is the line's cost of goods sold AT THE TIME
+        // OF SALE — see historicalCostSql(). Every cost / profit / margin
+        // figure sums it instead of `quantity × products.cost` (today's cost).
+        $costSql = $this->historicalCostSql();
+
+        $sql = "WITH li_doc AS ({$arms}),
+                {$costSql['ctes']}
+                SELECT li_doc.product_id,
+                       li_doc.customer_id,
+                       li_doc.quantity,
+                       li_doc.ordered_quantity,
+                       li_doc.delivered_quantity,
+                       li_doc.invoiced_quantity,
+                       li_doc.foc_quantity,
+                       li_doc.revenue_date,
+                       li_doc.channel,
+                       li_doc.order_ref,
+                       li_doc.line_type,
+                       li_doc.currency_code,
+                       li_doc.exchange_rate,
+                       li_doc.salesperson,
+                       li_doc.sales_team,
+                       li_doc.document_revenue,
+                       ROUND(li_doc.document_revenue * li_doc.exchange_rate, 2) AS base_revenue,
+                       ROUND(li_doc.foc_list_value * li_doc.exchange_rate, 2) AS base_foc_list_value,
+                       ROUND(li_doc.document_revenue * li_doc.exchange_rate * li_doc.ordered_quantity / NULLIF(li_doc.quantity, 0), 2) AS base_ordered_amount,
+                       ROUND(li_doc.document_revenue * li_doc.exchange_rate * li_doc.delivered_quantity / NULLIF(li_doc.quantity, 0), 2) AS base_delivered_amount,
+                       ROUND(li_doc.document_revenue * li_doc.exchange_rate * li_doc.invoiced_quantity / NULLIF(li_doc.quantity, 0), 2) AS base_invoiced_amount,
+                       {$costSql['column']} AS base_cost
+                FROM li_doc
+                {$costSql['joins']}";
 
         return DB::table(DB::raw('('.$sql.') AS li'));
+    }
+
+    /**
+     * Issue #359: the line's cost of goods sold at the time of sale, in the
+     * tenant BASE currency (stock valuation never converts — FR-12 §12).
+     *
+     * The source is the COGS the PostingEngine actually posted, read from the
+     * journal: every posted, non-deleted entry linked to the line's costing
+     * document (journal_entry_links), net debit on the mapped `cogs`
+     * account(s). Reversals and reposts link to the same document, so a reset
+     * → repost or a POS return nets itself. The costing document is:
+     *   - an invoice line → the invoice, plus the delivery orders it bills
+     *     (#682: a DO that shipped first carries the COGS and the invoice
+     *     posts none). A DO billed by several posted invoices is shared
+     *     equally between them, so its COGS is never counted twice;
+     *   - a booking (un-invoiced SO) line → the SO's delivery orders;
+     *   - a POS line → the original POS order (a return's reversal is linked
+     *     to the order it returns);
+     *   - a credit-note line → the credit note (a financial credit posts no
+     *     COGS, so it costs nothing).
+     *
+     * The ledger posts one COGS amount per document, not per line, so the
+     * document's COGS is spread over its product lines pro-rata to
+     * `quantity × products.cost` (quantity alone when every cost is zero).
+     * Per-document totals are exactly the posted COGS whatever the cost does
+     * later; only the split between different products on the SAME document
+     * follows their relative cost. Weights are taken over ALL the document's
+     * lines (not only the ones a product/category filter keeps), so a filtered
+     * report never piles the whole document's COGS onto the kept lines.
+     *
+     * A document with no posting at all (an un-invoiced booking that shipped
+     * nothing, or data written without a journal entry) has no historical
+     * cost to read, so it falls back to `quantity × products.cost`.
+     *
+     * @return array{ctes: string, joins: string, column: string}
+     */
+    private function historicalCostSql(): array
+    {
+        $cogsAccountIds = $this->cogsAccountIds();
+        $cogsAccounts = $cogsAccountIds === [] ? 'NULL' : implode(',', $cogsAccountIds);
+        $postedRelations = "'post', 'posting', 'repost', 'reversal', 'reversal_of', 'void'";
+        $invoiceBillsDelivery = '(
+                (i.sales_order_id IS NOT NULL AND d.sales_order_id = i.sales_order_id)
+                OR EXISTS (
+                    SELECT 1 FROM invoice_delivery_orders ido
+                    WHERE ido.invoice_id = i.id AND ido.delivery_order_id = d.id
+                )
+            )';
+
+        $ctes = "cost_refs AS (
+                    SELECT DISTINCT cost_doc_type, cost_doc_id FROM li_doc
+                ),
+                cost_dos AS (
+                    SELECT r.cost_doc_type, r.cost_doc_id, d.id AS delivery_order_id
+                    FROM cost_refs r
+                    JOIN invoices i ON r.cost_doc_type = 'invoice' AND i.id = r.cost_doc_id
+                    JOIN delivery_orders d ON d.deleted_at IS NULL AND {$invoiceBillsDelivery}
+                    UNION
+                    SELECT r.cost_doc_type, r.cost_doc_id, d.id
+                    FROM cost_refs r
+                    JOIN delivery_orders d ON r.cost_doc_type = 'sales_order'
+                     AND d.sales_order_id = r.cost_doc_id
+                     AND d.deleted_at IS NULL
+                ),
+                cost_do_claims AS (
+                    SELECT d.id AS delivery_order_id, COUNT(DISTINCT i.id) AS claimants
+                    FROM delivery_orders d
+                    JOIN invoices i ON i.deleted_at IS NULL
+                     AND i.status <> 'cancelled'
+                     AND i.lifecycle_status IN ('posted', 'credited')
+                     AND {$invoiceBillsDelivery}
+                    WHERE d.id IN (SELECT delivery_order_id FROM cost_dos)
+                    GROUP BY d.id
+                ),
+                cost_entries AS (
+                    SELECT l.doc_type, l.doc_id,
+                           BOOL_OR(l.relation_type IN ('post', 'posting', 'repost')) AS posted,
+                           SUM(COALESCE(c.cogs, 0)) AS cogs
+                    FROM (
+                        SELECT DISTINCT jl.journal_entry_id,
+                               jl.source_document_type AS doc_type,
+                               jl.source_document_id AS doc_id,
+                               jl.relation_type
+                        FROM journal_entry_links jl
+                        JOIN (
+                            SELECT cost_doc_type AS doc_type, cost_doc_id AS doc_id
+                            FROM cost_refs WHERE cost_doc_type <> 'sales_order'
+                            UNION
+                            SELECT 'delivery_order', delivery_order_id FROM cost_dos
+                        ) wanted ON wanted.doc_type = jl.source_document_type
+                                AND wanted.doc_id = jl.source_document_id
+                        WHERE jl.relation_type IN ({$postedRelations})
+                    ) l
+                    JOIN journal_entries je ON je.id = l.journal_entry_id
+                     AND je.status = 'posted'
+                     AND je.deleted_at IS NULL
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(jel.debit - jel.credit) AS cogs
+                        FROM journal_entry_lines jel
+                        WHERE jel.journal_entry_id = je.id
+                          AND jel.account_id IN ({$cogsAccounts})
+                    ) c ON TRUE
+                    GROUP BY l.doc_type, l.doc_id
+                ),
+                cost_docs AS (
+                    SELECT r.cost_doc_type, r.cost_doc_id,
+                           (COALESCE(own.posted, FALSE) OR COALESCE(dlv.posted, FALSE)) AS posted,
+                           COALESCE(own.cogs, 0) + COALESCE(dlv.cogs, 0) AS cogs
+                    FROM cost_refs r
+                    LEFT JOIN cost_entries own ON r.cost_doc_type <> 'sales_order'
+                     AND own.doc_type = r.cost_doc_type
+                     AND own.doc_id = r.cost_doc_id
+                    LEFT JOIN (
+                        SELECT cd.cost_doc_type, cd.cost_doc_id,
+                               BOOL_OR(ce.posted) AS posted,
+                               SUM(ce.cogs / GREATEST(COALESCE(cl.claimants, 1), 1)) AS cogs
+                        FROM cost_dos cd
+                        JOIN cost_entries ce ON ce.doc_type = 'delivery_order'
+                         AND ce.doc_id = cd.delivery_order_id
+                        LEFT JOIN cost_do_claims cl ON cl.delivery_order_id = cd.delivery_order_id
+                        GROUP BY cd.cost_doc_type, cd.cost_doc_id
+                    ) dlv ON dlv.cost_doc_type = r.cost_doc_type AND dlv.cost_doc_id = r.cost_doc_id
+                ),
+                cost_weights AS (
+                    SELECT 'invoice'::varchar(30) AS cost_doc_type, il.invoice_id AS cost_doc_id,
+                           SUM(COALESCE(il.quantity, 0) * COALESCE(p.cost, 0)) AS weight,
+                           SUM(CASE WHEN il.product_id IS NOT NULL THEN COALESCE(il.quantity, 0) ELSE 0 END) AS qty
+                    FROM invoice_lines il
+                    LEFT JOIN products p ON p.id = il.product_id
+                    WHERE COALESCE(il.line_type, 'product') = 'product'
+                      AND il.invoice_id IN (SELECT cost_doc_id FROM cost_refs WHERE cost_doc_type = 'invoice')
+                    GROUP BY il.invoice_id
+                    UNION ALL
+                    SELECT 'sales_order', sol.sales_order_id,
+                           SUM(COALESCE(sol.quantity, 0) * COALESCE(p.cost, 0)),
+                           SUM(CASE WHEN sol.product_id IS NOT NULL THEN COALESCE(sol.quantity, 0) ELSE 0 END)
+                    FROM sales_order_lines sol
+                    LEFT JOIN products p ON p.id = sol.product_id
+                    WHERE COALESCE(sol.line_type, 'product') = 'product'
+                      AND sol.sales_order_id IN (SELECT cost_doc_id FROM cost_refs WHERE cost_doc_type = 'sales_order')
+                    GROUP BY sol.sales_order_id
+                    UNION ALL
+                    SELECT 'pos_order', COALESCE(po.original_order_id, po.id),
+                           SUM(COALESCE(poi.quantity, 0) * COALESCE(p.cost, 0)),
+                           SUM(CASE WHEN poi.product_id IS NOT NULL THEN COALESCE(poi.quantity, 0) ELSE 0 END)
+                    FROM pos_order_items poi
+                    JOIN pos_orders po ON po.id = poi.pos_order_id
+                    LEFT JOIN products p ON p.id = poi.product_id
+                    WHERE po.status = 'paid'
+                      AND po.deleted_at IS NULL
+                      AND COALESCE(po.original_order_id, po.id) IN (SELECT cost_doc_id FROM cost_refs WHERE cost_doc_type = 'pos_order')
+                    GROUP BY COALESCE(po.original_order_id, po.id)
+                    UNION ALL
+                    SELECT 'credit_note', cnl.credit_note_id,
+                           SUM(-1 * COALESCE(cnl.quantity, 0) * COALESCE(p.cost, 0)),
+                           SUM(CASE WHEN cnl.product_id IS NOT NULL THEN -1 * COALESCE(cnl.quantity, 0) ELSE 0 END)
+                    FROM customer_credit_note_lines cnl
+                    LEFT JOIN products p ON p.id = cnl.product_id
+                    WHERE cnl.credit_note_id IN (SELECT cost_doc_id FROM cost_refs WHERE cost_doc_type = 'credit_note')
+                    GROUP BY cnl.credit_note_id
+                )";
+
+        $joins = 'LEFT JOIN products cost_p ON cost_p.id = li_doc.product_id
+                LEFT JOIN cost_docs ON cost_docs.cost_doc_type = li_doc.cost_doc_type
+                     AND cost_docs.cost_doc_id = li_doc.cost_doc_id
+                LEFT JOIN cost_weights ON cost_weights.cost_doc_type = li_doc.cost_doc_type
+                     AND cost_weights.cost_doc_id = li_doc.cost_doc_id';
+
+        $isCostedLine = "(COALESCE(li_doc.line_type, 'product') = 'product')";
+        $column = "CASE WHEN COALESCE(cost_docs.posted, FALSE) THEN
+                        CASE WHEN NOT {$isCostedLine} THEN 0
+                             WHEN COALESCE(cost_weights.weight, 0) <> 0
+                                 THEN cost_docs.cogs * li_doc.quantity * COALESCE(cost_p.cost, 0) / cost_weights.weight
+                             WHEN COALESCE(cost_weights.qty, 0) <> 0 AND li_doc.product_id IS NOT NULL
+                                 THEN cost_docs.cogs * li_doc.quantity / cost_weights.qty
+                             ELSE 0
+                        END
+                        ELSE li_doc.quantity * COALESCE(cost_p.cost, 0)
+                   END";
+
+        return ['ctes' => $ctes, 'joins' => $joins, 'column' => $column];
+    }
+
+    /**
+     * Issue #359: the mapped COGS account(s). Document-type-specific mappings
+     * are honoured, like the revenue side of the #604 reconciliation. A tenant
+     * with no mapping has posted no COGS, so the list is empty.
+     *
+     * @return list<int>
+     */
+    private function cogsAccountIds(): array
+    {
+        $ids = [];
+        try {
+            if ($this->tableExists('account_mappings')) {
+                $ids = DB::table('account_mappings')
+                    ->where('mapping_key', 'cogs')
+                    ->where('is_active', true)
+                    ->pluck('account_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+            }
+
+            if ($ids === []) {
+                $ids = [(int) app(\App\Accounting\Services\AccountMappingService::class)->resolveId('cogs')];
+            }
+        } catch (\Throwable $e) {
+            // No COGS account ⇒ nothing was ever posted to one; posted
+            // documents then carry zero COGS, which is what the ledger says.
+            Log::info('SalesAnalyticsService: no COGS account mapped', ['error' => $e->getMessage()]);
+        }
+
+        return array_values(array_unique(array_filter($ids, fn (int $id) => $id > 0)));
     }
 
     /**
@@ -2284,6 +2523,17 @@ class SalesAnalyticsService
      * instead of (int)-truncating them, so the Qty Sold column reconciles with
      * the revenue those quantities earned.
      */
+    /**
+     * Issue #359: margin % weighted by revenue — total profit over total
+     * revenue — so a small high-margin row cannot outweigh a large one.
+     */
+    private function revenueWeightedMargin(mixed $profit, mixed $revenue): float
+    {
+        $revenue = (float) $revenue;
+
+        return $revenue > 0 ? round((float) $profit / $revenue * 100, 2) : 0.0;
+    }
+
     private function roundQuantity(mixed $quantity): float
     {
         return round((float) $quantity, 4);
