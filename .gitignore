@@ -124,3 +124,6 @@ playwright-report/
 
 # #1001 payment advice uploads (runtime tenant documents)
 backend/storage/app/payment-advices/
+
+# Client-provided review material (do not commit)
+Template-PDFs/
