@@ -24,6 +24,11 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
  */
 class CustomerCreditNoteService
 {
+    /** #527: credit note reversal wizard modes that post the credit note. */
+    public const REVERSAL_FULL_REFUND = 'full_refund';
+
+    public const REVERSAL_FULL_REFUND_NEW_DRAFT = 'full_refund_new_draft';
+
     public function __construct(
         private PostingEngineInterface $postingEngine,
     ) {}
@@ -883,6 +888,135 @@ class CustomerCreditNoteService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * #527 (SALES-ODOO): the "full refund" modes of the credit note reversal
+     * wizard. The partial mode is the #522 dialog — a DRAFT credit note the
+     * user edits — and goes through createCreditNote() on its own.
+     *
+     *  - full_refund: credit everything not yet credited on every invoice
+     *    line, and post it, which reconciles it with the invoice
+     *    (applyCreditNoteToInvoice: balance = total − paid − credited).
+     *  - full_refund_new_draft: the same, plus a new DRAFT invoice copied
+     *    from the original (ReplacementDraftService) and linked to the
+     *    credit note, for the user to correct and re-issue.
+     *
+     * The lines and amounts are built here from the invoice, never taken
+     * from the caller, using the same "already credited" rule the #513 cap
+     * enforces (POSTED credit notes only). One unit of work: if posting
+     * fails, neither the credit note nor the new draft survive. The credit
+     * note is posted LAST, so CreditNotePosted (dispatched at the end of
+     * postCreditNote) is the final step before the commit.
+     *
+     * Throws RuntimeException (the API maps it to 422) for an invoice that
+     * cannot be credited or has nothing left to credit.
+     *
+     * @return array{credit_note: CustomerCreditNote, invoice: ?Invoice}
+     */
+    public function reverseInvoice(Invoice $invoice, string $mode, array $data = []): array
+    {
+        if (! in_array($mode, [self::REVERSAL_FULL_REFUND, self::REVERSAL_FULL_REFUND_NEW_DRAFT], true)) {
+            throw new \InvalidArgumentException("Unknown credit note reversal mode: {$mode}");
+        }
+
+        return DB::transaction(function () use ($invoice, $mode, $data) {
+            $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+
+            if (in_array($invoice->status, ['draft', 'void', 'cancelled'], true)
+                || in_array($invoice->lifecycle_status, ['voided', 'reversed', 'superseded'], true)) {
+                throw new \RuntimeException('Only a posted invoice can be credited.');
+            }
+
+            $lines = $this->remainingCreditLines($invoice);
+
+            if ($lines === []) {
+                throw new \RuntimeException('Every line of this invoice has already been credited in full.');
+            }
+
+            $creditNote = $this->createCreditNote([
+                'customer_id' => $invoice->customer_id,
+                'invoice_id' => $invoice->id,
+                'credit_note_date' => $data['credit_note_date'] ?? null,
+                'reason' => $data['reason'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'lines' => $lines,
+            ]);
+
+            $reissued = null;
+            if ($mode === self::REVERSAL_FULL_REFUND_NEW_DRAFT) {
+                $reissued = app(ReplacementDraftService::class)->createInvoiceReissueDraft(
+                    $invoice,
+                    $creditNote,
+                    new CorrectionRequest(
+                        userId: Auth::id(),
+                        reasonCode: 'credit_note_reissue',
+                        reasonText: $data['reason'] ?? null,
+                    ),
+                );
+            }
+
+            $creditNote = $this->postCreditNote($creditNote);
+
+            return [
+                'credit_note' => $creditNote,
+                'invoice' => $reissued?->fresh(['lines']),
+            ];
+        });
+    }
+
+    /**
+     * #527: what is still creditable on each invoice line — the invoiced
+     * quantity and line discount minus what POSTED credit notes already
+     * credited (the #513 / #522 rule). Tax rate and tax mode are inherited
+     * from the invoice line by calculateLines().
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function remainingCreditLines(Invoice $invoice): array
+    {
+        $postedNoteIds = CustomerCreditNote::where('invoice_id', $invoice->id)
+            ->where('status', 'posted')
+            ->pluck('id');
+
+        $prior = $postedNoteIds->isEmpty()
+            ? collect()
+            : CustomerCreditNoteLine::whereIn('credit_note_id', $postedNoteIds)
+                ->whereNotNull('invoice_line_id')
+                ->get()
+                ->groupBy('invoice_line_id');
+
+        $lines = [];
+        foreach ($invoice->lines()->orderBy('id')->get() as $line) {
+            if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                continue;
+            }
+
+            $credited = $prior->get($line->id) ?? collect();
+            $remainingQty = round((float) $line->quantity - (float) $credited->sum(fn ($l) => (float) $l->quantity), 4);
+
+            if ($remainingQty <= 0.00001) {
+                continue;
+            }
+
+            $remainingDiscount = max(0.0, round(
+                (float) ($line->discount_amount ?? 0) - (float) $credited->sum(fn ($l) => (float) ($l->discount_amount ?? 0)),
+                2,
+            ));
+
+            $lines[] = [
+                'invoice_line_id' => $line->id,
+                'product_id' => $line->product_id,
+                'description' => (string) ($line->description ?: 'Invoice line '.$line->id),
+                'quantity' => $remainingQty,
+                'unit_price' => (float) $line->unit_price,
+                'tax_inclusive' => (bool) $line->tax_inclusive,
+                'discount_amount' => $remainingDiscount,
+                'account_id' => $line->gl_account_id,
+            ];
+        }
+
+        return $lines;
     }
 
     /**

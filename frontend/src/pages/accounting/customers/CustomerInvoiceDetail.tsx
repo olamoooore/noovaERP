@@ -910,6 +910,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['customer-invoice', id] });
             queryClient.invalidateQueries({ queryKey: ['invoice-credit-notes', invoice.id] });
           }}
+          // #527: "Full refund and new draft invoice" opens the new draft to correct.
+          onReissued={(newInvoiceId) => navigate(`/accounting/customers/bills/${newInvoiceId}/edit`)}
         />
       )}
 

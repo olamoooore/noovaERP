@@ -444,6 +444,77 @@ class CustomerCreditNotesController extends Controller
     }
 
     /**
+     * #527 (SALES-ODOO): credit note reversal wizard — "full refund" posts a
+     * credit note for everything not yet credited on the invoice and
+     * reconciles it; "full refund and new draft invoice" also re-issues the
+     * invoice as a new draft linked to the credit note. The partial mode is
+     * the #522 dialog (store()). Posts to the GL, so the route requires
+     * accounting.post like post().
+     */
+    public function reversal(Request $request, $invoiceId)
+    {
+        $invoice = \App\Models\Invoice::findOrFail($invoiceId);
+
+        $validated = $request->validate([
+            'mode' => 'required|in:'.CustomerCreditNoteService::REVERSAL_FULL_REFUND.','.CustomerCreditNoteService::REVERSAL_FULL_REFUND_NEW_DRAFT,
+            'credit_note_date' => 'nullable|date',
+            'reason' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            $result = $this->creditNoteService->reverseInvoice($invoice, $validated['mode'], $validated);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => 'Failed to credit the invoice',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+
+        $posted = $result['credit_note'];
+        $reissued = $result['invoice'];
+
+        $this->writeAuditLog(
+            'customer_credit_note_posted',
+            (int) $posted->id,
+            ['status' => 'draft', 'journal_entry_id' => null],
+            [
+                'status' => $posted->status,
+                'journal_entry_id' => $posted->journal_entry_id,
+                'amount' => (float) $posted->total_amount,
+            ],
+            [
+                'credit_note_number' => $posted->credit_note_number,
+                'invoice_id' => $posted->invoice_id,
+                'reversal_mode' => $validated['mode'],
+                'reissued_invoice_id' => $reissued?->id,
+            ],
+        );
+
+        $this->logChatter(
+            $posted,
+            'status_changed',
+            "Posted credit note {$posted->credit_note_number} to GL (full refund"
+                .($reissued ? ", re-issued as draft invoice {$reissued->invoice_number}" : '').')',
+            [
+                'from_state' => 'draft',
+                'to_state' => 'posted',
+                'total' => (float) $posted->total_amount,
+                'journal_entry_id' => $posted->journal_entry_id,
+                'reissued_invoice_id' => $reissued?->id,
+            ],
+        );
+
+        return response()->json([
+            'message' => $reissued
+                ? 'Invoice fully credited and re-issued as a new draft'
+                : 'Invoice fully credited',
+            'credit_note' => $posted,
+            'invoice' => $reissued,
+        ], 201);
+    }
+
+    /**
      * Validate credit note amount
      */
     public function validateCreditNote(Request $request)

@@ -1113,6 +1113,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         // authority as a #155 payment allocation.
         Route::post('/customers/credit-notes/{creditNote}/applications', [CustomerCreditNotesController::class, 'applyCredit'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.write'));
+
+        // #527: credit note reversal wizard (full refund / full refund + new
+        // draft invoice) — creates AND posts a credit note, so it carries the
+        // same accounting.post gate as /post.
+        Route::post('/customers/invoices/{invoiceId}/credit-note-reversal', [CustomerCreditNotesController::class, 'reversal'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.post'));
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.view'));
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote'])

@@ -6,6 +6,7 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Exceptions\QuotationHasLiveSalesOrderException;
 use App\Models\Bill;
 use App\Models\BillLine;
+use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
 use App\Models\JournalEntry;
@@ -34,8 +35,36 @@ class ReplacementDraftService
         return DB::transaction(fn () => $this->doCreateInvoiceReplacementDraft($original, $request));
     }
 
-    private function doCreateInvoiceReplacementDraft(Invoice $original, CorrectionRequest $request): Invoice
+    /**
+     * #527 (SALES-ODOO): "full refund and new draft invoice" — the original
+     * has been fully credited by $creditNote; the replacement draft is the
+     * corrected re-issue. It reuses the replacement clone below and adds what
+     * a re-issue needs to be the same invoice again: the credit-note link,
+     * the original's currency / rate snapshot, legal entity and payment
+     * term, and each line's own fields (tax mode, GL account, analytics, UoM)
+     * rather than only the amount columns. The existing replacement flow is
+     * unchanged.
+     */
+    public function createInvoiceReissueDraft(Invoice $original, CustomerCreditNote $creditNote, CorrectionRequest $request): Invoice
     {
+        return DB::transaction(fn () => $this->doCreateInvoiceReplacementDraft($original, $request, [
+            'credit_note_id' => $creditNote->id,
+            'currency_code' => $original->currency_code,
+            'exchange_rate' => $original->exchange_rate,
+            'base_currency_code' => $original->base_currency_code,
+            'legal_entity_id' => $original->legal_entity_id,
+            'entity_book_id' => $original->entity_book_id,
+            'payment_term_id' => $original->payment_term_id,
+            'payment_terms_snapshot' => $original->payment_terms_snapshot,
+        ], copyLineFields: true));
+    }
+
+    private function doCreateInvoiceReplacementDraft(
+        Invoice $original,
+        CorrectionRequest $request,
+        array $extraAttributes = [],
+        bool $copyLineFields = false,
+    ): Invoice {
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
         $original->update([
@@ -47,7 +76,7 @@ class ReplacementDraftService
 
         $nextVersion = ($original->version_number ?? 1) + 1;
 
-        $replacement = Invoice::create([
+        $replacement = Invoice::create(array_merge([
             'invoice_number' => $original->invoice_number.'-R'.str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
             'customer_id' => $original->customer_id,
             'invoice_date' => $original->invoice_date,
@@ -84,10 +113,17 @@ class ReplacementDraftService
             'correction_reason_text' => $request->reasonText,
             'version_number' => $nextVersion,
             'is_active_version' => true,
-        ]);
+        ], $extraAttributes));
 
         foreach ($original->lines as $originalLine) {
+            $lineFields = $copyLineFields
+                ? collect($originalLine->only($originalLine->getFillable()))
+                    ->except(['invoice_id', 'sales_order_line_id'])
+                    ->all()
+                : [];
+
             InvoiceLine::create([
+                ...$lineFields,
                 'invoice_id' => $replacement->id,
                 'product_id' => $originalLine->product_id,
                 'description' => $originalLine->description,
