@@ -70,7 +70,7 @@ export function CustomerSearchCombobox({
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const { data: searchResults, isLoading } = useQuery<Customer[]>({
+  const { data: searchResults, isLoading, isError, error } = useQuery<Customer[]>({
     queryKey: ['customers-search', debouncedQuery],
     queryFn: async () => {
       const params: Record<string, string> = { per_page: '50' }
@@ -91,6 +91,11 @@ export function CustomerSearchCombobox({
     },
     enabled: !!value && !searchResults?.find(c => String(c.id) === value),
   })
+
+  // #1002: a refused/failed search (401/403/500) must not look like an empty
+  // result — "No customers found." sent users hunting for a missing customer
+  // when the real problem was access or a server error.
+  const errorStatus = (error as { response?: { status?: number } } | null)?.response?.status
 
   const getDisplayName = (c: Customer) =>
     c.name || c.company || 'Unnamed'
@@ -159,9 +164,16 @@ export function CustomerSearchCombobox({
             onValueChange={setSearchQuery}
           />
           <CommandList>
-            <CommandEmpty>
-              {isLoading ? 'Searching...' : 'No customers found.'}
-            </CommandEmpty>
+            {isError ? (
+              <div role="alert" className="px-3 py-6 text-center text-sm text-destructive">
+                Couldn't load customers — check your access or try again.
+                {errorStatus ? ` (HTTP ${errorStatus})` : ''}
+              </div>
+            ) : (
+              <CommandEmpty>
+                {isLoading ? 'Searching...' : 'No customers found.'}
+              </CommandEmpty>
+            )}
             <CommandGroup>
               {searchResults?.map((customer) => (
                 <CommandItem
