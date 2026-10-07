@@ -184,6 +184,9 @@ class MedicalCaseController extends Controller
             'items.*.notes' => 'nullable|string',
         ]);
 
+        // Issue #567: a user who can't read the patient name can't write it.
+        $validated = (new MedicalCase)->filterSensitiveWrite($validated);
+
         $this->assertCustomerInEntityScope($request, (int) $validated['customer_id']);
 
         $this->assertLinkableInvoice($validated['invoice_id'] ?? null, (int) $validated['customer_id']);
@@ -455,6 +458,10 @@ class MedicalCaseController extends Controller
             'location' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
         ]);
+
+        // Issue #567: a user who can't read the patient name can't write it;
+        // the masked value echoed back by the edit form is never saved.
+        $validated = $case->filterSensitiveWrite($validated);
 
         if (array_key_exists('customer_id', $validated)) {
             $this->assertCustomerInEntityScope($request, (int) $validated['customer_id']);

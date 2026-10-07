@@ -57,6 +57,21 @@ class FieldMaskingService
         return '****-****-****-'.$last4;
     }
 
+    /**
+     * Issue #567: mask a personal name word by word, keeping only each
+     * word's first letter ("Jane Doe" → "J*** D***"). A fixed-width tail
+     * hides the name's length.
+     */
+    public static function maskName(string $name): string
+    {
+        $words = preg_split('/\s+/u', trim($name), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return implode(' ', array_map(
+            fn (string $word) => mb_substr($word, 0, 1).'***',
+            $words,
+        ));
+    }
+
     public static function maskDefault(string $value): string
     {
         $len = strlen($value);
