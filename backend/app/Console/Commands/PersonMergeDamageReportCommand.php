@@ -20,7 +20,8 @@ class PersonMergeDamageReportCommand extends Command
     protected $signature = 'contacts:person-merge-damage-report
         {--tenant= : Report a single tenant id instead of every tenant}
         {--json= : Also write the full report (every person and link) to this file}
-        {--redact : Replace names, emails, phones and address text in the JSON file (personal data)}';
+        {--redact : Replace names, emails, phones and address text in the JSON file and review sheet (personal data)}
+        {--review-sheet= : Also write a CSV review sheet: one row per link, with the person fingerprint and empty decision columns}';
 
     protected $description = 'Report-only list of contact people wrongly merged by the person-matching bug';
 
@@ -49,7 +50,42 @@ class PersonMergeDamageReportCommand extends Command
             $this->info("Full report written to {$path}");
         }
 
+        if ($sheet = $this->option('review-sheet')) {
+            $this->writeReviewSheet($sheet, (bool) $this->option('redact'));
+            $this->info("Review sheet written to {$sheet}");
+        }
+
         return $exit;
+    }
+
+    /**
+     * W6 step 4 review sheet: decisions are made per link, checked against
+     * the person's fingerprint by the repair run.
+     */
+    private function writeReviewSheet(string $path, bool $redact): void
+    {
+        $handle = fopen($path, 'w');
+        fputcsv($handle, ['tenant_id', 'person_id', 'person_fingerprint', 'customer_contact_id', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note']);
+        foreach ($this->reports as $report) {
+            foreach ($report['people'] as $person) {
+                foreach ($person['links'] as $link) {
+                    $proposed = match (true) {
+                        $link['auto_split_eligible'] => 'split',
+                        $link['status'] === 'ok' => 'keep',
+                        default => 'review',
+                    };
+                    fputcsv($handle, [
+                        $report['tenant_id'], $person['person_id'], $person['fingerprint'],
+                        $link['customer_contact_id'], $link['customer_id'],
+                        $redact ? ReportRedactor::MARK : $link['name'],
+                        $redact ? ReportRedactor::MARK : $person['person_name'],
+                        $link['status'], $link['bug_signature'] ? 'yes' : 'no', $proposed,
+                        '', '', '', '',
+                    ]);
+                }
+            }
+        }
+        fclose($handle);
     }
 
     private function reportTenant(PersonMergeDamagePlanner $planner, string $tenantId): int

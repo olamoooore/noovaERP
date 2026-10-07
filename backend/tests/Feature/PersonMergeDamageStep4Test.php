@@ -252,8 +252,10 @@ class PersonMergeDamageStep4Test extends TenantTestCase
      *  M. the fingerprint covers what a repair decision depends on (links,
      *     relationships with roles, classifications) and NOT documents or
      *     owned data, which change with normal daily use;
-     *  N. owned data is a flag (`has_owned_data`), and money-bearing owned
-     *     data (POS loyalty points, accounting balances) is listed apart —
+     *  N. owned data is a flag (`has_owned_data`); points typed into the
+     *     Contact Master loyalty profile are listed as `manual_loyalty_points`
+     *     (fourth review: they are entered by hand, not a POS ledger, and
+     *     the accounting profile "balance" is never maintained — not shown) —
      *     moving it needs finance sign-off;
      *  O. a company relationship with no linked contact at that company is
      *     marked (`has_linked_contact` false): it stays with the person.
@@ -283,8 +285,11 @@ class PersonMergeDamageStep4Test extends TenantTestCase
 
         // N
         $this->assertTrue($first['has_owned_data']);
-        $this->assertSame(120, $first['financial_owned_data']['pos_loyalty_points']);
-        $this->assertSame(0.0, (float) $first['financial_owned_data']['accounting_balance']);
+        // Revised by the fourth review of the repair plan: the accounting
+        // profile's current_balance is only ever written as 0, so no
+        // "balance" is reported; loyalty points are manual entries.
+        $this->assertSame(120, $first['manual_loyalty_points']);
+        $this->assertArrayNotHasKey('financial_owned_data', $first);
 
         // O
         $relationships = collect($first['relationships'])->keyBy('organisation_id');
@@ -298,6 +303,76 @@ class PersonMergeDamageStep4Test extends TenantTestCase
         // …but a role on one of its relationships does.
         app(ContactMasterService::class)->setRelationshipRoles($relationships[$hospitalOrg]['relationship_id'], ['BILLING_CONTACT'], $this->tenantId);
         $this->assertNotSame($first['fingerprint'], $this->report()[$sitiPerson]['fingerprint'], 'Relationship roles are part of the fingerprint.');
+    }
+
+    /**
+     * Fourth hostile review of the repair plan (2026-10-07):
+     *  P. the bug only fired for a contact with NO email and NO mobile when
+     *     it was linked. A `suspect` link whose contact has an email or mobile
+     *     today may be a correct match whose details changed later, so only
+     *     links with the bug's signature are `auto_split_eligible`;
+     *  Q. roles held directly on the person (no relationship) are reported
+     *     and part of the fingerprint;
+     *  R. `--review-sheet=<csv>` writes one row per link with the person's
+     *     fingerprint, a proposed decision and empty decision columns.
+     */
+    public function test_bug_signature_person_roles_and_review_sheet(): void
+    {
+        [$hospital] = $this->createCustomer('Acme Hospital');
+        [$clinic, $clinicOrg] = $this->createCustomer('Bayu Clinic');
+        $siti = $this->addContact($hospital, ['name' => 'Siti', 'email' => 'siti@acme.test']);
+        $sitiPerson = $siti['core_contact_uuid'];
+
+        // The bug's signature: no email, no mobile.
+        $ali = $this->wronglyMerged($clinic, $clinicOrg, 'Ali', $sitiPerson);
+        // Different name, no shared identifier, but HAS an email today:
+        // possibly a correct match whose details drifted — review only.
+        $drift = $this->wronglyMerged($clinic, null, 'Tan Ah Kow', $sitiPerson, ['email' => 'tak@bayu.test']);
+
+        // Q: a role held directly on the person.
+        app(ContactMasterService::class)->addRole($sitiPerson, 'customer', $this->tenantId);
+
+        $sheet = tempnam(sys_get_temp_dir(), 'review-sheet-');
+        $before = $this->tableCounts();
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--json' => $this->reportPath, '--review-sheet' => $sheet])->assertExitCode(0);
+        $this->assertSame($before, $this->tableCounts(), 'The report must not write anything.');
+
+        $person = collect(json_decode((string) file_get_contents($this->reportPath), true)[0]['people'])->keyBy('person_id')[$sitiPerson];
+        $links = collect($person['links'])->keyBy('customer_contact_id');
+
+        // P
+        $this->assertTrue($links[$ali]['bug_signature']);
+        $this->assertTrue($links[$ali]['auto_split_eligible']);
+        $this->assertSame('suspect', $links[$drift]['status']);
+        $this->assertFalse($links[$drift]['bug_signature']);
+        $this->assertFalse($links[$drift]['auto_split_eligible'], 'A suspect link with identifiers today goes to review, not an automatic split.');
+        $this->assertFalse($links[$siti['id']]['auto_split_eligible']);
+
+        // Q
+        $this->assertSame(['customer'], $person['person_roles']);
+        $print = $person['fingerprint'];
+        app(ContactMasterService::class)->addRole($sitiPerson, 'vendor', $this->tenantId);
+        $this->assertNotSame($print, $this->report()[$sitiPerson]['fingerprint'], 'Person-level roles are part of the fingerprint.');
+
+        // R
+        $rows = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
+        $header = array_shift($rows);
+        $this->assertSame(['tenant_id', 'person_id', 'person_fingerprint', 'customer_contact_id', 'customer_id', 'contact_name', 'person_name', 'status', 'bug_signature', 'proposed_decision', 'decision', 'decided_by', 'decided_at', 'note'], $header);
+        $byContact = collect($rows)->map(fn ($r) => array_combine($header, $r))->keyBy('customer_contact_id');
+        $this->assertSame($print, $byContact[(string) $ali]['person_fingerprint']);
+        $this->assertSame('split', $byContact[(string) $ali]['proposed_decision']);
+        $this->assertSame('review', $byContact[(string) $drift]['proposed_decision']);
+        $this->assertSame('keep', $byContact[(string) $siti['id']]['proposed_decision']);
+        $this->assertSame('', $byContact[(string) $ali]['decision']);
+        $this->assertSame('Ali', $byContact[(string) $ali]['contact_name']);
+
+        // --redact blanks names in the sheet too.
+        $this->artisan('contacts:person-merge-damage-report', ['--tenant' => $this->tenantId, '--review-sheet' => $sheet, '--redact' => true])->assertExitCode(0);
+        $redacted = array_map('str_getcsv', array_filter(explode("\n", (string) file_get_contents($sheet))));
+        array_shift($redacted);
+        $this->assertNotContains('Ali', array_merge(...$redacted));
+        $this->assertNotContains('Siti', array_merge(...$redacted));
+        @unlink($sheet);
     }
 
     /** @return array<string, array<string, mixed>> */

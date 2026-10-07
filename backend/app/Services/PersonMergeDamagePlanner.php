@@ -47,6 +47,15 @@ use Modules\Contact\src\Services\ContactTaxonomyService;
  * `has_owned_data` and money-bearing `financial_owned_data` (POS loyalty
  * points, accounting balances); relationships with no linked contact at
  * their company are marked (`has_linked_contact`).
+ *
+ * Fourth review: the bug only fired for a contact with no email and no
+ * mobile at link time. Today's values cannot prove that, so a `suspect` link
+ * is `auto_split_eligible` only when its contact STILL has neither
+ * (`bug_signature`); otherwise it may be a correct match whose details
+ * changed later and goes to review. Person-level roles (`person_roles`) are
+ * reported and fingerprinted. Contact Master loyalty points are manual
+ * entries (`manual_loyalty_points`); the accounting profile balance is never
+ * maintained and is not reported.
  */
 class PersonMergeDamagePlanner
 {
@@ -114,6 +123,7 @@ class PersonMergeDamagePlanner
                     'implied_functional_category' => $legacy['functional_category_code'],
                     'implied_roles' => $legacy['persistent_role_codes'],
                     'department_name' => $contact->department_name,
+                    'bug_signature' => $this->email($contact->email) === null && $this->digits($contact->mobile) === null,
                 ];
             })->values()->all();
 
@@ -133,6 +143,7 @@ class PersonMergeDamagePlanner
             // that org-person relationship (category, roles, site).
             $okOrganisations = array_filter(array_column(array_filter($links, fn ($l) => $l['status'] === 'ok'), 'organisation_id'));
             foreach ($links as &$link) {
+                $link['auto_split_eligible'] = $link['status'] === 'suspect' && $link['bug_signature'];
                 $link['shares_relationship_with_ok_link'] = $link['status'] !== 'ok'
                     && $link['organisation_id'] !== null
                     && in_array($link['organisation_id'], $okOrganisations, true);
@@ -143,6 +154,12 @@ class PersonMergeDamagePlanner
             $documents = $this->documents($person->id, $links);
             $owned = $this->ownedData($person->id);
             $relationships = $this->relationships($tenantId, $person->id);
+            $personRoles = ContactRole::where('tenant_id', $tenantId)
+                ->where('contact_id', $person->id)
+                ->whereNull('relationship_id')
+                ->orderBy('role')
+                ->pluck('role')
+                ->all();
             $linkedOrganisations = array_filter(array_column($links, 'organisation_id'));
             foreach ($relationships as &$relationship) {
                 $relationship['has_linked_contact'] = in_array($relationship['organisation_id'], $linkedOrganisations, true);
@@ -168,9 +185,10 @@ class PersonMergeDamagePlanner
                 'relationships' => $relationships,
                 'owned_data' => $owned,
                 'has_owned_data' => array_sum($owned) > 0,
-                'financial_owned_data' => $this->financialOwnedData($person->id),
+                'manual_loyalty_points' => $this->manualLoyaltyPoints($person->id),
+                'person_roles' => $personRoles,
                 'documents' => $documents,
-                'fingerprint' => $this->fingerprint($person, $contacts->all(), $classifications, $relationships),
+                'fingerprint' => $this->fingerprint($person, $contacts->all(), $classifications, $relationships, $personRoles),
             ];
         }
 
@@ -187,6 +205,8 @@ class PersonMergeDamagePlanner
                 'suspect_links' => $linkCount('suspect'),
                 'unverifiable_links' => $linkCount('unverifiable'),
                 'shared_identifier_links' => $linkCount('shared_identifier_different_name'),
+                'auto_split_eligible_links' => array_sum(array_map(fn ($p) => count(array_filter($p['links'], fn ($l) => $l['auto_split_eligible'])), $people)),
+                'suspect_links_for_review' => array_sum(array_map(fn ($p) => count(array_filter($p['links'], fn ($l) => $l['status'] === 'suspect' && ! $l['auto_split_eligible'])), $people)),
                 'issued_documents' => array_sum(array_map(fn ($p) => array_sum(array_column($p['documents'], 'issued')), $people)),
                 'draft_documents' => array_sum(array_map(fn ($p) => array_sum(array_column($p['documents'], 'draft')), $people)),
             ],
@@ -259,7 +279,7 @@ class PersonMergeDamagePlanner
      * @param  list<CustomerContact>  $contacts
      * @param  list<string>  $classifications
      */
-    private function fingerprint(CoreContact $person, array $contacts, array $classifications, array $relationships): string
+    private function fingerprint(CoreContact $person, array $contacts, array $classifications, array $relationships, array $personRoles): string
     {
         return hash('sha256', json_encode([
             $person->id, $person->display_name, $person->email, $person->mobile, $person->phone,
@@ -270,6 +290,7 @@ class PersonMergeDamagePlanner
             ], $contacts),
             $relationships,
             $classifications,
+            $personRoles,
         ]));
     }
 
@@ -297,20 +318,14 @@ class PersonMergeDamagePlanner
     }
 
     /**
-     * N: owned data that carries money — moving it needs finance sign-off.
-     *
-     * @return array{pos_loyalty_points: int, accounting_balance: float}
+     * N: points typed into the Contact Master loyalty profile (no POS code
+     * writes this table; POS loyalty runs per customer).
      */
-    private function financialOwnedData(string $personId): array
+    private function manualLoyaltyPoints(string $personId): int
     {
-        $points = Schema::hasTable('pos_loyalty_profiles')
+        return Schema::hasTable('pos_loyalty_profiles')
             ? (int) DB::table('pos_loyalty_profiles')->where('contact_id', $personId)->sum('loyalty_points')
             : 0;
-        $balance = Schema::hasTable('accounting_customer_profiles')
-            ? round((float) DB::table('accounting_customer_profiles')->where('contact_id', $personId)->sum('current_balance'), 2)
-            : 0.0;
-
-        return ['pos_loyalty_points' => $points, 'accounting_balance' => $balance];
     }
 
     /**
