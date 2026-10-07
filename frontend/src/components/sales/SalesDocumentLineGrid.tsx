@@ -1,6 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { Icon } from '@iconify/react'
-import { cn } from '@/lib/utils'
+import { cn, normalizeQuantity } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/useBreakpoint'
 import { Button } from '@/components/ui/button'
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
@@ -524,14 +524,14 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
             min="0"
             aria-label="Quantity"
             onKeyDown={handleFlowKeyDown(index, 'quantity')}
-            value={line.quantity}
+            value={normalizeQuantity(line.quantity)}
             onChange={(event) => {
               // HR71-08: keep literal intent — empty is allowed while typing
               // (caught on submit), no silent substitution of 0.
               const raw = event.target.value
               if (raw === '') { updateLine(index, 'quantity', ''); return }
               const parsed = parseFloat(raw)
-              if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
+              if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', normalizeQuantity(parsed) as number)
             }}
             className={LINE_INPUT_NUMERIC_TOKEN}
           />
@@ -756,7 +756,7 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
                               min="0"
                               aria-label="Quantity"
                               onKeyDown={handleFlowKeyDown(index, 'quantity')}
-                              value={line.quantity}
+                              value={normalizeQuantity(line.quantity)}
                               onChange={(event) => {
                                 // HR71-08: keep literal intent — empty is allowed
                                 // while typing (caught on submit), no silent
@@ -764,7 +764,7 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
                                 const raw = event.target.value
                                 if (raw === '') { updateLine(index, 'quantity', ''); return }
                                 const parsed = parseFloat(raw)
-                                if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed)
+                                if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', normalizeQuantity(parsed) as number)
                               }}
                               className={LINE_INPUT_NUMERIC_TOKEN}
                             />

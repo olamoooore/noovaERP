@@ -18,7 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { cn, formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity } from '@/lib/utils';
 import api from '@/lib/api'
 import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
 import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
@@ -1880,7 +1880,7 @@ export const CreateInvoicePage: React.FC = () => {
           product_batch_id: line.product_batch_id || null,
           product_serial_id: line.product_serial_id || null,
           expiry_date: line.expiry_date || null,
-          quantity: line.quantity === '' ? 0 : Number(line.quantity),
+          quantity: line.quantity === '' ? 0 : (Number(normalizeQuantity(line.quantity)) || 0),
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
           price_mode: line.price_mode ?? undefined,
           override_reason: line.override_reason ?? undefined,
@@ -3099,12 +3099,12 @@ export const CreateInvoicePage: React.FC = () => {
                                 min="0"
                                 step="0.0001"
                                 inputMode="decimal"
-                                value={line.quantity}
+                                value={normalizeQuantity(line.quantity)}
                                 onChange={(event) => {
                                   const raw = event.target.value;
                                   if (raw === '') { updateLine(index, 'quantity', ''); return; }
                                   const parsed = Number(raw);
-                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
+                                  if (!Number.isNaN(parsed)) updateLine(index, 'quantity', normalizeQuantity(parsed) as number);
                                 }}
                                 onKeyDown={(event) => {
                                   // D6(e): Enter on the last row starts a new line.

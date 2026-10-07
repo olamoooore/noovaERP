@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { formatDate, resolveImageUrl, formatCurrency } from '@/lib/utils';
+import { formatDate, resolveImageUrl, formatCurrency, normalizeQuantity } from '@/lib/utils';
 import api from '@/lib/api';
 import { getVisibleInvoiceNotes } from '@/lib/invoicePresentation';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
@@ -717,7 +717,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                       <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
-                      <TableCell className="text-right">{line.quantity}</TableCell>
+                      <TableCell className="text-right">{normalizeQuantity(line.quantity)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
