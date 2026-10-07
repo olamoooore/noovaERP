@@ -16,6 +16,7 @@ use App\Services\CustomerReceiptService;
 use App\Services\InvoiceApprovalService;
 use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
+use App\Services\InvoiceSendBundleService;
 use App\Services\InvoiceService;
 use App\Services\SalesApprovalGate;
 use App\Services\SalesDefaultsService;
@@ -183,10 +184,10 @@ class SettingsRegistry implements SettingsRegistryContract
             'invoice.credit_limit_policy' => ['key' => SalesSettings::CREDIT_LIMIT_POLICY, 'type' => 'enum', 'default' => SalesSettings::CREDIT_LIMIT_POLICY_BLOCK, 'via' => [SalesSettings::class.'::invoiceCreditLimitPolicy'], 'readers' => [CreditCheckService::class.'::invoiceVerdict']],
             'invoice.default_terms' => ['key' => SalesSettings::DEFAULT_TERMS, 'type' => 'text', 'via' => [SalesSettings::class.'::defaultTerms'], 'readers' => [InvoiceService::class.'::createInvoiceInternal']],
 
-            'portal.acceptance_enabled' => ['key' => SalesSettings::ACCEPTANCE_ENABLED, 'type' => 'bool', 'via' => [SalesSettings::class.'::acceptanceEnabled'], 'readers' => [InvoiceAcceptanceController::class.'::accept', InvoiceController::class.'::createAcceptanceLink', InvoiceController::class.'::sendBundle', InvoiceController::class.'::post']],
+            'portal.acceptance_enabled' => ['key' => SalesSettings::ACCEPTANCE_ENABLED, 'type' => 'bool', 'via' => [SalesSettings::class.'::acceptanceEnabled'], 'readers' => [InvoiceAcceptanceController::class.'::accept', InvoiceController::class.'::createAcceptanceLink', InvoiceSendBundleService::class.'::send', InvoiceController::class.'::post']],
             'portal.require_signature' => ['key' => SalesSettings::REQUIRE_SIGNATURE, 'type' => 'bool', 'via' => [SalesSettings::class.'::requireSignature'], 'readers' => [InvoiceAcceptanceController::class.'::accept']],
             'portal.acceptance_link_expiry_days' => ['key' => SalesSettings::ACCEPTANCE_LINK_EXPIRY_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::acceptanceLinkExpiryDays'], 'readers' => [InvoiceEvidenceService::class.'::createPortalAcceptanceLink']],
-            'portal.payment_link_expiry_days' => ['key' => SalesSettings::PAYMENT_LINK_EXPIRY_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::paymentLinkExpiryDays'], 'readers' => [InvoiceController::class.'::createPaymentLink', InvoiceController::class.'::sendBundle']],
+            'portal.payment_link_expiry_days' => ['key' => SalesSettings::PAYMENT_LINK_EXPIRY_DAYS, 'type' => 'int', 'via' => [SalesSettings::class.'::paymentLinkExpiryDays'], 'readers' => [InvoiceController::class.'::createPaymentLink', InvoiceSendBundleService::class.'::send']],
 
             // MRD R10.3: the three tax fields are merged into the ONE
             // canonical `tax` block the tax engine reads.
@@ -196,7 +197,7 @@ class SettingsRegistry implements SettingsRegistryContract
 
             'delivery.attach_pdf' => ['key' => SalesSettings::ATTACH_PDF, 'type' => 'bool', 'via' => [SalesSettings::class.'::attachPdf'], 'readers' => [InvoiceDeliveryService::class.'::sendEmail']],
             'delivery.cc_internal_email' => ['key' => SalesSettings::CC_INTERNAL_EMAIL, 'type' => 'email', 'via' => [SalesSettings::class.'::ccInternalEmail'], 'readers' => [InvoiceDeliveryService::class.'::sendEmail']],
-            'delivery.document_type_on_send' => ['key' => SalesSettings::DOCUMENT_TYPE_ON_SEND, 'type' => 'enum', 'via' => [SalesSettings::class.'::documentTypeOnSend'], 'readers' => [InvoiceDeliveryService::class.'::deliver', InvoiceController::class.'::sendBundle']],
+            'delivery.document_type_on_send' => ['key' => SalesSettings::DOCUMENT_TYPE_ON_SEND, 'type' => 'enum', 'via' => [SalesSettings::class.'::documentTypeOnSend'], 'readers' => [InvoiceDeliveryService::class.'::deliver', InvoiceSendBundleService::class.'::send']],
 
             'delivery_order.default_requires_approval' => ['key' => 'sales.delivery_order.default_requires_approval', 'type' => 'bool', 'readers' => [DeliveryOrderService::class.'::resolveRequiresApproval']],
 
