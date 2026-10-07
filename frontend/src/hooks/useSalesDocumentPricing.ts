@@ -164,3 +164,21 @@ export function useSalesDocumentPricing<L extends SalesPricingLine>({
     resolvePricingForLines,
   }
 }
+
+/**
+ * Issue #342 (D5): keep the engine's explanation on the line — the trace,
+ * the list price for the strikethrough and the currencies the price is in —
+ * so the per-line price chip can say how the number was reached. Stable
+ * module-level reference (safe as the hook's `applyQuote`).
+ */
+export function keepPricingTrace(_line: unknown, quote: PricingQuote) {
+  return {
+    pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
+    list_price: Number(quote.list_price ?? 0) || null,
+    pricing_trace: quote.pricing_trace
+      ? { ...quote.pricing_trace, document_currency: quote.currency, base_currency: quote.base_currency, exchange_rate: quote.exchange_rate }
+      : null,
+    pricing_currency: quote.currency ?? null,
+    pricing_base_currency: quote.base_currency ?? null,
+  }
+}

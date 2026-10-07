@@ -31,6 +31,7 @@ import { StockShortageDialog, type ShortageLine } from '@/components/sales/Stock
 import { QuotationRevisionDialog, type QuotationRevisionMode } from '@/components/sales/QuotationRevisionDialog'
 import { QuotationVersionHistory, type QuotationVersionEntry } from '@/components/sales/QuotationVersionHistory'
 import { SalesOrderFulfilmentCard } from '@/components/sales/LineFulfilmentBar'
+import { DocumentLinePriceChip } from '@/components/sales/PriceExplanationChip'
 
 const QUOTATION_LINE_COLUMNS = [
   '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
@@ -1219,7 +1220,13 @@ export function QuotationDetailPage() {
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity}</TableCell>
-                  <TableCell className="text-right">{money(Number(line.unit_price))}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span>{money(Number(line.unit_price))}</span>
+                      {/* #342 (D5): how this price was set. */}
+                      <DocumentLinePriceChip line={line} document={quotation} money={money} />
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right">{line.tax_rate}%</TableCell>
                   <TableCell className="text-right font-medium">{money(Number(line.line_total))}</TableCell>
                     </>)}

@@ -850,6 +850,11 @@ class CompanySettingsController extends Controller
                 'sales_order' => [
                     'proforma_enabled' => app(\App\Services\SalesSettings::class)->proformaInvoiceEnabled(),
                 ],
+                // Issue #342 (D5): the #553 pricelist display mode, so the
+                // per-line price explanation can say how the line prints.
+                'pricelist' => [
+                    'display' => app(\App\Services\SalesPricelistDisplayService::class)->displayMode(),
+                ],
                 'tax' => $this->salesTaxDefaults(),
             ] + ($remembered === null ? [] : ['remembered' => $remembered]),
         ]);

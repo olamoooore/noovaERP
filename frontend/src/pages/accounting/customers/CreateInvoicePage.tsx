@@ -26,7 +26,7 @@ import type { ContactMasterAddress } from '@/lib/customerDocumentDefaults';
 import { resolveLineTaxRate } from '@/lib/lineTax';
 import { applyLineTaxChoice, buildLineTaxChoices, lineTaxChoiceValue, lineTaxIdentityPayload, savedLineTaxChoice, type SalesTaxCodeOption } from '@/lib/salesLineTax';
 import { computeDocumentTotals } from '@/lib/documentTotals';
-import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
+import { keepPricingTrace, useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing';
 import {
   duplicateSalesDocumentLine,
   focLineKeyForId,
@@ -56,6 +56,7 @@ import { getProductLineDescription, ProductSearchCombobox } from '@/components/i
 import { CaseSearchCombobox, type MedicalCaseOption } from '@/components/sales/CaseSearchCombobox';
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard';
 import { CustomerContextStrip } from '@/components/sales/CustomerContextStrip';
+import { EditorLinePriceChip } from '@/components/sales/PriceExplanationChip';
 import { creditWarning } from '@/lib/creditCheck';
 import { duplicateWarning, likelyDuplicateFromError, type DuplicateCheckResult } from '@/lib/duplicateCheck';
 import { PreflightBlockedNotice, PreflightChecklist } from '@/components/sales/InvoicePreflight';
@@ -70,7 +71,7 @@ import { StockAvailabilityChip } from '@/components/sales/StockAvailabilityChip'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { TagEditor } from '@/components/tags/TagEditor'
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { HeaderChip, StaticChip } from '@/components/ui/HeaderChip'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SaveConflictDialog } from '@/components/sales/SaveConflictDialog'
@@ -128,17 +129,9 @@ interface InvoiceLine {
   override_reason?: string | null;
   // FR-3.8: public/reference price for the strikethrough display.
   list_price?: number | null;
-  // D5 (invoice review): full engine trace for the hover explanation —
-  // list/rule, tier compute info and the FX rate actually used.
-  pricing_trace?: {
-    source?: string | null;
-    pricelist_code?: string | null;
-    compute_type?: string | null;
-    compute_value?: number | null;
-    base?: string | null;
-    rate_used?: number | null;
-    rate_date?: string | null;
-  } | null;
+  // D5 / #342: full engine trace for the per-line price explanation —
+  // list/rule, tier band, FX rate actually used, manual override reason.
+  pricing_trace?: Record<string, any> | null;
   pricing_currency?: string | null;
   pricing_base_currency?: string | null;
   // #1006: bonus-scheme FOC line, linked to its paid source line by a stable
@@ -568,15 +561,9 @@ export const CreateInvoicePage: React.FC = () => {
     customerId,
     documentDate: invoiceDate,
     setLines,
-    // D5: keep the full engine trace so the price chip can explain how the
-    // number was reached (list/rule, tier, FX rate).
-    applyQuote: (_line, quote) => ({
-      pricing_source: quote.pricing_trace?.pricelist_code || quote.source || null,
-      list_price: Number(quote.list_price ?? 0) || null,
-      pricing_trace: quote.pricing_trace ?? null,
-      pricing_currency: quote.currency ?? null,
-      pricing_base_currency: quote.base_currency ?? null,
-    }),
+    // D5 / #342: keep the full engine trace so the price chip can explain
+    // how the number was reached (list/rule, tier, FX rate).
+    applyQuote: keepPricingTrace,
   });
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   // Issue #327: a likely duplicate the server refused until confirmed.
@@ -925,6 +912,8 @@ export const CreateInvoicePage: React.FC = () => {
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
       ...savedLineTaxChoice(line),
       discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
+      // #342 (D5): the stored trace explains the saved price.
+      pricing_trace: line.pricing_trace ?? null,
       // #1006: keep the FOC flag and its source link through the edit.
       is_foc: Boolean(line.is_foc),
       line_key: line.id != null ? focLineKeyForId(line.id) : undefined,
@@ -2204,47 +2193,6 @@ export const CreateInvoicePage: React.FC = () => {
     .filter(Boolean)
     .join(' · ');
 
-  // D5 (invoice review): plain-language explanation of how a line price was
-  // arrived at — price list/rule, tier compute, FX rate/date, manual reason.
-  const priceExplanation = (line: InvoiceLine): string[] => {
-    const notes: string[] = [];
-    const trace = line.pricing_trace ?? null;
-
-    if (line.price_mode === 'manual') {
-      notes.push('Manual price — typed directly on this line.');
-      if (line.override_reason) notes.push(`Reason: ${line.override_reason}`);
-      if (line.list_price != null) notes.push(`List price: ${money(Number(line.list_price))}`);
-      return notes;
-    }
-
-    if (trace?.pricelist_code) notes.push(`Price list: ${trace.pricelist_code}`);
-    else if (line.pricing_source) notes.push(`Source: ${String(line.pricing_source).replace(/_/g, ' ')}`);
-
-    if (trace?.compute_type && trace.compute_type !== 'none') {
-      const basis = trace.base ? String(trace.base).replace(/_/g, ' ') : 'list price';
-      const amount = trace.compute_value != null
-        ? `${trace.compute_value}${trace.compute_type === 'percentage' ? '%' : ''} `
-        : '';
-      notes.push(`Rule: ${amount}${String(trace.compute_type).replace(/_/g, ' ')} on ${basis}`);
-    }
-
-    if (
-      trace?.rate_used != null
-      && line.pricing_currency
-      && line.pricing_base_currency
-      && line.pricing_currency !== line.pricing_base_currency
-    ) {
-      const rateDate = trace.rate_date ? ` on ${String(trace.rate_date).slice(0, 10)}` : '';
-      notes.push(`FX: 1 ${line.pricing_currency} = ${trace.rate_used} ${line.pricing_base_currency}${rateDate}`);
-    }
-
-    if (line.list_price != null && line.unit_price !== '' && Number(line.unit_price) < Number(line.list_price)) {
-      notes.push(`List price: ${money(Number(line.list_price))}`);
-    }
-
-    return notes.length ? notes : ['Price resolved by the pricing engine.'];
-  };
-
   return (
     <TooltipProvider delayDuration={150}>
       <div className="p-6 space-y-6" data-density={density} {...draftGuard.trackProps}>
@@ -3412,36 +3360,19 @@ export const CreateInvoicePage: React.FC = () => {
                                   }}
                                   className={LINE_INPUT_NUMERIC}
                                 />
-                                {/* FR-6.2 + D5: pricing source chip — hover explains exactly
+                                {/* FR-6.2 + D5 / #342: pricing source chip — its popover explains
                                     how the price was reached (list/rule, tier, FX, manual reason). */}
-                                {line.price_mode === 'manual' && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="self-start cursor-help rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                        Manual
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-64 text-xs">
-                                      <ul className="space-y-1">
-                                        {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
-                                      </ul>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {line.price_mode !== 'manual' && line.pricing_source && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="self-start max-w-full cursor-help truncate rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
-                                        {line.pricing_source}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-64 text-xs">
-                                      <ul className="space-y-1">
-                                        {priceExplanation(line).map((note, noteIndex) => <li key={noteIndex}>{note}</li>)}
-                                      </ul>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
+                                <EditorLinePriceChip
+                                  line={line}
+                                  context={{
+                                    currency: currencyCode || null,
+                                    baseCurrency: pricingMeta?.base_currency_code ?? null,
+                                    exchangeRate: pricingMeta?.exchange_rate ?? null,
+                                    rateDate: pricingMeta?.rate_date ?? null,
+                                  }}
+                                  money={money}
+                                  className="self-start"
+                                />
                                 {line.list_price != null && Number(line.list_price) > Number(line.unit_price || 0) && (
                                   <span className="self-start text-[10px] text-muted-foreground line-through">
                                     {money(Number(line.list_price))}

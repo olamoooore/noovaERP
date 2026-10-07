@@ -23,7 +23,7 @@ import {
 } from '@/components/sales/salesDesignTokens'
 import { useToast } from '@/hooks/use-toast'
 import { useDensity } from '@/hooks/useDensity'
-import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing'
+import { keepPricingTrace, useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing'
 import { applyRememberedToBlankFields, useRememberedCustomerDefaults } from '@/hooks/useRememberedCustomerDefaults'
 import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
@@ -143,12 +143,15 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
     setCurrencyCode,
     priceListId,
     setPriceListId,
+    pricingMeta,
     pricingError,
     resolvePricingForLines,
   } = useSalesDocumentPricing<SalesDocumentLine>({
     customerId,
     documentDate: orderDate,
     setLines,
+    // #342 (D5): keep the trace for the per-line price explanation.
+    applyQuote: keepPricingTrace,
   })
 
   useEffect(() => {
@@ -186,6 +189,9 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
         // A saved price is carried verbatim; the engine only re-prices lines
         // the user changes (FR-1.7).
         price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
+        // #342 (D5): the stored trace explains the saved price.
+        pricing_trace: line.pricing_trace ?? null,
+        list_price: line.list_price != null ? Number(line.list_price) : null,
         income_account_id: line.income_account_id ?? null,
         project_id: line.project_id ?? null,
         department_id: line.department_id ?? null,
@@ -698,6 +704,12 @@ export const SalesOrderDocumentForm: React.FC<SalesOrderDocumentFormProps> = ({ 
                 money={money}
                 resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
                 defaultHiddenColumns={[6]}
+                priceContext={{
+                  currency: currencyCode || null,
+                  baseCurrency: pricingMeta?.base_currency_code ?? null,
+                  exchangeRate: pricingMeta?.exchange_rate ?? null,
+                  rateDate: pricingMeta?.rate_date ?? null,
+                }}
               />
             </FieldSlot>
 

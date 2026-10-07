@@ -450,6 +450,10 @@ class PricingService
             'markup_percent' => $rule->markup_percent !== null ? (float) $rule->markup_percent : null,
             'fixed_price' => $rule->fixed_price !== null ? (float) $rule->fixed_price : null,
             'fixed_discount' => $rule->fixed_discount !== null ? (float) $rule->fixed_discount : null,
+            // #342 (D5): the quantity band the matched rule applies to, so the
+            // line can be explained as a "qty ≥ N tier".
+            'min_quantity' => $rule->min_quantity !== null ? (float) $rule->min_quantity : null,
+            'max_quantity' => $rule->max_quantity !== null ? (float) $rule->max_quantity : null,
             'rate_used' => $bridge['rate'],
             'rate_date' => $bridge['rate_date'],
             'rate_source' => $bridge['rate_source'],

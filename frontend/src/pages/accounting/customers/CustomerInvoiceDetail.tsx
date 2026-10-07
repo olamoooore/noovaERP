@@ -36,6 +36,7 @@ import { SalesLineColumnVisibility, SalesLineColumnMenu } from '@/components/sal
 import { RegisterPaymentDialog } from '@/components/payment/RegisterPaymentDialog';
 import { isInvoicePayable, useCanRegisterPayment } from '@/lib/registerPayment';
 import { treatmentLabel } from '@/lib/salesLineTax';
+import { DocumentLinePriceChip } from '@/components/sales/PriceExplanationChip';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -751,7 +752,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                       <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                       <TableCell className="text-right">{normalizeQuantity(line.quantity)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span>{formatCurrency(line.unit_price)}</span>
+                          {/* #342 (D5): how this price was set. */}
+                          <DocumentLinePriceChip line={line} document={invoice} money={(value) => formatCurrency(value)} />
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         {line.tax_rate}%
                         {/* #310: the line's tax treatment / code as booked. */}

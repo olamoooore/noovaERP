@@ -31,6 +31,7 @@ import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 import { PrintSendMenu } from '@/components/documents/PrintSendMenu'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { fetchBulkStockAvailability } from '@/components/sales/stockAvailability'
+import { DocumentLinePriceChip } from '@/components/sales/PriceExplanationChip'
 import { StockShortageDialog, type ShortageLine } from '@/components/sales/StockShortageDialog'
 import { EditingBanner } from '@/components/sales/EditingBanner'
 import { SalesOrderLockControl } from '@/components/sales/SalesOrderLockControl'
@@ -178,6 +179,8 @@ interface SalesOrderLine {
   tax_amount: number
   discount_amount: number
   line_total: number
+  list_price?: number | string | null
+  pricing_trace?: Record<string, any> | null
 }
 
 type OrderAction = 'confirm' | 'allocate' | 'invoice' | 'reset-to-draft' | null
@@ -1369,7 +1372,13 @@ export function SalesOrderDetailPage() {
                     <TableCell className="text-right">{formatQuantity(remainingToDeliver(line))}</TableCell>
                     <TableCell className="text-right">{formatQuantity(remainingToInvoice(line))}</TableCell>
                     <TableCell className="text-right">{money(line.discount_amount)}</TableCell>
-                    <TableCell className="text-right">{money(line.unit_price)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span>{money(line.unit_price)}</span>
+                        {/* #342 (D5): how this price was set. */}
+                        <DocumentLinePriceChip line={line} document={order} money={money} />
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">{money(line.tax_amount)}</TableCell>
                     <TableCell className="text-right font-medium">{money(line.line_total)}</TableCell>
                   </TableRow>

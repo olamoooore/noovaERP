@@ -41,6 +41,7 @@ import type { LineItemsColumn } from '@/components/sales/LineItemsTable'
 import { lineFieldKey } from '@/lib/serverValidation'
 import { FieldSlot } from '@/components/ui/field-errors'
 import { useFieldErrorsContext } from '@/hooks/useFieldErrors'
+import { EditorLinePriceChip, type EditorPriceContext } from '@/components/sales/PriceExplanationChip'
 
 /**
  * Issue #314: one line grid for every sales-document editor.
@@ -112,6 +113,8 @@ export interface SalesDocumentLineGridProps {
   extraActions?: React.ReactNode
   /** #526: credit-note mode; `readOnly` shows the quantities/prices as text (full credit). */
   credit?: { readOnly?: boolean }
+  /** #342 (D5): document FX snapshot for the per-line price explanation. */
+  priceContext?: EditorPriceContext | null
 }
 
 /** #526: credit-mode columns — the invoice line plus what it allows to be credited. */
@@ -148,6 +151,7 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
   tableMinWidth = 'min-w-[1200px]',
   extraActions,
   credit,
+  priceContext,
 }, ref) {
   const isCredit = !!credit
   const creditReadOnly = !!credit?.readOnly
@@ -300,6 +304,9 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
           model_number: product.manufacturer_part_number || '',
           sku: product.sku || '',
           price_mode: 'auto',
+          // #342: the previous product's trace no longer explains this line.
+          pricing_trace: null,
+          list_price: null,
           tax_rate: resolveLineTaxRate(product, defaultTaxRate),
         }
         setLines(updated)
@@ -367,6 +374,8 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
               ? (parseFloat(product.price || product.selling_price || '0') || 0)
               : line.unit_price,
             price_mode: productChanged ? ('auto' as const) : line.price_mode,
+            // #342: the previous product's trace no longer explains this line.
+            ...(productChanged ? { pricing_trace: null, list_price: null } : {}),
             model_number: product.manufacturer_part_number || (productChanged ? '' : line.model_number),
             sku: product.sku || (productChanged ? '' : line.sku),
             tax_rate: productChanged ? resolveLineTaxRate(product, defaultTaxRate) : line.tax_rate,
@@ -605,6 +614,7 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
             onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
             className={LINE_INPUT_NUMERIC_TOKEN}
           />
+          <EditorLinePriceChip line={line} context={priceContext} money={money} className="mt-0.5" />
         </FieldSlot>
         {columnVisible('tax_rate') && (
           <FieldSlot name={lineFieldKey(index, 'tax_rate')}>
@@ -999,6 +1009,8 @@ export const SalesDocumentLineGrid = forwardRef<SalesDocumentLineGridHandle, Sal
                               className={LINE_INPUT_NUMERIC_TOKEN}
                             />
                           </div>
+                          {/* #342 (D5): how this price was set. */}
+                          <EditorLinePriceChip line={line} context={priceContext} money={money} className="mt-0.5" />
                         </FieldSlot>
                       </td>
 

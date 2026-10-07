@@ -14,7 +14,7 @@ import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 import { computeDocumentTotals } from '@/lib/documentTotals'
 import pricingApi from '@/lib/pricingApi'
-import { useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing'
+import { keepPricingTrace, useSalesDocumentPricing } from '@/hooks/useSalesDocumentPricing'
 import { useAuthStore } from '@/store/authStore'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TagPicker } from '@/components/tags/TagPicker'
@@ -268,6 +268,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     customerId,
     documentDate: quotationDate,
     setLines,
+    // #342 (D5): keep the trace for the per-line price explanation.
+    applyQuote: keepPricingTrace,
   })
 
   // #317: unsaved-changes guard + local (this device only) draft autosave.
@@ -466,6 +468,8 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       // A saved price is carried verbatim: the engine may preview a new price
       // for a changed date/list but the server only stores the sent value.
       price_mode: (line.line_type ?? 'product') === 'product' && line.unit_price != null ? 'carried' : undefined,
+      // #342 (D5): the stored trace explains the saved price.
+      pricing_trace: line.pricing_trace ?? null,
       // Issue #409: keep the shipping-line marker through an edit.
       ...(line.is_delivery ? { is_delivery: true } : {}),
     }))
@@ -1549,6 +1553,12 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 resolvePricing={(nextLines) => { void resolvePricingForLines(nextLines) }}
                 defaultHiddenColumns={[6]}
                 tableClass="quotation-document-columns"
+                priceContext={{
+                  currency: currencyCode || null,
+                  baseCurrency: pricingMeta?.base_currency_code ?? null,
+                  exchangeRate: pricingMeta?.exchange_rate ?? null,
+                  rateDate: pricingMeta?.rate_date ?? null,
+                }}
               />
             </FieldSlot>
 
