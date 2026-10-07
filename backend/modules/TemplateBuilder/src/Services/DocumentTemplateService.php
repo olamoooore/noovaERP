@@ -112,6 +112,17 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
     {
         $template = $this->find($id) ?? $this->notFound($id);
 
+        // #627: the tenant's country pack can make statutory fields mandatory
+        // on a tax-document template — publishing without them is blocked.
+        $missing = app(\Modules\TemplateBuilder\Support\StatutoryTemplateValidator::class)->missing($template);
+
+        if ($missing !== []) {
+            throw new \Modules\TemplateBuilder\Exceptions\StatutoryTemplateException(
+                $missing,
+                (string) $template->document_type,
+            );
+        }
+
         return DB::transaction(function () use ($template, $changeNote) {
             $next = ($template->versions()->max('version') ?? 0) + 1;
 
