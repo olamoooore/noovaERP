@@ -173,11 +173,18 @@ export function ProductCatalogPickerDialog({
             <div className="py-10 text-center text-sm text-muted-foreground">No products found.</div>
           ) : (
             items.map((product) => (
-              <button
+              <div
                 key={product.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => select(product)}
-                className={cn('flex w-full items-center justify-between gap-3 rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-muted/50')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    select(product)
+                  }
+                }}
+                className={cn('flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-transparent px-3 py-2 text-left transition-colors hover:border-border hover:bg-muted/50 focus:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30')}
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
@@ -199,9 +206,9 @@ export function ProductCatalogPickerDialog({
                   {product.selling_price != null && (
                     <span className="text-sm tabular-nums">{formatCurrency(Number(product.selling_price) || 0)}</span>
                   )}
-                  <Button type="button" size="sm" variant="outline">Select</Button>
+                  <Button type="button" size="sm" variant="outline" tabIndex={-1}>Select</Button>
                 </span>
-              </button>
+              </div>
             ))
           )}
         </div>
