@@ -55,25 +55,13 @@ class ChatterSubjectAuthorization
             return null;
         }
 
+        // Issue #633: registry aliases are derived from config/chatter.php, so
+        // every alias resolves to the exact configured class. The former
+        // basename fallback (which papered over stale aliases, #157) is gone;
+        // an unmapped class fails closed.
         $permissions = (array) config('chatter.subject_permissions', []);
 
-        if (isset($permissions[$class])) {
-            return $permissions[$class];
-        }
-
-        // Defensive fallback: some registry aliases still point at legacy
-        // namespace paths (e.g. Modules\Accounting\Models\Invoice vs
-        // App\Models\Invoice — tracked in #157). Match the configured class
-        // with the same basename so a correctly-mapped subject is not
-        // fail-closed merely because the alias is stale.
-        $basename = class_basename($class);
-        foreach ($permissions as $configuredClass => $permission) {
-            if (class_basename((string) $configuredClass) === $basename) {
-                return $permission;
-            }
-        }
-
-        return null;
+        return $permissions[$class] ?? null;
     }
 
     public function allows(Request $request, string $subject): bool

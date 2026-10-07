@@ -59,6 +59,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Communication API aliases (issue #633)
+    |--------------------------------------------------------------------------
+    |
+    | App\Services\ChatterModelRegistry derives its alias whitelist from
+    | `allowed_models` above (one subject list). Each model is exposed under
+    | the snake_case of its class basename (Invoice → `invoice`); list a model
+    | here only to expose it under a different alias. Keys must also be in
+    | `allowed_models`.
+    |
+    */
+    'subject_aliases' => [
+        // Pre-existing /api/communication alias for sales orders.
+        \Modules\Sales\Models\SalesOrder::class => 'order',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Subject record-level access map (issue #74)
     |--------------------------------------------------------------------------
     |
