@@ -316,6 +316,12 @@ export const baseNavItems: NavItem[] = [
         requiredPermission: 'reports.view',
       },
       {
+        title: 'Sales Records',
+        href: '/reports/sales-records',
+        icon: 'solar:document-text-bold-duotone',
+        requiredPermission: 'reports.view',
+      },
+      {
         title: 'Settings',
         href: '/sales/settings',
         icon: 'solar:settings-bold-duotone',

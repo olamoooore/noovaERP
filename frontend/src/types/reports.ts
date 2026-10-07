@@ -390,6 +390,66 @@ export interface InventoryTurnoverData {
   average_days: number;
 }
 
+// #1020: the client's Sales Records sheet — one row per invoice with Qty/S$
+// column pairs for the chosen grouping and monthly totals.
+export type SalesRecordsGroupBy = 'item_code' | 'brand' | 'supplier' | 'customer' | 'category';
+
+export interface SalesRecordsColumn {
+  key: string;
+  label: string;
+  code?: string | null;
+  short_description?: string | null;
+}
+
+export interface SalesRecordsValue {
+  quantity: number;
+  value: number;
+}
+
+export interface SalesRecordsRow {
+  invoice_id: number;
+  customer_name: string;
+  date: string;
+  month: string;
+  document_number: string;
+  lot_number: string;
+  bonus_scheme: string | null;
+  due_date: string | null;
+  status: string;
+  values: Record<string, SalesRecordsValue>;
+  total: number;
+}
+
+export interface SalesRecordsMonthTotal {
+  month: string;
+  label: string;
+  values: Record<string, SalesRecordsValue>;
+  total: number;
+}
+
+export interface SalesRecordsData {
+  title: string;
+  period: { start_date: string; end_date: string };
+  group_by: SalesRecordsGroupBy;
+  columns: SalesRecordsColumn[];
+  rows: SalesRecordsRow[];
+  month_totals: SalesRecordsMonthTotal[];
+  summary: { total_quantity: number; total_value: number; invoice_count: number };
+  generated_at: string;
+}
+
+export interface SalesRecordsFilters {
+  start_date?: string;
+  end_date?: string;
+  group_by?: SalesRecordsGroupBy;
+  brand_id?: number;
+  supplier_id?: number;
+  customer_id?: number;
+  category_id?: number;
+  product_id?: number;
+  item_code?: string;
+}
+
 // Analytics Types
 export interface SalesByProductData {
   products: Array<{

@@ -11,6 +11,8 @@ import type {
   ReorderData,
   InventoryAgingData,
   InventoryTurnoverData,
+  SalesRecordsData,
+  SalesRecordsFilters,
   SalesByProductData,
   SalesByCustomerData,
   SalesTrendsData,
@@ -594,6 +596,23 @@ class ReportApiClient {
       return response.data.data;
     } catch (error) {
       this.handleError(error, 'Failed to fetch Sales by Product');
+      throw error;
+    }
+  }
+
+  /**
+   * #1020: Sales Records — the client's sheet layout (invoice rows with
+   * Qty/S$ column pairs for item code/brand/supplier/customer/category).
+   */
+  async getSalesRecords(filters: SalesRecordsFilters): Promise<SalesRecordsData> {
+    try {
+      const response = await api.get<ApiResponse<SalesRecordsData>>(
+        '/reports/sales-records',
+        { params: filters }
+      );
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Failed to fetch Sales Records');
       throw error;
     }
   }
