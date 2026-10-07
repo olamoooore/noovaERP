@@ -195,8 +195,9 @@ class TaxEnginePhase4LocksAndLegacyTest extends TenantTestCase
         $this->assertSame(0, DB::table('settings')->where('key', 'like', 'sales.tax.%')->count(),
             'The orphan sales.tax.* namespace must no longer receive writes.');
 
-        // Re-pointing with a rate that matches no rule must NOT invent one.
-        $this->actingAs($this->user)->putJson('/api/v1/settings/sales', ['tax' => ['default_tax_rate' => 42]])->assertOk();
+        // Re-pointing with a rate that matches no rule must NOT invent one —
+        // and, per #543, is refused (422) instead of silently succeeding.
+        $this->actingAs($this->user)->putJson('/api/v1/settings/sales', ['tax' => ['default_tax_rate' => 42]])->assertStatus(422);
         $this->assertSame($rule->id, (int) Setting::getValue('tax', [])['default_tax_id']);
     }
 }

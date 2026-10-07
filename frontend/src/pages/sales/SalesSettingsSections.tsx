@@ -28,6 +28,13 @@ export interface ReviewerConfig {
   reviewer_roles?: string[]
 }
 
+export interface SalesTaxOption {
+  id: number
+  name: string
+  code: string | null
+  rate: number
+}
+
 export interface SalesSettings {
   // Issue #333: tenant cash rounding (Odoo-style). Default OFF.
   cash_rounding: {
@@ -66,7 +73,12 @@ export interface SalesSettings {
     payment_link_expiry_days: number
   }
   tax: {
+    // Read-only: the rate of the chosen default rule (#543).
     default_tax_rate: number
+    // Issue #543: the default is a tax rule picked from the active sales
+    // rules (never a free-typed %); the server rejects an unknown rule (422).
+    default_tax_id?: number | null
+    available_taxes?: SalesTaxOption[]
     prices_include_tax: boolean
     default_tax_treatment: string
   }
@@ -148,6 +160,8 @@ export const emptySalesSettings: SalesSettings = {
   },
   tax: {
     default_tax_rate: 0,
+    default_tax_id: null,
+    available_taxes: [],
     prices_include_tax: false,
     default_tax_treatment: 'standard',
   },
@@ -1455,14 +1469,23 @@ const TAX_TREATMENTS = [
   { value: 'out_of_scope', label: 'Out of scope' },
 ]
 
+const NO_DEFAULT_TAX = 'none'
+
+type TaxSettingsPatch = Partial<Pick<SalesSettings['tax'], 'default_tax_id' | 'prices_include_tax' | 'default_tax_treatment'>>
+
 export function TaxPricingSettings() {
   const { data, isLoading } = useSalesSettings()
-  const [local, setLocal] = useState<Partial<SalesSettings['tax']>>({})
+  const [local, setLocal] = useState<TaxSettingsPatch>({})
   const mutation = useSalesSettingsMutation('tax', 'Tax settings saved', () => setLocal({}))
 
   if (isLoading || !data) return <SettingsLoadingCard />
 
   const tax = { ...data.tax, ...local }
+  const taxOptions = data.tax.available_taxes ?? []
+  const selectedTaxId = tax.default_tax_id ?? null
+  // A stored default that is no longer an active sales rule is still shown,
+  // so the user can see it and replace it.
+  const selectedMissing = selectedTaxId !== null && !taxOptions.some((t) => t.id === selectedTaxId)
 
   return (
     <Card className="overflow-hidden">
@@ -1473,23 +1496,33 @@ export function TaxPricingSettings() {
       />
       <CardContent className="divide-y py-0">
         <SettingsRow
-          title="Default tax rate"
-          description="Pre-fills the tax rate field on new invoice lines. Set to 0 to start tax-free."
+          title="Default tax"
+          description="The tax rule applied to new sales lines when the product has none. Choose “No default tax” to start tax-free."
         >
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step={0.01}
-              value={tax.default_tax_rate}
-              onChange={(e) =>
-                setLocal({ ...local, default_tax_rate: parseFloat(e.target.value) || 0 })
-              }
-              className="w-24 text-center"
-            />
-            <span className="text-sm text-muted-foreground">%</span>
-          </div>
+          <Select
+            value={selectedTaxId === null ? NO_DEFAULT_TAX : String(selectedTaxId)}
+            onValueChange={(v) =>
+              setLocal({ ...local, default_tax_id: v === NO_DEFAULT_TAX ? null : Number(v) })
+            }
+          >
+            <SelectTrigger className="w-64" aria-label="Default tax">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_DEFAULT_TAX}>No default tax</SelectItem>
+              {selectedMissing && (
+                <SelectItem value={String(selectedTaxId)} disabled>
+                  Current rule ({data.tax.default_tax_rate}%) — not an active sales tax
+                </SelectItem>
+              )}
+              {taxOptions.map((t) => (
+                <SelectItem key={t.id} value={String(t.id)}>
+                  {t.name}
+                  {t.code ? ` (${t.code})` : ''} — {t.rate}%
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingsRow>
 
         <SettingsRow

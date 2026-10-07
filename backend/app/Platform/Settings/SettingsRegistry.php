@@ -192,7 +192,8 @@ class SettingsRegistry implements SettingsRegistryContract
 
             // MRD R10.3: the three tax fields are merged into the ONE
             // canonical `tax` block the tax engine reads.
-            'tax.default_tax_rate' => ['key' => 'tax', 'path' => 'default_tax_id', 'type' => 'decimal', 'default' => null, 'readers' => [TaxEngineService::class.'::resolveRaw'], 'note' => 'Saved as the matching active tax rule (default_tax_id), never as a rate.'],
+            'tax.default_tax_rate' => ['key' => 'tax', 'path' => 'default_tax_id', 'type' => 'decimal', 'default' => null, 'readers' => [TaxEngineService::class.'::resolveRaw'], 'note' => 'Legacy input: saved as the matching active sales tax rule (default_tax_id), never as a rate; a rate no active rule has is rejected (422, #543).'],
+            'tax.default_tax_id' => ['key' => 'tax', 'path' => 'default_tax_id', 'type' => 'int', 'default' => null, 'readers' => [TaxEngineService::class.'::resolveRaw'], 'note' => 'Picked from the active sales tax rules (#543); an unknown, inactive or purchase-only rule is rejected (422).'],
             'tax.prices_include_tax' => ['key' => 'tax', 'path' => 'pricing_mode', 'type' => 'bool', 'default' => false, 'readers' => [SettingsController::class.'::show'], 'note' => 'Only consumed by the product create screen (initial "tax included" value) through GET /settings; the tax engine does not read it.'],
             'tax.default_tax_treatment' => ['key' => 'tax', 'path' => 'default_tax_treatment', 'type' => 'enum', 'default' => null, 'readers' => [TaxEngineService::class.'::defaultTreatment']],
 
