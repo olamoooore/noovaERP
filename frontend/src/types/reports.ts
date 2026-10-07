@@ -332,6 +332,8 @@ export interface StockMovementData {
   pagination?: {
     current_page: number;
     total_pages: number;
+    /** What the movement endpoint actually returns (Laravel paginator). */
+    last_page?: number;
     per_page: number;
     total: number;
   };
