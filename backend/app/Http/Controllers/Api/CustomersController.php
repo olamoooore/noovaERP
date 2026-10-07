@@ -225,11 +225,15 @@ class CustomersController extends Controller
                 request()->input('legal_entity_id')
             );
 
+            // #1037: a commit with rejected rows must not read as a clean import.
             return response()->json([
                 'imported' => $result['imported'],
                 'rejected' => $result['rejected'],
+                'rejections' => $result['rejections'],
                 'batch_id' => $result['batch_id'],
-                'message' => 'Import committed.',
+                'message' => $result['rejected'] > 0
+                    ? "Import committed: {$result['imported']} imported, {$result['rejected']} rejected."
+                    : 'Import committed.',
             ]);
         } catch (\DomainException $e) {
             $code = $e->getMessage();

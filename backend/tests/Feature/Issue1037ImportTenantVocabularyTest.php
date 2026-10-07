@@ -80,6 +80,9 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
             ->assertOk();
         $this->assertSame(1, $commit->json('imported'));
         $this->assertSame(1, $commit->json('rejected'));
+        // Row numbers count the header row, like the spreadsheet the user has open.
+        $this->assertSame(2, $commit->json('rejections.0.row_number'));
+        $this->assertStringContainsString('contact_category: Clinical', (string) $commit->json('rejections.0.reason'));
 
         $this->assertDatabaseHas('customers', ['code' => 'VC0002', 'name' => 'Bayu Trading']);
         $this->assertDatabaseMissing('customers', ['code' => 'VC0001']);
@@ -116,6 +119,13 @@ class Issue1037ImportTenantVocabularyTest extends TenantTestCase
             ->assertOk();
         $this->assertSame(1, $commit->json('imported'));
         $this->assertSame(1, $commit->json('rejected'));
+
+        // The response says WHY, per row, and does not read as a clean import.
+        $this->assertSame('Import committed: 1 imported, 1 rejected.', $commit->json('message'));
+        $this->assertSame([[
+            'row_number' => (int) $first->row_number,
+            'reason' => 'Rejected at COMMIT: UNKNOWN_TAXONOMY_VALUE (contact_category: Finance, contact_type: Primary)',
+        ]], $commit->json('rejections'));
 
         $row = DB::table('contact_import_staging')->where('id', $first->id)->first();
         $this->assertSame('error', $row->status);

@@ -59,7 +59,7 @@ class CustomerImportService
         private readonly ContactTaxonomyService $taxonomy,
     ) {}
 
-    /** @var array<string, bool> tenant-vocabulary validity per "type|code" (#1037) */
+    /** @var array<string, bool> tenant-vocabulary validity per "tenant|type|code" (#1037) */
     private array $validTaxonomyCodes = [];
 
     /**
@@ -264,8 +264,10 @@ class CustomerImportService
 
         $imported = 0;
         $rejected = 0;
+        // #1037: why each row was not imported, returned to the caller.
+        $rejections = [];
 
-        DB::transaction(function () use ($rows, $tenantId, $legalEntityId, &$imported, &$rejected, &$batch) {
+        DB::transaction(function () use ($rows, $tenantId, $legalEntityId, &$imported, &$rejected, &$rejections, &$batch) {
             foreach ($rows as $staging) {
                 if (in_array($staging->status, [self::STATUS_IMPORTED], true)) {
                     continue;
@@ -274,6 +276,10 @@ class CustomerImportService
                 // are rejected or held for review at COMMIT time.
                 if (! in_array($staging->status, [self::STATUS_VALID, self::STATUS_DUPLICATE], true)) {
                     $rejected++;
+                    $rejections[] = [
+                        'row_number' => (int) $staging->row_number,
+                        'reason' => "Not commit-ready at staging ({$staging->status})".($staging->errors ? ': '.$staging->errors : ''),
+                    ];
 
                     continue;
                 }
@@ -283,8 +289,10 @@ class CustomerImportService
 
                 // Reject at COMMIT if any controlled value remained unresolved.
                 if (! empty($taxonomy['unknown'])) {
-                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => 'Unknown controlled value at COMMIT']);
+                    $reason = 'Unknown controlled value at COMMIT: '.implode('; ', (array) $taxonomy['unknown']);
+                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => $reason]);
                     $rejected++;
+                    $rejections[] = ['row_number' => (int) $staging->row_number, 'reason' => $reason];
 
                     continue;
                 }
@@ -298,8 +306,14 @@ class CustomerImportService
                 try {
                     DB::transaction(fn () => $this->writeAuthoritative($mapped, $taxonomy, $tenantId, $legalEntityId));
                 } catch (\DomainException|\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => 'Rejected at COMMIT: '.$e->getMessage()]);
+                    $reason = 'Rejected at COMMIT: '.$e->getMessage();
+                    if ($e->getMessage() === 'UNKNOWN_TAXONOMY_VALUE') {
+                        // The exception names no value; give the row's own values.
+                        $reason .= ' (contact_category: '.($mapped['contact_category'] ?? '—').', contact_type: '.($mapped['contact_type'] ?? '—').')';
+                    }
+                    $staging->update(['status' => self::STATUS_ERROR, 'errors' => $reason]);
                     $rejected++;
+                    $rejections[] = ['row_number' => (int) $staging->row_number, 'reason' => $reason];
 
                     continue;
                 }
@@ -323,7 +337,7 @@ class CustomerImportService
             ]
         );
 
-        return ['imported' => $imported, 'rejected' => $rejected, 'batch_id' => $batch->id];
+        return ['imported' => $imported, 'rejected' => $rejected, 'rejections' => $rejections, 'batch_id' => $batch->id];
     }
 
     /**
@@ -588,7 +602,9 @@ class CustomerImportService
      */
     private function isValidTaxonomyCode(string $type, string $code): bool
     {
-        $key = $type.'|'.$code;
+        // Keyed by tenant too, so the cache stays correct even if the service
+        // ever outlives one tenant's request (a singleton, Octane).
+        $key = (function_exists('tenant') && tenant() ? (string) tenant()->id : '').'|'.$type.'|'.$code;
         if (! array_key_exists($key, $this->validTaxonomyCodes)) {
             try {
                 $this->taxonomy->assertValidCode($type, $code);
