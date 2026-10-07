@@ -221,7 +221,7 @@ class SalesOrderController extends Controller
 
         try {
             // Issue #685: sales-UoM prices are converted to stock-unit prices.
-            $validated['lines'] = $this->convertSalesUomPrices($validated['lines']);
+            $validated['lines'] = $this->applyDefaultInvoicingPolicy($this->convertSalesUomPrices($validated['lines']));
 
             // Issue #381: stock-tracked lines need a warehouse to reserve and
             // allocate against; default to the tenant's default warehouse.
@@ -238,6 +238,26 @@ class SalesOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to create sales order', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Issue #545: a line entered on the sales order form without its own
+     * invoicing policy takes the tenant default (Sales Settings → Sales
+     * Orders). Applied on the sales-order API only: orders the service builds
+     * directly (quotation release, recurring, POS/web sync) keep the policy
+     * their source carries.
+     */
+    private function applyDefaultInvoicingPolicy(array $lines): array
+    {
+        $default = app(\App\Services\SalesSettings::class)->defaultInvoicingPolicy();
+
+        return array_map(static function (array $line) use ($default): array {
+            if (empty($line['invoicing_policy'])) {
+                $line['invoicing_policy'] = $default;
+            }
+
+            return $line;
+        }, $lines);
     }
 
     /**
@@ -407,7 +427,7 @@ class SalesOrderController extends Controller
         }
 
         $lines = isset($validated['lines']) && is_array($validated['lines'])
-            ? $this->convertSalesUomPrices($validated['lines'])
+            ? $this->applyDefaultInvoicingPolicy($this->convertSalesUomPrices($validated['lines']))
             : null;
         unset($validated['lines']);
 

@@ -51,6 +51,25 @@ class SalesSettings
 
     public const DOCUMENT_TYPE_ON_SEND = 'sales.delivery.document_type_on_send';
 
+    // Issue #545 (SET-UX1): Quotation and Sales Order sections.
+    public const QUOTATION_DEFAULT_VALIDITY_DAYS = 'sales.quotation.default_validity_days';
+
+    public const QUOTATION_DEFAULT_TERMS = 'sales.quotation.default_terms';
+
+    /** Same key SalesOrderService has read since #407. */
+    public const AUTO_LOCK_ON_CONFIRM = 'sales.orders.auto_lock_on_confirm';
+
+    public const DEFAULT_INVOICING_POLICY = 'sales.sales_order.default_invoicing_policy';
+
+    public const INVOICING_POLICIES = ['ordered_qty', 'delivered_qty'];
+
+    /**
+     * The quotation form has always pre-filled "valid until" 30 days out
+     * (DEFAULT_QUOTE_VALIDITY_DAYS in the frontend), so that stays the
+     * default; 0 means new quotations start without an expiry date.
+     */
+    public const DEFAULT_QUOTATION_VALIDITY_DAYS = 30;
+
     public const DEFAULT_APPROVAL_EXPIRY_DAYS = 7;
 
     public const DEFAULT_PAYMENT_TERMS = 30;
@@ -175,6 +194,45 @@ class SalesSettings
     public function defaultTerms(): ?string
     {
         return $this->text(self::DEFAULT_TERMS, self::DEFAULT_TERMS_TEXT);
+    }
+
+    /**
+     * Issue #545: days from the quotation date to the pre-filled "valid
+     * until" on a new quotation; 0 = no default expiry date.
+     */
+    public function quotationDefaultValidityDays(): int
+    {
+        $raw = Setting::getValue(self::QUOTATION_DEFAULT_VALIDITY_DAYS);
+
+        if (! is_numeric($raw) || (int) $raw < 0 || (int) $raw > 365) {
+            return self::DEFAULT_QUOTATION_VALIDITY_DAYS;
+        }
+
+        return (int) $raw;
+    }
+
+    /** Issue #545: default quotation terms; null when the tenant has none. */
+    public function quotationDefaultTerms(): ?string
+    {
+        return $this->text(self::QUOTATION_DEFAULT_TERMS, null);
+    }
+
+    /** Issue #545 / #407: lock a sales order as part of confirming it. */
+    public function autoLockOnConfirm(): bool
+    {
+        return $this->bool(self::AUTO_LOCK_ON_CONFIRM, false);
+    }
+
+    /**
+     * Issue #545: invoicing policy for a new sales order line that does not
+     * name one (ordered_qty bills what was ordered, delivered_qty bills what
+     * was delivered).
+     */
+    public function defaultInvoicingPolicy(): string
+    {
+        $value = Setting::getValue(self::DEFAULT_INVOICING_POLICY);
+
+        return is_string($value) && in_array($value, self::INVOICING_POLICIES, true) ? $value : 'ordered_qty';
     }
 
     public function acceptanceEnabled(): bool

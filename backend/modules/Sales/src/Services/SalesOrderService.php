@@ -521,7 +521,10 @@ class SalesOrderService
      */
     public static function autoLockOnConfirmEnabled(): bool
     {
-        return (bool) \App\Models\Setting::getValue(self::AUTO_LOCK_ON_CONFIRM_SETTING, false);
+        // Issue #545: read through the Sales Settings accessor, which owns
+        // the key's default and coercion (the toggle lives in the Sales
+        // Orders settings section).
+        return app(\App\Services\SalesSettings::class)->autoLockOnConfirm();
     }
 
     /**

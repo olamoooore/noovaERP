@@ -78,8 +78,16 @@ export interface SalesSettings {
   } & ReviewerConfig
   // Issue #645: per-request-type reviewer lists. Each falls back to the
   // invoice reviewers when left empty.
-  quotation: ReviewerConfig
-  sales_order: ReviewerConfig
+  // Issue #545: the Quotations / Sales Orders sections share these groups
+  // with the reviewer lists (each section PUTs only its own fields).
+  quotation: ReviewerConfig & {
+    default_validity_days?: number
+    default_terms?: string
+  }
+  sales_order: ReviewerConfig & {
+    auto_lock_on_confirm?: boolean
+    default_invoicing_policy?: 'ordered_qty' | 'delivered_qty'
+  }
   invoice_threshold: ReviewerConfig
   // Issue #553: creation defaults for new sales documents.
   defaults: {
@@ -138,10 +146,14 @@ export const emptySalesSettings: SalesSettings = {
   quotation: {
     reviewer_user_ids: [],
     reviewer_roles: [],
+    default_validity_days: 30,
+    default_terms: '',
   },
   sales_order: {
     reviewer_user_ids: [],
     reviewer_roles: [],
+    auto_lock_on_confirm: false,
+    default_invoicing_policy: 'ordered_qty',
   },
   invoice_threshold: {
     reviewer_user_ids: [],
@@ -1676,6 +1688,291 @@ export function DeliverySettings() {
         onSave={() => mutation.mutate(local)}
         onCancel={() => setLocal({})}
         label="Save delivery settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Quotations (Issue #545) ────────────────────────────────────────────────
+
+type QuotationSectionFields = Pick<SalesSettings['quotation'], 'default_validity_days' | 'default_terms'>
+
+export function QuotationSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [local, setLocal] = useState<QuotationSectionFields>({})
+  const mutation = useSalesSettingsMutation('quotation', 'Quotation settings saved', () => setLocal({}))
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const quotation = { ...data.quotation, ...local }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:document-text-bold-duotone"
+        title="Quotations"
+        description="What a new quotation starts with."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Default validity"
+          description="Valid Until on a new quotation is the quote date plus this many days. 0 leaves Valid Until empty (no expiry)."
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              max={365}
+              aria-label="Default validity days"
+              value={quotation.default_validity_days ?? 30}
+              onChange={(e) => setLocal({ ...local, default_validity_days: parseInt(e.target.value, 10) || 0 })}
+              className="w-20 text-center"
+            />
+            <span className="text-sm text-muted-foreground">days</span>
+          </div>
+        </SettingsRow>
+
+        <div className="space-y-2 py-4">
+          <Label htmlFor="quotation-default-terms" className="text-sm font-medium">
+            Default quotation terms
+          </Label>
+          <textarea
+            id="quotation-default-terms"
+            className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            placeholder="e.g. Prices valid for stock on hand."
+            value={quotation.default_terms ?? ''}
+            onChange={(e) => setLocal({ ...local, default_terms: e.target.value })}
+            maxLength={1000}
+          />
+          <p className="text-xs text-muted-foreground">
+            Filled in on a new quotation when its terms are left blank.
+          </p>
+        </div>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save quotation settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Sales Orders (Issue #545) ──────────────────────────────────────────────
+
+type SalesOrderSectionFields = Pick<SalesSettings['sales_order'], 'auto_lock_on_confirm' | 'default_invoicing_policy'>
+
+export function SalesOrderSettings() {
+  const { data, isLoading } = useSalesSettings()
+  const [local, setLocal] = useState<SalesOrderSectionFields>({})
+  const mutation = useSalesSettingsMutation('sales_order', 'Sales order settings saved', () => setLocal({}))
+
+  if (isLoading || !data) return <SettingsLoadingCard />
+
+  const order = { ...data.sales_order, ...local }
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:cart-large-2-bold-duotone"
+        title="Sales Orders"
+        description="Invoicing and locking rules for sales orders."
+      />
+      <CardContent className="divide-y py-0">
+        <SettingsRow
+          title="Default invoicing policy"
+          description="For lines entered on a sales order without their own policy. Ordered bills the ordered quantity; Delivered bills only what has been delivered."
+        >
+          <Select
+            value={order.default_invoicing_policy ?? 'ordered_qty'}
+            onValueChange={(v) =>
+              setLocal({ ...local, default_invoicing_policy: v as SalesOrderSectionFields['default_invoicing_policy'] })
+            }
+          >
+            <SelectTrigger className="w-56" aria-label="Default invoicing policy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ordered_qty">Ordered quantities</SelectItem>
+              <SelectItem value="delivered_qty">Delivered quantities</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Lock confirmed orders"
+          description="Lock a sales order as soon as it is confirmed. A locked order must be unlocked before its lines can be amended."
+        >
+          <Switch
+            aria-label="Lock confirmed orders"
+            checked={Boolean(order.auto_lock_on_confirm)}
+            onCheckedChange={(v) => setLocal({ ...local, auto_lock_on_confirm: v })}
+          />
+        </SettingsRow>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save sales order settings"
+      />
+    </Card>
+  )
+}
+
+// ─── Payment Methods (Issue #545, #486 master) ──────────────────────────────
+
+export interface PaymentMethodMasterRow {
+  id: number
+  code: string
+  label: string
+  is_active: boolean
+  requires_reference: boolean
+  default_bank_account_id: number | null
+  country_code?: string | null
+}
+
+type PaymentMethodPatch = Partial<Pick<PaymentMethodMasterRow, 'label' | 'is_active' | 'requires_reference' | 'default_bank_account_id'>>
+
+const NO_DEPOSIT_ACCOUNT = '__none__'
+
+export function PaymentMethodSettings() {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [local, setLocal] = useState<Record<number, PaymentMethodPatch>>({})
+
+  const { data: methods, isLoading } = useQuery({
+    queryKey: ['payment-methods', 'all'],
+    queryFn: async () => {
+      const res = await api.get('/accounting/payment-methods', { params: { include_inactive: 1 } })
+      return (res.data?.data ?? []) as PaymentMethodMasterRow[]
+    },
+  })
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['bank-accounts', 'active'],
+    queryFn: async () => {
+      const res = await api.get('/accounting/bank-accounts', { params: { is_active: 1 } })
+      return (res.data?.data ?? []) as Array<{ id: number; account_name: string; bank_name?: string | null }>
+    },
+  })
+
+  const mutation = useMutation({
+    mutationFn: async (patches: Record<number, PaymentMethodPatch>) => {
+      // One PUT per edited method, in order, so a refusal (e.g. switching off
+      // the last active method) names the method it applies to.
+      for (const [id, patch] of Object.entries(patches)) {
+        await api.put(`/accounting/payment-methods/${id}`, patch)
+      }
+    },
+    onSuccess: () => {
+      setLocal({})
+      toast({ title: 'Payment methods saved' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Save failed',
+        description:
+          error.response?.data?.errors?.is_active?.[0] || error.response?.data?.message || 'Please try again.',
+      })
+    },
+    // Some rows may have saved before a refusal — always refresh.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-methods'] })
+    },
+  })
+
+  if (isLoading || !methods) return <SettingsLoadingCard />
+
+  const patch = (id: number, change: PaymentMethodPatch) =>
+    setLocal((current) => ({ ...current, [id]: { ...current[id], ...change } }))
+
+  return (
+    <Card className="overflow-hidden">
+      <SettingsSectionHeader
+        icon="solar:wallet-money-bold-duotone"
+        title="Payment Methods"
+        description="Which methods staff can record, whether a reference is required, and the bank account each deposits to."
+      />
+      <CardContent className="py-0">
+        {methods.length === 0 ? (
+          <p className="py-6 text-sm text-muted-foreground">No payment methods are set up for this tenant.</p>
+        ) : (
+          <div className="divide-y">
+            {methods.map((method) => {
+              const row = { ...method, ...local[method.id] }
+              return (
+                <div
+                  key={method.id}
+                  data-testid={`payment-method-${method.code}`}
+                  className="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto_auto_minmax(0,14rem)] md:items-center"
+                >
+                  <div className="space-y-1">
+                    <Input
+                      aria-label={`${method.code} label`}
+                      value={row.label}
+                      maxLength={100}
+                      onChange={(e) => patch(method.id, { label: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Code <span className="font-mono">{method.code}</span>
+                      {method.country_code ? ` · ${method.country_code}` : ''}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Switch
+                      aria-label={`${method.code} active`}
+                      checked={row.is_active}
+                      onCheckedChange={(v) => patch(method.id, { is_active: v })}
+                    />
+                    Active
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Switch
+                      aria-label={`${method.code} requires reference`}
+                      checked={row.requires_reference}
+                      onCheckedChange={(v) => patch(method.id, { requires_reference: v })}
+                    />
+                    Reference required
+                  </label>
+                  <Select
+                    value={row.default_bank_account_id ? String(row.default_bank_account_id) : NO_DEPOSIT_ACCOUNT}
+                    onValueChange={(v) =>
+                      patch(method.id, { default_bank_account_id: v === NO_DEPOSIT_ACCOUNT ? null : Number(v) })
+                    }
+                  >
+                    <SelectTrigger aria-label={`${method.code} deposit to`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_DEPOSIT_ACCOUNT}>Deposit to: account mapping</SelectItem>
+                      {bankAccounts.map((account) => (
+                        <SelectItem key={account.id} value={String(account.id)}>
+                          {account.account_name}
+                          {account.bank_name ? ` — ${account.bank_name}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <p className="pb-4 text-xs text-muted-foreground">
+          A payment that names its own bank account deposits there; otherwise it uses the method&apos;s deposit-to
+          account, then the method&apos;s account mapping.
+        </p>
+      </CardContent>
+      <SettingsSaveBar
+        hasChanges={Object.keys(local).length > 0}
+        isPending={mutation.isPending}
+        onSave={() => mutation.mutate(local)}
+        onCancel={() => setLocal({})}
+        label="Save payment methods"
       />
     </Card>
   )

@@ -1024,6 +1024,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         // Payment Methods (#486 method master)
         Route::get('/payment-methods', [PaymentMethodsController::class, 'index']);
+        // #545 (SET-UX1): edited from Sales Settings → Payments; same
+        // settings.write gate as PUT /settings/sales.
+        Route::put('/payment-methods/{id}', [PaymentMethodsController::class, 'update'])
+            ->whereNumber('id')
+            ->middleware(RequirePermission::using('settings.write'));
 
         // Bank Accounts
         Route::get('/bank-accounts', [BankAccountsController::class, 'index']);

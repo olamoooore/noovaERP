@@ -40,6 +40,18 @@ export const SALES_SETTINGS_INDEX: SalesSettingSearchEntry[] = [
   ).map(([title, keywords]) => ({ section: 'approvals', sectionTitle: 'Approval Workflow', title, keywords })),
   ...(
     [
+      ['Default validity', 'quotation quote valid until expiry days'],
+      ['Default quotation terms', 'quotation quote conditions'],
+    ] as const
+  ).map(([title, keywords]) => ({ section: 'quotations', sectionTitle: 'Quotations', title, keywords })),
+  ...(
+    [
+      ['Default invoicing policy', 'sales order ordered delivered quantity bill'],
+      ['Lock confirmed orders', 'sales order lock amend confirm'],
+    ] as const
+  ).map(([title, keywords]) => ({ section: 'sales-orders', sectionTitle: 'Sales Orders', title, keywords })),
+  ...(
+    [
       ['Industry field profile', 'medical trading services general fields'],
       ['Allow custom invoice numbers', 'override number'],
       ['Default payment terms', 'due date days credit'],
@@ -56,6 +68,11 @@ export const SALES_SETTINGS_INDEX: SalesSettingSearchEntry[] = [
       ['Default sales team per user', 'team'],
     ] as const
   ).map(([title, keywords]) => ({ section: 'sales-defaults', sectionTitle: 'Sales Defaults', title, keywords })),
+  ...(
+    [
+      ['Payment methods', 'payment method cash card cheque bank transfer duitnow paynow fpx reference deposit to bank account active'],
+    ] as const
+  ).map(([title, keywords]) => ({ section: 'payment-methods', sectionTitle: 'Payment Methods', title, keywords })),
   ...(
     [
       ['Customer acceptance portal', 'accept link'],

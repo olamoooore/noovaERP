@@ -349,6 +349,13 @@ class QuotationController extends Controller
         // Issue #321: a master payment term also sets the printed credit terms.
         $validated = $this->applyPaymentTerm($validated);
 
+        // Issue #545: blank terms take the tenant's default quotation terms
+        // (Sales Settings → Quotations), as invoices do with theirs.
+        if (blank($validated['terms'] ?? null)
+            && ($defaultTerms = app(\App\Services\SalesSettings::class)->quotationDefaultTerms()) !== null) {
+            $validated['terms'] = $defaultTerms;
+        }
+
         // A supplied price without an explicit intent is legacy behaviour
         // (kept verbatim); the wired UI always sends price_mode.
         $linePriceMode = static function (array $lineData): string {

@@ -37,7 +37,6 @@
         "reporting.balance_sheet.hidden_account_codes",
         "sales.delivery.bill_before_delivery",
         "sales.delivery.short_close_policy",
-        "sales.orders.auto_lock_on_confirm",
         "store_address",
         "store_name",
         "store_phone",

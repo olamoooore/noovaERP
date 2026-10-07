@@ -832,6 +832,12 @@ class CompanySettingsController extends Controller
                 'delivery_order' => [
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.delivery_order.default_requires_approval', false),
                 ],
+                // Issue #545: the quotation form pre-fills valid-until and
+                // terms from these.
+                'quotation' => [
+                    'default_validity_days' => app(\App\Services\SalesSettings::class)->quotationDefaultValidityDays(),
+                    'default_terms' => app(\App\Services\SalesSettings::class)->quotationDefaultTerms() ?? '',
+                ],
                 'tax' => $this->salesTaxDefaults(),
             ],
         ]);
@@ -946,10 +952,16 @@ class CompanySettingsController extends Controller
                 'quotation' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.quotation.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.quotation.reviewer_roles', [])),
+                    // Issue #545: Quotations section.
+                    'default_validity_days' => app(\App\Services\SalesSettings::class)->quotationDefaultValidityDays(),
+                    'default_terms' => app(\App\Services\SalesSettings::class)->quotationDefaultTerms() ?? '',
                 ],
                 'sales_order' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.sales_order.reviewer_user_ids', []))),
                     'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.sales_order.reviewer_roles', [])),
+                    // Issue #545: Sales Orders section.
+                    'auto_lock_on_confirm' => app(\App\Services\SalesSettings::class)->autoLockOnConfirm(),
+                    'default_invoicing_policy' => app(\App\Services\SalesSettings::class)->defaultInvoicingPolicy(),
                 ],
                 'invoice_threshold' => [
                     'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice_threshold.reviewer_user_ids', []))),
@@ -1054,6 +1066,11 @@ class CompanySettingsController extends Controller
             'defaults.team_by_user' => 'nullable|array',
             'defaults.team_by_user.*' => 'nullable|string|max:255',
             'pricelist.display' => 'nullable|in:show_discount,net_price',
+            // Issue #545: Quotations and Sales Orders sections.
+            'quotation.default_validity_days' => 'nullable|integer|min:0|max:365',
+            'quotation.default_terms' => 'nullable|string|max:1000',
+            'sales_order.auto_lock_on_confirm' => 'nullable|boolean',
+            'sales_order.default_invoicing_policy' => ['nullable', \Illuminate\Validation\Rule::in(\App\Services\SalesSettings::INVOICING_POLICIES)],
         ]);
 
         // Issue #921 (SS5): the field => store-key map comes from the

@@ -19,6 +19,9 @@ import {
   ApprovalSettings,
   InvoiceDefaultsSettings,
   SalesDefaultsSettings,
+  QuotationSettings,
+  SalesOrderSettings,
+  PaymentMethodSettings,
   PaymentPortalSettings,
   TaxPricingSettings,
   CashRoundingSettings,
@@ -54,6 +57,22 @@ const SECTIONS: SettingsSectionDef[] = [
     icon: 'solar:checklist-bold-duotone',
     component: ApprovalSettings,
   },
+  // #545 (SET-UX1): one section per document type, in workflow order
+  // (quotation → sales order → invoice → payment).
+  {
+    key: 'quotations',
+    title: 'Quotations',
+    description: 'Default validity and terms',
+    icon: 'solar:document-text-bold-duotone',
+    component: QuotationSettings,
+  },
+  {
+    key: 'sales-orders',
+    title: 'Sales Orders',
+    description: 'Invoicing policy and locking',
+    icon: 'solar:cart-large-2-bold-duotone',
+    component: SalesOrderSettings,
+  },
   {
     key: 'defaults',
     title: 'Invoice Defaults',
@@ -67,6 +86,13 @@ const SECTIONS: SettingsSectionDef[] = [
     description: 'Default salesperson, team and pricelist display',
     icon: 'solar:user-hand-up-bold-duotone',
     component: SalesDefaultsSettings,
+  },
+  {
+    key: 'payment-methods',
+    title: 'Payment Methods',
+    description: 'Methods, references and deposit-to accounts',
+    icon: 'solar:wallet-money-bold-duotone',
+    component: PaymentMethodSettings,
   },
   {
     key: 'payments',

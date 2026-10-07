@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { DocumentTotalsCard } from '@/components/sales/DocumentTotalsCard'
 import { Icon } from '@iconify/react'
 import { addCalendarDays, diffCalendarDays, isValidProductQuantity, todayDateOnly } from '@/lib/dateOnly'
-import { followValidUntil } from '@/lib/quotationDates'
+import { DEFAULT_QUOTE_VALIDITY_DAYS, followValidUntil } from '@/lib/quotationDates'
 import { useToast } from '@/hooks/use-toast'
 import { useDensity } from '@/hooks/useDensity'
 import { cn, formatCurrency, getApiErrorMessage } from '@/lib/utils'
@@ -201,6 +201,15 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     staleTime: 60_000,
   })
   const fieldProfile = String((salesDefaults as any)?.invoice?.field_profile ?? 'medical')
+  // Issue #545: Sales Settings → Quotations. Valid Until follows the quote
+  // date by the tenant's validity days (0 = no default expiry); until the
+  // defaults resolve the historical 30 days is kept.
+  const rawValidityDays = Number((salesDefaults as any)?.quotation?.default_validity_days)
+  const tenantValidityDays = Number.isFinite(rawValidityDays) && rawValidityDays >= 0
+    ? rawValidityDays
+    : DEFAULT_QUOTE_VALIDITY_DAYS
+  const quotationDefaultsAppliedRef = useRef(false)
+  const draftRestoredRef = useRef(false)
 
   // Issue #321: master data for the header pickers.
   const { data: paymentTermRows = [] } = useQuery({
@@ -271,6 +280,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
       // The restored values are the user's own: the customer auto-fill must
       // not overwrite them when the restored customer's detail loads.
       autofilledCustomerRef.current = draft.customerId
+      draftRestoredRef.current = true
       setTags(draft.tags)
       setCustomerId(draft.customerId)
       setQuotationDate(draft.quotationDate)
@@ -556,12 +566,33 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
     notes ? 'notes' : null,
   ].filter(Boolean).join(' · ')
 
+  // Issue #545: a NEW quotation takes the tenant's quotation defaults once
+  // they load — never in edit mode, after a restored draft, or over a value
+  // the user already entered.
+  useEffect(() => {
+    if (mode !== 'create' || !salesDefaults || quotationDefaultsAppliedRef.current) return
+    quotationDefaultsAppliedRef.current = true
+    if (draftRestoredRef.current) return
+    if (!validUntilManuallyEdited) {
+      setValidUntil(tenantValidityDays > 0 ? addCalendarDays(quotationDate, tenantValidityDays) : '')
+    }
+    const defaultTerms = String((salesDefaults as any)?.quotation?.default_terms ?? '')
+    if (defaultTerms) {
+      setTerms((current) => current || defaultTerms)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, salesDefaults])
+
   // #297 (Q11): changing the quote date moves Valid Until with it (unless the
   // operator edited Valid Until themselves) and re-runs auto pricing against
   // the new date.
   const handleQuotationDateChange = (value: string) => {
     setQuotationDate(value)
-    setValidUntil(followValidUntil(value, validUntil, validUntilManuallyEdited))
+    setValidUntil(
+      tenantValidityDays > 0
+        ? followValidUntil(value, validUntil, validUntilManuallyEdited, tenantValidityDays)
+        : validUntil,
+    )
     // #299 (F7): the price list is date-effective — re-resolve auto lines for
     // the new date (state has not updated yet, so pass it explicitly).
     void resolvePricingForLines(lines, { dateOverride: value })
@@ -851,6 +882,7 @@ export const QuotationDocumentForm: React.FC<QuotationDocumentFormProps> = ({ mo
                 <FieldSlot name="valid_until">
                   <input
                     type="date"
+                    aria-label="Valid until"
                     value={validUntil}
                     onChange={(event) => handleValidUntilChange(event.target.value)}
                     className={SALES_CONTROL}
