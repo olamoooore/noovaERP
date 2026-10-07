@@ -24,6 +24,19 @@ class InvoiceSendBundleService
 
     public const UNSENDABLE_STATUS_MESSAGE = 'This invoice cannot be sent to the customer.';
 
+    /** Issue #345: bundle parts that can be left out of the email. */
+    public const PART_ACCEPTANCE_LINK = 'acceptance_link';
+
+    public const PART_PAYMENT_LINK = 'payment_link';
+
+    /** Issue #345: why a part was left out => readable message. */
+    public const SKIP_MESSAGES = [
+        'acceptance_disabled' => 'Acceptance link not included: customer acceptance is turned off in Sales settings.',
+        'draft' => 'Pay-now link not included: the invoice is still a draft.',
+        'zero_balance' => 'Pay-now link not included: the invoice has no balance due.',
+        'payment_link_failed' => 'Pay-now link not included: the payment link could not be created.',
+    ];
+
     public function __construct(
         private InvoiceService $invoiceService,
         private InvoiceActivityService $activityService,
@@ -45,7 +58,7 @@ class InvoiceSendBundleService
 
     /**
      * @param  array{expires_in_days?: ?int, payment_expires_in_days?: ?int, recipient?: ?string}  $options
-     * @return array{link_data: array<string, mixed>, payment_url: ?string, payment: ?array, delivery: InvoiceDelivery}
+     * @return array{link_data: array<string, mixed>, payment_url: ?string, payment: ?array, delivery: InvoiceDelivery, skipped: list<array{part: string, reason: string, message: string}>}
      */
     public function send(Invoice $invoice, User $user, array $options = []): array
     {
@@ -55,8 +68,12 @@ class InvoiceSendBundleService
         // tenant keeps customer acceptance on (#539). The link lifetime
         // defaults to sales.portal.acceptance_link_expiry_days.
         $linkData = [];
+        // Issue #345: every part left out of the email, with the reason.
+        $skipped = [];
 
-        if ($salesSettings->acceptanceEnabled()) {
+        if (! $salesSettings->acceptanceEnabled()) {
+            $skipped[] = $this->skip(self::PART_ACCEPTANCE_LINK, 'acceptance_disabled');
+        } else {
             $linkData = $this->evidenceService->createPortalAcceptanceLink(
                 $invoice,
                 $options['expires_in_days'] ?? null
@@ -85,7 +102,11 @@ class InvoiceSendBundleService
         $paymentUrl = null;
         $payment = null;
 
-        if ($invoice->status !== 'draft' && bccomp((string) $invoice->balance, '0.00', 2) > 0) {
+        if ($invoice->status === 'draft') {
+            $skipped[] = $this->skip(self::PART_PAYMENT_LINK, 'draft');
+        } elseif (bccomp((string) $invoice->balance, '0.00', 2) <= 0) {
+            $skipped[] = $this->skip(self::PART_PAYMENT_LINK, 'zero_balance');
+        } else {
             try {
                 $payment = $this->invoiceService->createPaymentLink(
                     $invoice,
@@ -112,6 +133,7 @@ class InvoiceSendBundleService
                     'invoice_id' => $invoice->id,
                     'error' => $e->getMessage(),
                 ]);
+                $skipped[] = $this->skip(self::PART_PAYMENT_LINK, 'payment_link_failed');
             }
         }
 
@@ -130,6 +152,13 @@ class InvoiceSendBundleService
             'payment_url' => $paymentUrl,
             'payment' => $payment,
             'delivery' => $delivery,
+            'skipped' => $skipped,
         ];
+    }
+
+    /** @return array{part: string, reason: string, message: string} */
+    private function skip(string $part, string $reason): array
+    {
+        return ['part' => $part, 'reason' => $reason, 'message' => self::SKIP_MESSAGES[$reason]];
     }
 }

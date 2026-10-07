@@ -18,6 +18,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
+import { sendBundleToastDescription } from '@/lib/sendBundle';
 import { cn, formatCurrency, formatDate, getApiErrorMessage, normalizeQuantity, NON_WHOLE_QUANTITY_KEYS, toWholeQuantity } from '@/lib/utils';
 import api from '@/lib/api'
 import { buildContactAddress, getCustomerContactForRole, getPrimaryCustomerContact } from '@/lib/customerDocumentDefaults';
@@ -1084,10 +1085,11 @@ export const CreateInvoicePage: React.FC = () => {
           if (savedStatus === 'draft') {
             await api.post(`/invoices/${invoiceId}/post`);
           }
-          await api.post(`/invoices/${invoiceId}/send-bundle`, {});
+          const sent = await api.post(`/invoices/${invoiceId}/send-bundle`, {});
           toast({
             title: 'Invoice sent to customer',
-            description: 'PDF, acceptance link and pay-now QR emailed in one message.',
+            // #345: only what was actually included, plus why anything was skipped.
+            description: sendBundleToastDescription(sent?.data),
           });
         } catch (error: any) {
           toast({

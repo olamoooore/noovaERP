@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { sendBundleToastDescription } from '@/lib/sendBundle'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
@@ -449,9 +450,8 @@ export function InvoiceDetailPage() {
       setSendDialogPaymentUrl(paymentUrl ?? null)
       toast({
         title: 'Invoice sent to customer',
-        description: paymentUrl
-          ? 'PDF, acceptance link and pay-now QR emailed in one message.'
-          : 'Acceptance link generated and emailed.',
+        // #345: only what was actually included, plus why anything was skipped.
+        description: sendBundleToastDescription(data),
       })
     },
     onError: (error: any) => {

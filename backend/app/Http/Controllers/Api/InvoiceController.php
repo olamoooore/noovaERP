@@ -2558,15 +2558,23 @@ class InvoiceController extends Controller
 
             $paymentUrl = $result['payment_url'];
             $delivery = $result['delivery'];
+            $hasAcceptance = ! empty($result['link_data']['url']);
+
+            // Issue #345: the message names only the links actually included.
+            $message = match (true) {
+                $hasAcceptance && $paymentUrl !== null => 'Invoice sent with acceptance and pay-now links',
+                $hasAcceptance => 'Invoice sent with acceptance link',
+                $paymentUrl !== null => 'Invoice sent with pay-now link',
+                default => 'Invoice sent to customer',
+            };
 
             return response()->json([
-                'message' => $paymentUrl
-                    ? 'Invoice sent with acceptance and pay-now links'
-                    : 'Invoice sent to customer',
+                'message' => $message,
                 'data' => [
                     ...$result['link_data'],
                     'payment_url' => $paymentUrl,
                     'payment' => $result['payment'],
+                    'skipped' => $result['skipped'],
                     'delivery' => [
                         'id' => $delivery->id,
                         'status' => $delivery->status,
