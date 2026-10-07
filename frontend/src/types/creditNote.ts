@@ -20,6 +20,20 @@ export interface CustomerCreditNote {
   legal_entity_id?: number | null;
   /** #528: refunds of the note's credit to the customer (detail endpoint). */
   refunds?: CreditNoteRefund[];
+  /** #528: applications of the note's credit to other invoices (detail endpoint, #495 rows). */
+  applications?: CreditNoteApplication[];
+}
+
+/** #495/#528: a posted credit note's credit applied to another open invoice. */
+export interface CreditNoteApplication {
+  id: number;
+  credit_note_id: number;
+  invoice_id: number;
+  applied_amount: number | string;
+  currency_code: string | null;
+  reversed_at: string | null;
+  created_at: string;
+  invoice?: { id: number; invoice_number: string } | null;
 }
 
 /** #528: an outbound refund of a credit note's remaining credit. */

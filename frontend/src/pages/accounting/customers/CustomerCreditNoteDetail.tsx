@@ -21,6 +21,7 @@ import EInvoicePanel from '../components/EInvoicePanel';
 import { EInvoiceStatusChip } from '../components/EInvoiceStatusChip';
 import { CreditNoteOutcomeBadge } from '../components/CreditNoteOutcomeBadge';
 import { CreditNoteRefunds } from '../components/CreditNoteRefunds';
+import { CreditNoteApplications } from '../components/CreditNoteApplications';
 import type { CreditNoteOutcome } from '@/types/creditNote';
 import { formatCountdown } from '../components/einvoiceStatus';
 import { useEInvoiceDocument } from '../components/useEInvoice';
@@ -66,6 +67,8 @@ export const CustomerCreditNoteDetail: React.FC = () => {
   // hidden from a viewer who would only receive a 403.
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const canPost = hasPermission('accounting.post');
+  // #528: applying credit to other invoices is an accounting.write action (#495 route).
+  const canApplyCredit = hasPermission('accounting.write');
   const postMutation = usePostCreditNote();
   const voidMutation = useVoidCreditNote();
   const [voidOpen, setVoidOpen] = useState(false);
@@ -309,6 +312,22 @@ export const CustomerCreditNoteDetail: React.FC = () => {
           </Card>
         );
       })()}
+
+      {/* #528: apply the remaining credit to the customer's other open invoices. */}
+      {creditNote.status !== 'draft' && (
+        <CreditNoteApplications
+          creditNoteId={creditNoteId}
+          creditNoteNumber={creditNote.credit_note_number}
+          customerId={creditNote.customer_id}
+          sourceInvoiceId={creditNote.invoice_id}
+          currencyCode={creditNote.currency_code}
+          legalEntityId={creditNote.legal_entity_id}
+          remainingCredit={Number((creditNote.outcome as CreditNoteOutcome | null)?.remaining_credit ?? 0)}
+          applications={creditNote.applications ?? []}
+          canApply={canApplyCredit}
+          isPosted={creditNote.status === 'posted'}
+        />
+      )}
 
       {/* #528: refund the remaining credit to the customer. */}
       {creditNote.status !== 'draft' && (

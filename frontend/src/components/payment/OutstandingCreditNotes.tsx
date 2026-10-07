@@ -11,6 +11,16 @@ import api from '@/lib/api';
 import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import type { CustomerCreditNote } from '@/types/creditNote';
+import {
+  CREDIT_EPSILON,
+  CREDIT_NOTE_APPLY_PERMISSION,
+  CREDIT_NOTE_VIEW_PERMISSION,
+  CREDIT_NOTES_API_BASE,
+  remainingCreditOf,
+  round2,
+  sameOrUnknown,
+  toNumber,
+} from '@/lib/creditNoteCredit';
 
 // #495 (SALES-ODOO "Outstanding credits"): on an open invoice, list the
 // customer's posted credit notes that still hold credit and apply it — full or
@@ -18,23 +28,12 @@ import type { CustomerCreditNote } from '@/types/creditNote';
 // (PaymentAllocationService::allocateCreditNote). Unapplied payments are listed
 // by UnappliedCreditsCard (#488) next to this card.
 
-/** Applying credit is an accounting write (route: accounting.write). */
-const APPLY_PERMISSION = 'accounting.write';
-/** Credit note reads are gated by accounting.view (#515). */
-const VIEW_PERMISSION = 'accounting.view';
-const API_BASE = '/accounting/customers/credit-notes';
-
-const EPSILON = 0.005;
-const round2 = (value: number) => Math.round(value * 100) / 100;
-const num = (value: unknown) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const remainingOf = (note: CustomerCreditNote) => round2(num(note.outcome?.remaining_credit));
-
-const sameOrUnknown = (a?: string | number | null, b?: string | number | null) =>
-  a == null || b == null || a === '' || b === '' || String(a).toUpperCase() === String(b).toUpperCase();
+const APPLY_PERMISSION = CREDIT_NOTE_APPLY_PERMISSION;
+const VIEW_PERMISSION = CREDIT_NOTE_VIEW_PERMISSION;
+const API_BASE = CREDIT_NOTES_API_BASE;
+const EPSILON = CREDIT_EPSILON;
+const num = toNumber;
+const remainingOf = remainingCreditOf;
 
 export const OutstandingCreditNotesCard: React.FC<{
   customerId: number;

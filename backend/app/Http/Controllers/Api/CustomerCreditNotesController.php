@@ -121,6 +121,9 @@ class CustomerCreditNotesController extends Controller
             'refunds.payment',
             // #444: the customer bank account each refund was paid to.
             'refunds.customerBankAccount',
+            // #528: applications of the note's credit to other invoices
+            // (#495; reversed rows kept for audit) for the detail page.
+            'applications.invoice',
         ]);
 
         // #525 (CN-UX4): what happened to the credit + e-invoice status.

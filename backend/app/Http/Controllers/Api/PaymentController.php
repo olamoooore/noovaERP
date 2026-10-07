@@ -224,6 +224,10 @@ class PaymentController extends Controller
                 // #488: the allocation UI offers only POSTED receivables
                 // (PaymentAllocationService rejects any other lifecycle).
                 'lifecycle_status' => $invoice->lifecycle_status,
+                // #528: credit can only move within one legal entity
+                // (PaymentAllocationService::assertSameEntity) — expose it so
+                // the credit-note "Apply to invoices" list offers only those.
+                'legal_entity_id' => $invoice->legal_entity_id,
                 'customer_id' => $invoice->customer_id,
                 'customer_name' => $invoice->customer?->name ?? 'Unknown',
             ];

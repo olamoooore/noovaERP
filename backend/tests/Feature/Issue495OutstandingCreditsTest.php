@@ -391,4 +391,38 @@ class Issue495OutstandingCreditsTest extends TenantTestCase
         $this->assertSame(0.0, round((float) $this->customer->fresh()->credit_balance, 2));
         $this->assertSame($this->subledger($this->entityA), $this->ledger($this->entityA));
     }
+
+    /**
+     * #528: the credit note detail applies credit from the note's side. It
+     * needs the note's applications (with invoice numbers) on the detail
+     * payload and each candidate invoice's legal entity, so it only offers
+     * invoices the backend would accept.
+     */
+    public function test_credit_note_detail_exposes_applications_and_candidate_invoices_carry_their_entity(): void
+    {
+        $origin = $this->postedInvoice(100);
+        $this->receipt(100, [['invoice_id' => $origin->id, 'amount' => 100]]);
+        $creditNoteId = $this->postedCreditNote($origin, 60);
+        $target = $this->postedInvoice(300);
+        $otherEntityInvoice = $this->postedInvoice(200, $this->entityB);
+
+        $this->applyCreditNote($creditNoteId, $target->id, 25)->assertOk();
+
+        $detail = $this->as($this->admin)->getJson("/api/v1/accounting/customers/credit-notes/{$creditNoteId}");
+        $detail->assertOk();
+        $applications = collect($detail->json('applications'));
+        $this->assertCount(1, $applications);
+        $this->assertSame($target->id, (int) $applications[0]['invoice_id']);
+        $this->assertEqualsWithDelta(25.0, (float) $applications[0]['applied_amount'], 0.001);
+        $this->assertSame($target->invoice_number, $applications[0]['invoice']['invoice_number']);
+        $this->assertEqualsWithDelta(35.0, (float) $detail->json('outcome.remaining_credit'), 0.001);
+
+        $eligible = collect($this->as($this->admin)
+            ->getJson("/api/v1/payments/eligible-invoices?customer_id={$this->customer->id}")
+            ->assertOk()
+            ->json('data'))->keyBy('id');
+
+        $this->assertSame($this->entityA, (int) $eligible[$target->id]['legal_entity_id']);
+        $this->assertSame($this->entityB, (int) $eligible[$otherEntityInvoice->id]['legal_entity_id']);
+    }
 }
