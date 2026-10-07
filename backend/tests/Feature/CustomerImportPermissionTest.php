@@ -168,6 +168,13 @@ class CustomerImportPermissionTest extends TenantTestCase
 
     public function test_commit_succeeds_with_write_permission(): void
     {
+        // Decision (2026-10-07, repo owner): this test checks permissions, not
+        // taxonomy. Its CSV uses the healthcare category "Clinical", which since
+        // #123 is valid only for tenants with the healthcare vocabulary on, and
+        // since #1037 is rejected per row on other tenants. Enable it here so the
+        // fixture matches what it was written for.
+        \App\Models\Setting::setValue(\Modules\Contact\src\Support\ContactTaxonomyRegistry::HEALTHCARE_SETTING_KEY, true);
+
         $user = User::factory()->create();
         $user->assignRole('admin');
         $user->givePermissionTo('customers.write');
