@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TagFilterSelect } from '@/components/tags/TagFilterSelect'
 import { Badge } from '@/components/ui/badge'
 import { CustomerForm } from '@/components/customers/CustomerForm'
+import { CustomerDuplicateDialog } from '@/components/customers/CustomerDuplicateDialog' // #441
+import { duplicatePayloadFromError, type CustomerDuplicateMatch, type CustomerDuplicatePayload } from '@/lib/customerDuplicate' // #441
 import { customerFormToCreatePayload, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
@@ -120,6 +122,8 @@ export function CustomersPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [formData, setFormData] = useState<CustomerFormValues>(initialFormData)
+  // #441: the duplicate guard's 409 opens the duplicate dialog.
+  const [duplicate, setDuplicate] = useState<CustomerDuplicatePayload | null>(null)
   const [customerInvoicesPage, setCustomerInvoicesPage] = useState(1)
   const [customerInvoicesPageSize, setCustomerInvoicesPageSize] = useState(10)
 
@@ -202,23 +206,57 @@ export function CustomersPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (data: CustomerFormValues) => {
+    mutationFn: async ({ values, extra }: { values: CustomerFormValues; extra?: Record<string, unknown> }) => {
       // #429 (CU1): 0 stays 0 — only an emptied field falls back.
-      const response = await api.post('/customers', customerFormToCreatePayload(data))
+      const response = await api.post('/customers', { ...customerFormToCreatePayload(values), ...(extra ?? {}) })
       return response.data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] })
       setOpen(false)
+      setDuplicate(null)
       setFormData(initialFormData)
       toast({ title: 'Customer created successfully' })
     },
     onError: (error: any) => {
+      const duplicatePayload = duplicatePayloadFromError(error)
+      if (duplicatePayload) {
+        setDuplicate(duplicatePayload)
+        return
+      }
       toast({
         variant: 'destructive',
         title: 'Failed to create customer',
         description: getApiErrorMessage(error),
       })
+    },
+  })
+
+  // #441: "Merge into existing" from the create-time duplicate guard. There
+  // is no record yet, so it is saved with the duplicate acknowledgement and
+  // then merged into the chosen existing customer (POST /customers/{id}/merge).
+  const mergeIntoExistingMutation = useMutation({
+    mutationFn: async (match: CustomerDuplicateMatch) => {
+      const reason = `Merged into existing customer #${match.customer_id} from the duplicate check`
+      const created = await api.post('/customers', {
+        ...customerFormToCreatePayload(formData),
+        allow_duplicate: true,
+        duplicate_acknowledgement_reason: reason,
+      })
+      await api.post(`/customers/${match.customer_id}/merge`, { merged_customer_id: created.data.id, reason })
+      return match.customer_id
+    },
+    onSuccess: (survivorId) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      setDuplicate(null)
+      setOpen(false)
+      setFormData(initialFormData)
+      toast({ title: 'Merged into the existing customer' })
+      navigate(`/customers/${survivorId}`)
+    },
+    onError: (error: any) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      toast({ variant: 'destructive', title: 'Merge into existing failed', description: getApiErrorMessage(error) })
     },
   })
 
@@ -268,7 +306,7 @@ export function CustomersPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate(formData)
+    createMutation.mutate({ values: formData })
   }
 
   const openCustomerDetail = (customer: Customer) => {
@@ -327,6 +365,13 @@ export function CustomersPage() {
             </form>
           </DialogContent>
         </Dialog>
+        <CustomerDuplicateDialog
+          payload={duplicate}
+          onOpenChange={(o) => { if (!o) setDuplicate(null) }}
+          busy={createMutation.isPending || mergeIntoExistingMutation.isPending}
+          onMergeInto={(match) => mergeIntoExistingMutation.mutate(match)}
+          onSaveAnyway={(extra) => createMutation.mutate({ values: formData, extra })}
+        />
         </RetractingActions>
       </div>
 

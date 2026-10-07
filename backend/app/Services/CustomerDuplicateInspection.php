@@ -25,6 +25,7 @@ final class CustomerDuplicateInspection
         private readonly array $matches,
         private readonly bool $allowDuplicate = false,
         private readonly ?string $acknowledgementReason = null,
+        private readonly ?int $subjectCustomerId = null,
     ) {}
 
     public function hasMatches(): bool
@@ -68,7 +69,8 @@ final class CustomerDuplicateInspection
                 'message' => 'A customer with the same legal identifier already exists.',
                 'tier' => self::TIER_STRONG,
                 'requires' => 'duplicate_override',
-                'matches' => $this->matches,
+                'matches' => $this->matchesWithMergeEndpoints(),
+                'merge_action' => $this->mergeAction(),
             ], 409);
         }
 
@@ -79,10 +81,46 @@ final class CustomerDuplicateInspection
                 'message' => 'A possible duplicate customer was found. Confirm with a reason to create it anyway.',
                 'tier' => self::TIER_MEDIUM,
                 'requires' => 'duplicate_acknowledgement_reason',
-                'matches' => $this->matches,
+                'matches' => $this->matchesWithMergeEndpoints(),
+                'merge_action' => $this->mergeAction(),
             ], 409);
         }
 
         return null;
+    }
+
+    /**
+     * Issue #441: each match carries the merge endpoint that keeps it as the
+     * survivor (POST, gated by customers.write like any merge).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function matchesWithMergeEndpoints(): array
+    {
+        return array_map(
+            fn (array $match) => $match + [
+                'merge_endpoint' => '/api/v1/customers/'.(int) $match['customer_id'].'/merge',
+            ],
+            $this->matches,
+        );
+    }
+
+    /**
+     * Issue #441: the "merge into existing" hint. On update the record being
+     * edited is the one merged away into the chosen match; on create there is
+     * no record yet, so the client creates it (with the acknowledgement or
+     * override above) and then merges the created id into the match.
+     *
+     * @return array<string, mixed>
+     */
+    private function mergeAction(): array
+    {
+        return [
+            'action' => 'merge_into_existing',
+            'method' => 'POST',
+            'endpoint_template' => '/api/v1/customers/{customer_id}/merge',
+            'merged_customer_id' => $this->subjectCustomerId,
+            'requires_create_first' => $this->subjectCustomerId === null,
+        ];
     }
 }

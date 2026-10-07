@@ -1209,7 +1209,22 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'merged_customer_id' => 'required|integer',
             'reason' => 'nullable|string|max:1000',
+            // Issue #441: per-field survivor selection over a whitelist of
+            // customer master fields.
+            'field_choices' => 'sometimes|array',
+            'field_choices.*' => ['string', Rule::in([
+                CustomerMergeService::FIELD_SOURCE_SURVIVOR,
+                CustomerMergeService::FIELD_SOURCE_MERGED,
+            ])],
         ]);
+
+        $fieldChoices = (array) ($validated['field_choices'] ?? []);
+        $unknownFields = array_diff(array_keys($fieldChoices), CustomerMergeService::FIELD_CHOICE_FIELDS);
+        if ($unknownFields !== []) {
+            throw ValidationException::withMessages([
+                'field_choices' => ['These fields cannot be chosen in a merge: '.implode(', ', $unknownFields).'.'],
+            ]);
+        }
 
         $merged = $this->findScopedCustomer($request, $validated['merged_customer_id']);
 
@@ -1234,6 +1249,7 @@ class CustomerController extends Controller
             $merged,
             (int) $request->user()->id,
             $validated['reason'] ?? null,
+            $fieldChoices,
         );
 
         return response()->json([
@@ -1241,6 +1257,7 @@ class CustomerController extends Controller
             'primary_customer_id' => $summary['primary_customer_id'],
             'merged_customer_id' => $summary['merged_customer_id'],
             'moved' => $summary['moved'],
+            'field_choices' => $summary['field_choices'],
         ]);
     }
 

@@ -105,6 +105,7 @@ class CustomerDuplicateService
             isset($validated['duplicate_acknowledgement_reason'])
                 ? (string) $validated['duplicate_acknowledgement_reason']
                 : null,
+            $ignoreCustomer?->id !== null ? (int) $ignoreCustomer->id : null,
         );
     }
 

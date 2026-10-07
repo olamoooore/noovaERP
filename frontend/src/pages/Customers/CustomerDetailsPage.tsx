@@ -30,6 +30,9 @@ import { useCanRegisterPayment } from '@/lib/registerPayment'
 import { CustomerForm } from '@/components/customers/CustomerForm'
 import { CustomerBankAccounts } from '@/components/customers/CustomerBankAccounts' // #444
 import { CustomerPortalLinkButton } from '@/components/customers/CustomerPortalLinkButton' // #337
+import { CustomerMergeDialog } from '@/components/customers/CustomerMergeDialog' // #441
+import { CustomerDuplicateDialog } from '@/components/customers/CustomerDuplicateDialog' // #441
+import { duplicatePayloadFromError, type CustomerDuplicatePayload } from '@/lib/customerDuplicate' // #441
 import { customerFormToUpdatePayload, customerToFormValues, emptyCustomerFormValues, type CustomerFormValues } from '@/lib/customerPayload'
 import { downloadReportDocx, downloadReportXlsx } from '@/lib/reportFiles'
 
@@ -279,6 +282,10 @@ export function CustomerDetailsPage() {
   const [loyaltyDialogOpen, setLoyaltyDialogOpen] = useState(false)
   const [noteDialogOpen, setNoteDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  // #441: merge dialog (survivor + optional fixed customer merged away) and
+  // the duplicate guard's 409 on edit.
+  const [mergeDialog, setMergeDialog] = useState<{ survivorId: number | string; mergedId?: number | string } | null>(null)
+  const [duplicate, setDuplicate] = useState<CustomerDuplicatePayload | null>(null)
   const [emailDialogOpen, setEmailDialogOpen] = useState(false)
   const [orderDialogOpen, setOrderDialogOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null)
@@ -360,16 +367,24 @@ export function CustomerDetailsPage() {
 
   // Update customer mutation
   const updateMutation = useMutation({
-    mutationFn: async (data: CustomerFormValues | { is_active: boolean }) => {
-      const payload = 'type' in data ? customerFormToUpdatePayload(data) : data
+    mutationFn: async (data: CustomerFormValues | { is_active: boolean } | { values: CustomerFormValues; extra: Record<string, unknown> }) => {
+      const payload = 'values' in data
+        ? { ...customerFormToUpdatePayload(data.values), ...data.extra }
+        : 'type' in data ? customerFormToUpdatePayload(data) : data
       const response = await api.put(`/customers/${id}`, payload)
       return response.data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', id] })
+      setDuplicate(null)
       toast({ title: 'Customer updated successfully' })
     },
     onError: (error: any) => {
+      const duplicatePayload = duplicatePayloadFromError(error)
+      if (duplicatePayload) {
+        setDuplicate(duplicatePayload)
+        return
+      }
       toast({
         variant: 'destructive',
         title: 'Failed to update customer',
@@ -709,6 +724,14 @@ export function CustomerDetailsPage() {
             Email
           </HeaderActionButton>
           <CustomerPortalLinkButton customerId={customer.id} />
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:users-group-two-rounded-bold-duotone"
+            title="Merge a duplicate customer into this one"
+            onClick={() => setMergeDialog({ survivorId: customer.id })}
+          >
+            Merge
+          </HeaderActionButton>
           <HeaderActionButton icon="solar:pen-bold-duotone" onClick={openEditDialog}>
             Edit
           </HeaderActionButton>
@@ -2499,6 +2522,31 @@ export function CustomerDetailsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* #441: duplicate guard on edit → merge this customer into the existing one */}
+      <CustomerDuplicateDialog
+        payload={duplicate}
+        onOpenChange={(o) => { if (!o) setDuplicate(null) }}
+        busy={updateMutation.isPending}
+        onMergeInto={(match) => {
+          setDuplicate(null)
+          setEditDialogOpen(false)
+          setMergeDialog({ survivorId: match.customer_id, mergedId: customer.id })
+        }}
+        onSaveAnyway={(extra) => updateMutation.mutate({ values: editForm, extra }, { onSuccess: () => setEditDialogOpen(false) })}
+      />
+      {mergeDialog && (
+        <CustomerMergeDialog
+          open
+          onOpenChange={(o) => { if (!o) setMergeDialog(null) }}
+          survivorId={mergeDialog.survivorId}
+          mergedId={mergeDialog.mergedId}
+          onMerged={(survivorId) => {
+            queryClient.invalidateQueries({ queryKey: ['customer', id] })
+            if (String(survivorId) !== String(id)) navigate(`/customers/${survivorId}`)
+          }}
+        />
+      )}
     </div>
   )
 }
