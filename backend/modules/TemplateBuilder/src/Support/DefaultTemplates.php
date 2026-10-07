@@ -156,11 +156,17 @@ final class DefaultTemplates
                         // document jurisdiction's pack label (SST for MY,
                         // GST for SG, generic otherwise) instead of a
                         // hardcoded "GST Reg".
+                        // #1019: an unset/optional registration number must
+                        // not print a blank "GST Registration No.:" line.
                         ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} == 'GST'", 'children' => [
-                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.gst_number_label }}: {{ company.gst_number }}'],
+                            ['type' => 'conditional', 'condition' => "{{ company.gst_number }} != ''", 'children' => [
+                                ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.gst_number_label }}: {{ company.gst_number }}'],
+                            ]],
                         ]],
                         ['type' => 'conditional', 'condition' => "{{ company.tax_regime }} != 'GST'", 'children' => [
-                            ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.sst_number_label }}: {{ company.sst_number }}'],
+                            ['type' => 'conditional', 'condition' => "{{ company.sst_number }} != ''", 'children' => [
+                                ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.sst_number_label }}: {{ company.sst_number }}'],
+                            ]],
                         ]],
                         ['type' => 'conditional', 'condition' => "{{ einvoice.uuid }} != ''", 'children' => [
                             ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => 'E-Invoice: {{ einvoice.uuid }} · Validated: {{ einvoice.validated_at }}'],
