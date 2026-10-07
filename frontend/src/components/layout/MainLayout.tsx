@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { FloatingChatButton } from '@/components/AI/FloatingChatButton'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { CommandBar } from '@/components/command/CommandBar'
 
 export function MainLayout() {
   return (
@@ -19,6 +20,9 @@ export function MainLayout() {
 
       {/* Global AI assistant — visible on every page while the AI module is enabled. */}
       <FloatingChatButton />
+
+      {/* #347 (D10): global Ctrl/⌘+K command bar. */}
+      <CommandBar />
     </div>
   )
 }

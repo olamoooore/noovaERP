@@ -1,8 +1,8 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { PAYMENT_SHORTCUTS } from '@/lib/keyboardShortcuts';
+import { COMMAND_BAR_SHORTCUTS, PAYMENT_SHORTCUTS } from '@/lib/keyboardShortcuts';
 
-/** #508 (PY6): the "?" overlay — keyboard shortcuts for payment entry. */
+/** #508 (PY6): the "?" overlay — keyboard shortcuts for payment entry, plus the #347 command bar. */
 export const PaymentShortcutsDialog: React.FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -14,7 +14,7 @@ export const PaymentShortcutsDialog: React.FC<{
         <DialogDescription>Shortcuts do not fire while you are typing in a field.</DialogDescription>
       </DialogHeader>
       <ul className="space-y-2 text-sm">
-        {PAYMENT_SHORTCUTS.map((shortcut) => (
+        {[...COMMAND_BAR_SHORTCUTS, ...PAYMENT_SHORTCUTS].map((shortcut) => (
           <li key={shortcut.keys.join('+')} className="flex items-start justify-between gap-4">
             <span className="flex shrink-0 gap-1">
               {shortcut.keys.map((key) => (

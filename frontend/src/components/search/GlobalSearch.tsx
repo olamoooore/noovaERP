@@ -169,14 +169,10 @@ export function GlobalSearch() {
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
-  // ⌘K / Ctrl+K focuses the omnibox
+  // #347: ⌘K / Ctrl+K now opens the global command bar (CommandBar), which
+  // covers search-by-number; the omnibox no longer competes for it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        inputRef.current?.focus()
-        setOpen(true)
-      }
       if (e.key === 'Escape') {
         setOpen(false)
         setActiveTagPicker(false)
@@ -253,9 +249,6 @@ export function GlobalSearch() {
             <Icon icon="solar:tag-bold-duotone" className="h-3.5 w-3.5" />
             {tagSlugs.length || ''}
           </button>
-          <kbd className="hidden rounded border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-block">
-            ⌘K
-          </kbd>
         </div>
       </div>
 

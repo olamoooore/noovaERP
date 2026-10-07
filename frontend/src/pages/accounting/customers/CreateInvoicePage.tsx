@@ -90,6 +90,7 @@ import { FieldErrorsProvider, FieldSlot } from '@/components/ui/field-errors'
 import { lineFieldKey, payloadRowIndexes } from '@/lib/serverValidation'
 import { DocumentDraftBanner, DocumentLeaveDialog } from '@/components/sales/DocumentDraftControls'
 import { openAppPathInNewTab } from '@/lib/openInNewTab'
+import { claimCommandBar } from '@/lib/keyboardShortcuts';
 import {
   LINE_CELL,
   LINE_CELL_BOX,
@@ -1594,6 +1595,10 @@ export const CreateInvoicePage: React.FC = () => {
       setLines((current) => [...current, { ...emptyLine(), tax_rate: defaultTaxRate || '' }]);
     }
   };
+
+  // #347: this document-scoped bar owns Ctrl/⌘+K while the form is mounted,
+  // so the global command bar stays closed here.
+  useEffect(() => claimCommandBar(), []);
 
   // D10: command bar. Ctrl/⌘+K opens it; commands mirror the on-screen
   // actions so power users never need the mouse.
