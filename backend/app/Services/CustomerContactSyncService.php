@@ -116,6 +116,15 @@ class CustomerContactSyncService
         $orgUuid = $this->ensureOrganisationContact($customer);
 
         return DB::transaction(function () use ($customer, $contact, $canonical, $tenantId, $orgUuid) {
+            // #1023: the caller's row may be stale — a W6 repair or linking
+            // run can re-point the contact after the request loaded it. Re-read
+            // the link under a row lock so the person is resolved from the
+            // current value and a concurrent run waits for this save.
+            if ($contact->exists) {
+                $contact->setAttribute('core_contact_uuid', CustomerContact::whereKey($contact->getKey())->lockForUpdate()->value('core_contact_uuid'));
+                $contact->syncOriginalAttribute('core_contact_uuid');
+            }
+
             $person = $this->resolvePerson($tenantId, $orgUuid, $contact);
 
             if ($contact->core_contact_uuid !== $person->id) {
