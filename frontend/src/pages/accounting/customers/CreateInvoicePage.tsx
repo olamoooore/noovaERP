@@ -3232,7 +3232,8 @@ export const CreateInvoicePage: React.FC = () => {
                               <input
                                 type="number"
                                 min="0"
-                                step={line.uom_id ? '0.0001' : '1'}
+                                // #1024: arrows step by 1; decimals stay typeable.
+                                step="1"
                                 inputMode="decimal"
                                 value={line.quantity}
                                 onChange={(event) => {

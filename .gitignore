@@ -117,3 +117,7 @@ backend/storage/framework/cache/data/*
 
 # OCR service uploads (runtime tenant documents - never commit)
 backend/storage/app/ocr-documents/
+
+# Playwright artifacts
+test-results/
+playwright-report/

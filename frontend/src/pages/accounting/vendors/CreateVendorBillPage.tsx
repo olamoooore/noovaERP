@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { accountingApi } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, normalizeQuantity } from '@/lib/utils';
 import { ProductSearchCombobox, getProductLineDescription } from '@/components/inventory/ProductSearchCombobox';
 import { VendorSearchCombobox } from '@/components/ui/VendorSearchCombobox';
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton';
@@ -768,12 +768,13 @@ export const CreateVendorBillPage: React.FC = () => {
                             />
                           </div>
                         </td>}
-                        <td className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                        <td data-label="Qty" className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
                           <div className={LINE_CELL_BOX}>
                             <input
                               type="number"
                               min="0"
-                              step="0.0001"
+                              // #1024: arrows step by 1; decimals stay typeable.
+                              step="1"
                               inputMode="decimal"
                               value={line.quantity}
                               onChange={(event) => {
@@ -781,6 +782,14 @@ export const CreateVendorBillPage: React.FC = () => {
                                 const updated = [...lines];
                                 updated[index] = { ...updated[index], quantity: raw === '' ? '' : Number(raw) };
                                 setLines(updated);
+                              }}
+                              onBlur={() => {
+                                // Strip floating-point noise the spinner used to create.
+                                if (line.quantity !== '') {
+                                  const updated = [...lines];
+                                  updated[index] = { ...updated[index], quantity: normalizeQuantity(line.quantity) as number };
+                                  setLines(updated);
+                                }
                               }}
                               className={LINE_INPUT_NUMERIC}
                             />
