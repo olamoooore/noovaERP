@@ -52,6 +52,8 @@ export interface ReportFilters {
   movement_type?: string;
   method?: 'direct' | 'indirect';
   interval?: 'day' | 'week' | 'month' | 'year';
+  /** #361: Top-N rows for the sales by-product / by-customer widgets. */
+  top?: number;
   page?: number;
   /** Use 0 when the report must return every row in the filtered period. */
   per_page?: number;

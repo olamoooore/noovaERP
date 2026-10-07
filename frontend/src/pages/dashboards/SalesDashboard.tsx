@@ -43,6 +43,8 @@ const baseCurrencyOf = (payload: ProductPayload) => payload?.summary?.base_curre
 
 const PERIODS: SalesDashboardPeriod[] = ['today', 'week', 'month', 'year', 'custom'];
 const YEARS_OFFERED = 10;
+// #361: rows the product and customer widgets request (Top-N).
+const WIDGET_TOP_N = 10;
 
 /**
  * Sales Dashboard Page
@@ -118,11 +120,14 @@ export const SalesDashboard: React.FC = () => {
     enabled: currentFilters !== null,
     queryFn: async () => {
       const filters = currentFilters!;
-      // Aggregate data from multiple endpoints
+      // Aggregate data from multiple endpoints.
+      // #361 (S13): the server picks the trend interval from the range (a year
+      // is 12 monthly points, not 365 daily ones) and the product / customer
+      // widgets ask for their Top-N only, not every row.
       const [salesTrends, salesByProduct, salesByCustomer, salesByCategory] = await Promise.all([
-        reportApi.getSalesTrends({ ...filters, interval: 'day' }),
-        reportApi.getSalesByProduct(filters),
-        reportApi.getSalesByCustomer(filters),
+        reportApi.getSalesTrends({ ...filters, interval: 'auto' }),
+        reportApi.getSalesByProduct({ ...filters, top: WIDGET_TOP_N }),
+        reportApi.getSalesByCustomer({ ...filters, top: WIDGET_TOP_N }),
         reportApi.getSalesByCategory(filters),
       ]);
 

@@ -672,7 +672,10 @@ class ReportApiClient {
     }
   }
 
-  async getSalesTrends(filters: ReportFilters): Promise<SalesTrendsData> {
+  async getSalesTrends(
+    // #361: `auto` lets the server pick day / week / month from the range.
+    filters: Omit<ReportFilters, 'interval'> & { interval?: ReportFilters['interval'] | 'auto' }
+  ): Promise<SalesTrendsData> {
     try {
       const response = await api.get<ApiResponse<SalesTrendsData>>(
         '/analytics/sales/trends',

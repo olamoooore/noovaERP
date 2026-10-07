@@ -1114,6 +1114,108 @@ class SalesAnalyticsService
         return $report;
     }
 
+    /**
+     * Issue #361: the customer widget's Top-N, like getTopSellingProducts().
+     */
+    public function getTopCustomers(ReportFilter $filter, int $limit = 10): array
+    {
+        $report = $this->getSalesByCustomer($filter);
+
+        if (isset($report['data'])) {
+            $report['data'] = array_slice($report['data'], 0, $limit);
+            $report['title'] = "Top {$limit} Customers";
+        }
+
+        return $report;
+    }
+
+    /**
+     * Issue #361: the KPI totals for the dashboard tiles in ONE aggregate over
+     * the #355 line-item base per window — the period, its comparison window
+     * (#595 modes) and, when asked, today — instead of pulling the full
+     * by-product report per window and adding up its rows on the client.
+     *
+     * @return array<string, mixed>
+     */
+    public function getSalesSummary(ReportFilter $filter, bool $includeToday = false): array
+    {
+        $report = $this->withPeriodComparison(
+            $filter,
+            $this->buildSalesSummary($filter),
+            fn (ReportFilter $rangeFilter): array => $this->buildSalesSummary($rangeFilter),
+            [],
+        );
+        unset($report['data']);
+
+        if ($includeToday) {
+            $today = $this->buildSalesSummary($filter->forRange(Carbon::today(), Carbon::today()));
+            $report['today'] = array_merge($today['summary'], ['date' => $today['period']['start_date']]);
+        }
+
+        return $report;
+    }
+
+    /**
+     * @return array{period: array{start_date: string, end_date: string}, data: array<int, mixed>, summary: array<string, mixed>}
+     */
+    private function buildSalesSummary(ReportFilter $filter): array
+    {
+        $startDate = $filter->startDate ?? Carbon::now()->startOfMonth();
+        $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
+
+        [$salesOrderIds, $invoiceIds] = $this->documentIdsForTag($filter->tag ?? null);
+
+        $row = DB::query()
+            ->fromSub($this->lineItemsUnion($filter, $salesOrderIds, $invoiceIds), 'li')
+            ->selectRaw('COALESCE(SUM(li.base_revenue), 0) as total_revenue')
+            ->selectRaw("COALESCE(SUM(CASE WHEN li.channel = 'booking' THEN li.base_revenue ELSE 0 END), 0) as bookings_revenue")
+            ->selectRaw("COALESCE(SUM(CASE WHEN li.channel <> 'booking' THEN li.base_revenue ELSE 0 END), 0) as invoiced_revenue")
+            // Same unit rule as the product table (#360 layout lines, #600 paid units).
+            ->selectRaw('COALESCE(SUM(CASE WHEN li.line_type IS NULL OR li.line_type NOT IN (\'note\', \'section\') THEN li.quantity - li.foc_quantity ELSE 0 END), 0) as total_quantity')
+            ->selectRaw('COUNT(DISTINCT li.order_ref) as order_count')
+            ->first();
+
+        $revenue = round((float) ($row->total_revenue ?? 0), 2);
+        $orders = (int) ($row->order_count ?? 0);
+
+        return [
+            'title' => 'Sales Summary',
+            'pos_excluded_by_tag' => $filter->tag !== null,
+            'period' => [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+            ],
+            'data' => [],
+            'summary' => $this->baseSummary([
+                'total_revenue' => $revenue,
+                'invoiced_revenue' => round((float) ($row->invoiced_revenue ?? 0), 2),
+                'bookings_revenue' => round((float) ($row->bookings_revenue ?? 0), 2),
+                'total_quantity' => $this->roundQuantity($row->total_quantity ?? 0),
+                'order_count' => $orders,
+                'average_order_value' => $orders > 0 ? round($revenue / $orders, 2) : 0.0,
+                'channels_included' => self::CHANNELS_INCLUDED,
+            ]),
+        ];
+    }
+
+    /**
+     * Issue #361: the trend interval for `interval=auto` — daily up to a
+     * month, weekly up to a quarter, monthly beyond — so a year view plots 12
+     * points, not 365.
+     */
+    public static function autoTrendInterval(?Carbon $startDate, ?Carbon $endDate): string
+    {
+        $start = $startDate ?? Carbon::now()->startOfMonth();
+        $end = $endDate ?? Carbon::now()->endOfMonth();
+        $days = (int) $start->copy()->startOfDay()->diffInDays($end->copy()->startOfDay()) + 1;
+
+        return match (true) {
+            $days <= 31 => 'day',
+            $days <= 92 => 'week',
+            default => 'month',
+        };
+    }
+
     public function getProfitMargins(ReportFilter $filter): array
     {
         $report = $this->getSalesByProduct($filter);

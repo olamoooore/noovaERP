@@ -217,10 +217,15 @@ class AnalyticsController extends Controller
      */
     public function salesByCustomer(Request $request): JsonResponse
     {
-        $filter = $this->salesFilter($request);
+        // Issue #361: Top-N for the dashboard's customer widget.
+        $filter = $this->salesFilter($request, [
+            'top' => 'nullable|integer|min:1|max:100',
+        ]);
 
         try {
-            $reportData = $this->salesAnalyticsService->getSalesByCustomer($filter);
+            $reportData = $request->filled('top')
+                ? $this->salesAnalyticsService->getTopCustomers($filter, $request->integer('top'))
+                : $this->salesAnalyticsService->getSalesByCustomer($filter);
 
             // Transform response to match frontend expectations
             return response()->json([
@@ -277,24 +282,69 @@ class AnalyticsController extends Controller
      */
     public function salesTrends(Request $request): JsonResponse
     {
+        // Issue #361: `auto` picks day / week / month from the range, so a
+        // year view is 12 monthly points rather than 365 daily ones.
         $filter = $this->salesFilter($request, [
-            'interval' => 'nullable|in:day,week,month,year',
+            'interval' => 'nullable|in:auto,day,week,month,year',
         ]);
 
+        $interval = $filter->interval ?? 'day';
+        if ($interval === 'auto') {
+            $interval = SalesAnalyticsService::autoTrendInterval($filter->startDate, $filter->endDate);
+        }
+
         try {
-            $reportData = $this->salesAnalyticsService->getSalesTrends($filter, $filter->interval ?? 'day');
+            $reportData = $this->salesAnalyticsService->getSalesTrends($filter, $interval);
 
             // Transform response to match frontend expectations
             return response()->json([
                 'success' => true,
                 'data' => $this->withComparisonPayload([
                     'trends' => $reportData['data'] ?? [],
+                    'interval' => $interval,
                     'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
                 ], $reportData),
             ]);
 
         } catch (\Exception $e) {
             \Log::error('Sales Trends analytics failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate analytics. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Issue #361: the dashboard KPI totals — revenue (invoiced / bookings),
+     * paid units, orders and average order value — for the period, its
+     * comparison window and optionally today, one aggregate per window.
+     */
+    public function salesSummary(Request $request): JsonResponse
+    {
+        $filter = $this->salesFilter($request, [
+            'include_today' => 'nullable|boolean',
+        ]);
+
+        try {
+            $reportData = $this->salesAnalyticsService->getSalesSummary($filter, $request->boolean('include_today'));
+
+            return response()->json([
+                'success' => true,
+                'data' => array_filter([
+                    'period' => $reportData['period'],
+                    'summary' => $reportData['summary'],
+                    'comparison' => $reportData['comparison'] ?? null,
+                    'today' => $reportData['today'] ?? null,
+                    'pos_excluded_by_tag' => (bool) ($reportData['pos_excluded_by_tag'] ?? false),
+                ], fn ($value) => $value !== null),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Sales Summary analytics failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

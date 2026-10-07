@@ -39,6 +39,8 @@ Route::middleware([...$tenantMiddleware, \App\Http\Middleware\RequirePermission:
     ->group(function () {
         Route::prefix('analytics')->name('analytics.')->group(function () {
             Route::get('/sales/by-product', [AnalyticsController::class, 'salesByProduct'])->name('sales.by-product');
+            // Issue #361: the dashboard KPI totals (+ comparison) in one call.
+            Route::get('/sales/summary', [AnalyticsController::class, 'salesSummary'])->name('sales.summary');
             Route::get('/sales/trends', [AnalyticsController::class, 'salesTrends'])->name('sales.trends');
             Route::get('/sales/by-customer', [AnalyticsController::class, 'salesByCustomer'])->name('sales.by-customer');
             Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
