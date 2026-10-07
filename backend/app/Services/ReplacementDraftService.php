@@ -186,7 +186,7 @@ class ReplacementDraftService
             'status' => 'cancelled',
         ]);
 
-        $nextVersion = ($original->version_number ?? 1) + 1;
+        $nextVersion = $this->nextQuotationVersion($original, $correctionGroupId);
 
         $replacement = Quotation::create([
             'quotation_number' => $original->quotation_number.'-R'.str_pad((string) $nextVersion, 2, '0', STR_PAD_LEFT),
@@ -265,6 +265,78 @@ class ReplacementDraftService
         $this->linkService->linkReplacement($original, $replacement, $request);
 
         return $replacement;
+    }
+
+    /**
+     * Issue #414 (DX4): partial acceptance. The customer accepted only some of
+     * the quotation's lines; the lines they did NOT accept move to a new open
+     * revision (same correction group, next version) so the salesperson can
+     * follow them up. Unlike a rejection the original is neither cancelled nor
+     * superseded — it goes on to be confirmed for the accepted lines.
+     *
+     * The caller owns the transaction and recomputes both documents' totals.
+     *
+     * @param  array<int, int>  $lineIds  lines of $original that move to the remainder
+     */
+    public function createQuotationRemainderRevision(Quotation $original, array $lineIds, CorrectionRequest $request): Quotation
+    {
+        if ($lineIds === []) {
+            throw new \InvalidArgumentException('A remainder revision needs at least one line.');
+        }
+
+        $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
+
+        if ($original->correction_group_id === null) {
+            $original->update(['correction_group_id' => $correctionGroupId]);
+        }
+
+        $nextVersion = $this->nextQuotationVersion($original, $correctionGroupId);
+
+        // The whole header (currency + FX snapshot, terms, Incoterm, payment
+        // term, #550 requirements …) carries over; acceptance, order link and
+        // version bookkeeping start afresh.
+        $remainder = $original->replicate([
+            'acceptance_token', 'acceptance_expires_at', 'accepted_at', 'signer_name', 'signer_email',
+            'signature_data', 'acceptance_source', 'sales_order_id', 'replacement_document_id',
+            'superseded_at', 'lock_version',
+        ]);
+        $remainder->fill([
+            'quotation_number' => $original->quotation_number.'-R'.str_pad((string) $nextVersion, 2, '0', STR_PAD_LEFT),
+            'status' => 'draft',
+            'created_by' => $request->userId ?? $original->created_by,
+            'correction_group_id' => $correctionGroupId,
+            'original_document_id' => $original->id,
+            'correction_type' => 'partial_remainder',
+            'correction_reason_code' => $request->reasonCode,
+            'correction_reason_text' => $request->reasonText,
+            'version_number' => $nextVersion,
+            'is_active_version' => true,
+        ]);
+        $remainder->save();
+
+        // The unaccepted lines themselves move (every column — UoM, tax rule,
+        // pricing trace, analytics — stays exactly as quoted).
+        QuotationLine::query()
+            ->where('quotation_id', $original->id)
+            ->whereIn('id', $lineIds)
+            ->update(['quotation_id' => $remainder->id]);
+
+        $this->linkService->linkReplacement($original, $remainder, $request);
+
+        return $remainder;
+    }
+
+    /**
+     * The next free version number in the quotation's correction group (a
+     * group can hold a partial-acceptance remainder next to the original).
+     */
+    private function nextQuotationVersion(Quotation $original, string $correctionGroupId): int
+    {
+        $max = (int) Quotation::withTrashed()
+            ->where('correction_group_id', $correctionGroupId)
+            ->max('version_number');
+
+        return max($max, (int) ($original->version_number ?? 1)) + 1;
     }
 
     public function createBillReplacementDraft(Bill $original, CorrectionRequest $request): Bill

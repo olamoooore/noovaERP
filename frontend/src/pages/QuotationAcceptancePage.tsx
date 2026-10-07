@@ -40,6 +40,9 @@ interface QuotationSnapshot {
   required_date: string | null
   notes: string | null
   lines: Array<{
+    // Issue #414: the id/type the customer accepts a line by (partial acceptance).
+    id?: number
+    line_type?: string
     description: string
     quantity: number
     unit_price: number
@@ -78,6 +81,9 @@ export default function QuotationAcceptancePage() {
   const [agreed, setAgreed] = useState(false)
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
+  // Issue #414 (DX4): lines the customer has un-ticked. Everything starts
+  // accepted; un-ticked lines stay open as a new revision of the quotation.
+  const [declinedLineIds, setDeclinedLineIds] = useState<number[]>([])
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['quotation-acceptance', token],
@@ -89,6 +95,19 @@ export default function QuotationAcceptancePage() {
     retry: false,
   })
 
+  // Issue #414: priced lines can be accepted individually (note/section
+  // lines just follow the quotation).
+  const selectableLines = (data?.lines ?? []).filter(
+    (line): line is typeof line & { id: number } =>
+      typeof line.id === 'number' && line.line_type !== 'note' && line.line_type !== 'section',
+  )
+  const canSelectLines = selectableLines.length > 1
+  const acceptedLineIds = selectableLines.map((line) => line.id).filter((id) => !declinedLineIds.includes(id))
+  const isPartial = canSelectLines && declinedLineIds.length > 0
+
+  const toggleLine = (id: number, accepted: boolean) =>
+    setDeclinedLineIds((prev) => (accepted ? prev.filter((x) => x !== id) : prev.includes(id) ? prev : [...prev, id]))
+
   const acceptMutation = useMutation({
     mutationFn: async () => {
       const res = await api.post(`/quotation-accept/${token}/accept`, {
@@ -96,11 +115,16 @@ export default function QuotationAcceptancePage() {
         signer_email: signerEmail,
         agreed: agreed,
         signature: signatureDataUrl,
+        ...(isPartial ? { accepted_line_ids: acceptedLineIds } : {}),
       })
       return res.data
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['quotation-acceptance', token] })
+      // Issue #414: the lines not accepted stay open as a new revision.
+      const remainderNote = data?.remainder_quotation_number
+        ? ` The lines you did not accept stay open as quotation ${data.remainder_quotation_number}.`
+        : ''
       // Issue #334: an over-threshold quotation goes through the standard
       // internal approval flow first — tell the customer it is pending rather
       // than implying it is confirmed.
@@ -109,18 +133,18 @@ export default function QuotationAcceptancePage() {
       if (data?.requires_payment) {
         toast({
           title: 'Quotation accepted',
-          description: 'Thank you — it will be confirmed once your prepayment has been received.',
+          description: `Thank you — it will be confirmed once your prepayment has been received.${remainderNote}`,
         })
         return
       }
       if (data?.requires_approval) {
         toast({
           title: 'Quotation accepted',
-          description: 'Thank you — it now awaits internal approval before it is confirmed.',
+          description: `Thank you — it now awaits internal approval before it is confirmed.${remainderNote}`,
         })
         return
       }
-      toast({ title: 'Quotation accepted', description: 'Thank you — your acceptance has been recorded.' })
+      toast({ title: 'Quotation accepted', description: `Thank you — your acceptance has been recorded.${remainderNote}` })
     },
     onError: (err: any) => {
       toast({
@@ -139,6 +163,10 @@ export default function QuotationAcceptancePage() {
     }
     if (!agreed) {
       toast({ variant: 'destructive', title: 'Please confirm agreement' })
+      return
+    }
+    if (canSelectLines && acceptedLineIds.length === 0) {
+      toast({ variant: 'destructive', title: 'Select at least one line', description: 'Tick the lines you accept.' })
       return
     }
     if (data?.require_signature && !signatureDataUrl) {
@@ -247,14 +275,39 @@ export default function QuotationAcceptancePage() {
                 <div className="col-span-2 text-right">Unit Price</div>
                 <div className="col-span-2 text-right">Total</div>
               </div>
-              {data.lines.map((line, i) => (
-                <div key={i} className="grid grid-cols-12 text-sm px-2 py-2 border-b last:border-b-0">
-                  <div className="col-span-6">{line.description}</div>
+              {data.lines.map((line, i) => {
+                const selectable =
+                  canSelectLines && !data.already_accepted && typeof line.id === 'number'
+                  && line.line_type !== 'note' && line.line_type !== 'section'
+                const lineId = line.id as number
+                return (
+                <div key={line.id ?? i} className="grid grid-cols-12 text-sm px-2 py-2 border-b last:border-b-0">
+                  <div className="col-span-6 flex items-start gap-2">
+                    {selectable && (
+                      <Checkbox
+                        aria-label={`Accept line: ${line.description}`}
+                        checked={!declinedLineIds.includes(lineId)}
+                        onCheckedChange={(v) => toggleLine(lineId, !!v)}
+                        className="mt-0.5"
+                      />
+                    )}
+                    <span className={selectable && declinedLineIds.includes(lineId) ? 'text-muted-foreground line-through' : ''}>
+                      {line.description}
+                    </span>
+                  </div>
                   <div className="col-span-2 text-right">{line.quantity}</div>
                   <div className="col-span-2 text-right">{currency(line.unit_price, data.currency_code)}</div>
                   <div className="col-span-2 text-right font-medium">{currency(line.line_total, data.currency_code)}</div>
                 </div>
-              ))}
+                )
+              })}
+              {canSelectLines && !data.already_accepted && (
+                <p className="px-2 pt-2 text-xs text-muted-foreground">
+                  {isPartial
+                    ? `You are accepting ${acceptedLineIds.length} of ${selectableLines.length} lines. The totals are recalculated for the accepted lines; the rest stay open as a revised quotation.`
+                    : 'Untick any line you do not want to accept now — it stays open as a revised quotation.'}
+                </p>
+              )}
             </div>
 
             <Separator className="my-6" />

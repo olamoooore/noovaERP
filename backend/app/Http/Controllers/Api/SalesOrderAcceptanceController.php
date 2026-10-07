@@ -68,6 +68,10 @@ class SalesOrderAcceptanceController extends Controller
             // Issue #338: the optional products the customer chose to add.
             'optional_line_ids' => 'nullable|array',
             'optional_line_ids.*' => 'integer|distinct',
+            // Issue #414: the lines the customer accepts (partial acceptance);
+            // absent = the whole quotation.
+            'accepted_line_ids' => 'sometimes|array|min:1',
+            'accepted_line_ids.*' => 'integer|distinct',
         ]);
 
         $quotation = $this->service->findQuotationByToken($token);
@@ -166,6 +170,13 @@ class SalesOrderAcceptanceController extends Controller
             (array) ($validated['optional_line_ids'] ?? []),
         );
 
+        // Issue #414: every accepted id must be a line of THIS quotation —
+        // refused (422) before any acceptance trace or revision is written.
+        $acceptedLineIds = array_key_exists('accepted_line_ids', $validated)
+            ? array_merge((array) $validated['accepted_line_ids'], $optionalLineIds)
+            : null;
+        $this->service->validateAcceptedSelection($quotation, $acceptedLineIds, $optionalLineIds);
+
         try {
             $result = $this->service->acceptQuotation(
                 $quotation,
@@ -175,9 +186,19 @@ class SalesOrderAcceptanceController extends Controller
                 $request->ip() ?? 'unknown',
                 $request->userAgent() ?? 'unknown',
                 $optionalLineIds,
+                $acceptedLineIds,
             );
 
             $accepted = $result['quotation'];
+
+            // Issue #414: the partial-acceptance outcome — the accepted lines
+            // and the open revision holding the rest (null when none).
+            $remainder = $result['remainder_quotation'] ?? null;
+            $partial = [
+                'accepted_line_ids' => $result['accepted_line_ids'] ?? [],
+                'remainder_quotation_id' => $remainder?->id !== null ? (int) $remainder->id : null,
+                'remainder_quotation_number' => $remainder?->quotation_number,
+            ];
 
             // Issue #550: accepted, but not confirmed until the prepayment
             // is received (HTTP 202, like a pending approval).
@@ -195,6 +216,7 @@ class SalesOrderAcceptanceController extends Controller
                     'sales_order_id' => null,
                     'signer_name' => $validated['signer_name'],
                     'accepted_at' => optional($accepted->accepted_at)->toIso8601String(),
+                    ...$partial,
                 ], 202);
             }
 
@@ -210,6 +232,7 @@ class SalesOrderAcceptanceController extends Controller
                 'sales_order_id' => $accepted->sales_order_id !== null ? (int) $accepted->sales_order_id : null,
                 'signer_name' => $validated['signer_name'],
                 'accepted_at' => optional($accepted->accepted_at)->toIso8601String(),
+                ...$partial,
             ], $result['requires_approval'] ? 202 : 200);
         } catch (\App\Exceptions\QuotationExpiredException $e) {
             // Issue #335 (Q6): the quotation's validity lapsed while its

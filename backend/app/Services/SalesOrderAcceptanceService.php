@@ -116,7 +116,11 @@ class SalesOrderAcceptanceService
             'notes' => $quotation->notes,
             // Issue #338: optional products are listed separately (with the
             // id the customer selects them by) and are not in the totals.
+            // Issue #414: each line carries the id (and type) the customer
+            // accepts it by when accepting only part of the quotation.
             'lines' => $quotation->lines->reject(fn ($line) => (bool) $line->is_optional)->map(fn ($line) => [
+                'id' => (int) $line->id,
+                'line_type' => $line->line_type ?? 'product',
                 'description' => $line->description,
                 'quantity' => (float) $line->quantity,
                 'unit_price' => (float) $line->unit_price,
@@ -171,6 +175,121 @@ class SalesOrderAcceptanceService
         }
 
         return $lineIds;
+    }
+
+    /**
+     * Issue #414 (DX4): the lines the customer accepts when accepting only
+     * part of the quotation. Every id must be an acceptable line of THIS
+     * quotation — a priced (non note/section) line that is either part of the
+     * offer or one of the optional products selected in the same request —
+     * and at least one must be given. Returns null when the selection is not
+     * partial (absent, or every offered line accepted).
+     *
+     * @param  array<int, mixed>|null  $lineIds
+     * @param  array<int, int>  $optionalLineIds  optional lines selected in the same request
+     * @return array<int, int>|null
+     *
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    public function validateAcceptedSelection(\App\Models\Quotation $quotation, ?array $lineIds, array $optionalLineIds = []): ?array
+    {
+        if ($lineIds === null) {
+            return null;
+        }
+
+        $lineIds = array_values(array_unique(array_map('intval', $lineIds)));
+
+        $lines = $quotation->lines()->get(['id', 'line_type', 'is_optional']);
+        $priced = $lines->reject(fn ($line) => in_array($line->line_type, ['note', 'section'], true));
+        $offered = $priced->reject(fn ($line) => (bool) $line->is_optional)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $acceptable = array_merge($offered, array_values(array_intersect(
+            $priced->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $optionalLineIds,
+        )));
+
+        if ($lineIds === [] || array_diff($lineIds, $acceptable) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'accepted_line_ids' => 'Select at least one line, and only lines of this quotation.',
+            ]);
+        }
+
+        // Every offered line accepted → an ordinary full acceptance.
+        if (array_diff($offered, $lineIds) === []) {
+            return null;
+        }
+
+        return $lineIds;
+    }
+
+    /**
+     * Issue #414 (DX4): move the offered lines the customer did not accept to
+     * a new open revision of the quotation (ReplacementDraftService), then
+     * recompute both documents through the model's single totals path. A
+     * percentage header discount re-applies to each; a fixed one is split in
+     * proportion to each side's gross value so it is never granted twice.
+     *
+     * @param  array<int, int>  $acceptedLineIds
+     */
+    private function splitUnacceptedLines(\App\Models\Quotation $quotation, array $acceptedLineIds, string $signerName, string $signerEmail): \App\Models\Quotation
+    {
+        $quotation->unsetRelation('lines');
+        $lines = $quotation->lines()->get();
+
+        $priced = $lines->reject(fn ($line) => in_array($line->line_type, ['note', 'section'], true) || (bool) $line->is_optional);
+        $unaccepted = $priced->reject(fn ($line) => in_array((int) $line->id, $acceptedLineIds, true));
+        $gross = fn ($set) => (float) $set->sum(fn ($line) => (float) $line->quantity * (float) $line->unit_price);
+        $allGross = $gross($priced);
+        $remainderGross = $gross($unaccepted);
+
+        $remainder = app(ReplacementDraftService::class)->createQuotationRemainderRevision(
+            $quotation,
+            $unaccepted->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            new CorrectionRequest(
+                userId: null,
+                reasonCode: 'partial_acceptance',
+                reasonText: "Lines not accepted by {$signerName} ({$signerEmail}) on quotation {$quotation->quotation_number}",
+            ),
+        );
+
+        if ($quotation->discount_type !== 'percentage') {
+            $fixed = $quotation->discount_value !== null
+                ? (float) $quotation->discount_value
+                : (float) ($quotation->discount_amount ?? 0);
+
+            if ($fixed > 0) {
+                $remainderShare = $allGross > 0 ? round($fixed * $remainderGross / $allGross, 2) : 0.0;
+                $acceptedShare = round($fixed - $remainderShare, 2);
+
+                foreach ([[$quotation, $acceptedShare], [$remainder, $remainderShare]] as [$document, $share]) {
+                    $document->discount_amount = $share;
+                    if ($document->discount_value !== null) {
+                        $document->discount_value = $share;
+                    }
+                }
+            }
+        }
+
+        foreach ([$quotation, $remainder] as $document) {
+            $document->unsetRelation('lines');
+            $document->load('lines');
+            $document->calculateTotals();
+        }
+
+        // Issue #646 rule: an approval granted for the full quotation does not
+        // cover a different (smaller) agreement.
+        app(SalesApprovalGate::class)->invalidateStaleApprovals(
+            $quotation,
+            SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+        );
+
+        $this->logChatter(
+            $remainder,
+            'created_from_partial_acceptance',
+            "Created revision {$remainder->quotation_number} for the lines not accepted on quotation {$quotation->quotation_number}",
+            ['original_quotation_id' => (int) $quotation->id, 'line_ids' => $unaccepted->pluck('id')->map(fn ($id) => (int) $id)->all()],
+        );
+
+        return $remainder;
     }
 
     /**
@@ -296,6 +415,7 @@ class SalesOrderAcceptanceService
         ?string $ip = null,
         ?string $userAgent = null,
         array $optionalLineIds = [],
+        ?array $acceptedLineIds = null,
     ): array {
         if ($quotation->accepted_at !== null) {
             return [
@@ -326,8 +446,23 @@ class SalesOrderAcceptanceService
         // quotation (and its totals) in the same unit of work as the recorded
         // acceptance — before the prepayment amount, the approval gate and
         // the release read the total.
-        DB::transaction(function () use ($quotation, $optionalLineIds, $signerName, $signerEmail, $signatureDataUrl) {
+        // Issue #414 (DX4): a partial acceptance splits the lines the customer
+        // did not accept into a new open revision in the same unit of work,
+        // so the quotation that is accepted (and released) holds exactly the
+        // accepted lines and their recomputed totals.
+        $remainder = DB::transaction(function () use ($quotation, $optionalLineIds, $acceptedLineIds, $signerName, $signerEmail, $signatureDataUrl) {
             $this->selectOptionalLines($quotation, $optionalLineIds);
+
+            // An optional product selected in the same request is accepted too.
+            $acceptedLineIds = $this->validateAcceptedSelection(
+                $quotation,
+                $acceptedLineIds !== null ? array_merge($acceptedLineIds, $optionalLineIds) : null,
+                $optionalLineIds,
+            );
+
+            $remainder = $acceptedLineIds !== null
+                ? $this->splitUnacceptedLines($quotation, $acceptedLineIds, $signerName, $signerEmail)
+                : null;
 
             $quotation->update([
                 'accepted_at' => now(),
@@ -336,7 +471,35 @@ class SalesOrderAcceptanceService
                 'signature_data' => $signatureDataUrl,
                 'acceptance_source' => self::SOURCE_PORTAL,
             ]);
+
+            return $remainder;
         });
+
+        $quotation->unsetRelation('lines');
+        $partial = [
+            'accepted_line_ids' => $quotation->lines()
+                ->where('is_optional', false)
+                ->whereNotIn('line_type', ['note', 'section'])
+                ->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            'remainder_quotation' => $remainder,
+        ];
+
+        if ($remainder !== null) {
+            $this->logChatter(
+                $quotation,
+                'partially_accepted',
+                'Customer accepted '.count($partial['accepted_line_ids'])." line(s) of quotation {$quotation->quotation_number} via the portal — "
+                    ."the remaining lines moved to revision {$remainder->quotation_number}",
+                [
+                    'signer_name' => $signerName,
+                    'signer_email' => $signerEmail,
+                    'accepted_at' => optional($quotation->fresh()->accepted_at)->toIso8601String(),
+                    'accepted_line_ids' => $partial['accepted_line_ids'],
+                    'remainder_quotation_id' => (int) $remainder->id,
+                    'remainder_quotation_number' => $remainder->quotation_number,
+                ],
+            );
+        }
 
         $requirements = $this->quotationRequirements($quotation->fresh());
 
@@ -371,6 +534,7 @@ class SalesOrderAcceptanceService
                 'prepayment_amount' => $requirements['prepayment_amount'],
                 'approval_request' => null,
                 'already_accepted' => false,
+                ...$partial,
             ];
         }
 
@@ -423,6 +587,7 @@ class SalesOrderAcceptanceService
             'requires_payment' => false,
             'approval_request' => $result['approval_request'],
             'already_accepted' => false,
+            ...$partial,
         ];
     }
 
