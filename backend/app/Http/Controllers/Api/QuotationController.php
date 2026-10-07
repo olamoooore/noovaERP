@@ -316,6 +316,8 @@ class QuotationController extends Controller
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -501,6 +503,7 @@ class QuotationController extends Controller
                         'income_account_id' => $lineData['income_account_id'] ?? null,
                         'project_id' => $lineData['project_id'] ?? null,
                         'department_id' => $lineData['department_id'] ?? null,
+                        'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
                         'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
                         'product_notes' => $lineData['product_notes'] ?? null,
@@ -727,6 +730,8 @@ class QuotationController extends Controller
             'lines.*.income_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required_with:lines|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -826,6 +831,7 @@ class QuotationController extends Controller
                             'income_account_id' => $lineData['income_account_id'] ?? null,
                             'project_id' => $lineData['project_id'] ?? null,
                             'department_id' => $lineData['department_id'] ?? null,
+                            'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
                             'model_number' => $lineData['model_number'] ?? null,
                             'description' => $lineData['description'] ?? '',
                             'product_notes' => $lineData['product_notes'] ?? null,

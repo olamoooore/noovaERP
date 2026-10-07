@@ -23,6 +23,8 @@ class InvoiceLine extends Model
         'cost_center_id',
         'project_id',
         'department_id',
+        // Issue #332: [{analytic_account_id, percentage}] summing to 100.
+        'analytic_distribution',
         'branch_id',
         'description',
         // #1004: sanitized rich-text copy of the description (plain text stays
@@ -59,6 +61,7 @@ class InvoiceLine extends Model
     ];
 
     protected $casts = [
+        'analytic_distribution' => 'array',
         'sequence' => 'integer',
         'unit_price' => 'decimal:2',
         'base_unit_price' => 'decimal:4',

@@ -270,6 +270,8 @@ class InvoiceService
                     'cost_center_id' => $lineData['cost_center_id'] ?? null,
                     'project_id' => $lineData['project_id'] ?? null,
                     'department_id' => $lineData['department_id'] ?? null,
+                    // Issue #332: the line's analytic distribution (account + %).
+                    'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
                     'branch_id' => $lineData['branch_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
@@ -1833,13 +1835,26 @@ class InvoiceService
                     'line_id' => (int) $line->id,
                 ];
             } else {
-                $key = ($accountId ?? 'default').':'.json_encode($dimensions);
-                $groups[$key] ??= [
-                    'account_id' => $accountId,
-                    'dimensions' => $dimensions,
-                    'deferred' => false,
-                    'line_id' => null,
-                ];
+                // Issue #332: a line with an analytic distribution splits its
+                // net weight over the shares, each share landing on its own
+                // (income account, dimensions) group — the cents allocation
+                // below still adds up to the exact document total.
+                $shares = \App\Support\AnalyticDistribution::dimensionShares($line->analytic_distribution, $dimensions)
+                    ?? [['percentage' => 100.0, 'dimensions' => $dimensions]];
+
+                foreach ($shares as $share) {
+                    $key = ($accountId ?? 'default').':'.json_encode($share['dimensions']);
+                    $groups[$key] ??= [
+                        'account_id' => $accountId,
+                        'dimensions' => $share['dimensions'],
+                        'deferred' => false,
+                        'line_id' => null,
+                    ];
+
+                    $lines[] = ['key' => $key, 'weight' => $weight * $share['percentage'] / 100];
+                }
+
+                continue;
             }
 
             $lines[] = ['key' => $key, 'weight' => $weight];

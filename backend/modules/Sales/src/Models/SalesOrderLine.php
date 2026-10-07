@@ -54,6 +54,8 @@ class SalesOrderLine extends Model
         // quotation line onto the invoice line.
         'project_id',
         'department_id',
+        // Issue #332: [{analytic_account_id, percentage}] summing to 100.
+        'analytic_distribution',
         'source_line_type',
         'source_line_id',
     ];
@@ -64,6 +66,7 @@ class SalesOrderLine extends Model
     protected $appends = ['is_backordered'];
 
     protected $casts = [
+        'analytic_distribution' => 'array',
         'sequence' => 'integer',
         'quantity' => 'decimal:4',
         'quantity_allocated' => 'decimal:4',

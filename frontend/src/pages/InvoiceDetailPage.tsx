@@ -182,6 +182,13 @@ interface InvoiceLine {
   tax_amount: number
   discount_amount: number
   line_total: number
+  /** Issue #332: revenue split across analytic accounts (totals 100%). */
+  analytic_distribution?: Array<{
+    analytic_account_id: number
+    percentage: number
+    code?: string | null
+    name?: string | null
+  }> | null
 }
 
 interface Payment {
@@ -1142,7 +1149,17 @@ export function InvoiceDetailPage() {
                         '-'
                       )}
                     </TableCell>
-                    <TableCell>{line.description || '-'}</TableCell>
+                    <TableCell>
+                      <div>{line.description || '-'}</div>
+                      {line.analytic_distribution && line.analytic_distribution.length > 0 && (
+                        <div className="mt-1 text-xs text-muted-foreground" data-testid={`invoice-line-analytic-${line.id}`}>
+                          Analytic:{' '}
+                          {line.analytic_distribution
+                            .map((share) => `${share.name || share.code || `#${share.analytic_account_id}`} ${Number(share.percentage)}%`)
+                            .join(' · ')}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>

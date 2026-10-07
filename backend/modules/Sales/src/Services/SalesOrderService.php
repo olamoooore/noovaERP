@@ -318,6 +318,8 @@ class SalesOrderService
             // quotation → order → invoice alongside the income account.
             'project_id' => $lineData['project_id'] ?? null,
             'department_id' => $lineData['department_id'] ?? null,
+            // Issue #332: the line's analytic distribution travels with it.
+            'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($lineData['analytic_distribution'] ?? null),
             // Issue #151: preserve the line's invoicing policy through
             // any caller that reproduces lines (recurring orders).
             'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
@@ -1116,6 +1118,8 @@ class SalesOrderService
                     'gl_account_id' => $line->income_account_id,
                     'project_id' => $line->project_id,
                     'department_id' => $line->department_id,
+                    // Issue #332: the order line's analytic distribution.
+                    'analytic_distribution' => $line->analytic_distribution,
                 ];
             }
 

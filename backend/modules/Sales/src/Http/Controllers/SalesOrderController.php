@@ -216,6 +216,8 @@ class SalesOrderController extends Controller
             // Issue #884 (UX2): optional line analytic dimensions.
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.source_line_type' => 'nullable|string|max:60',
             'lines.*.source_line_id' => 'nullable|integer',
             'channel_reference.channel' => 'nullable|in:pos,ecommerce,admin',
@@ -423,6 +425,8 @@ class SalesOrderController extends Controller
             'lines.*.override_reason' => 'nullable|string|max:500',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',

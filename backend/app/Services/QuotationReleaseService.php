@@ -79,6 +79,8 @@ class QuotationReleaseService
                     'income_account_id' => $line->income_account_id,
                     'project_id' => $line->project_id,
                     'department_id' => $line->department_id,
+                    // Issue #332: the accepted line's analytic distribution.
+                    'analytic_distribution' => $line->analytic_distribution,
                 ], fn ($v) => $v !== null);
             })->toArray();
 

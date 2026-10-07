@@ -17,6 +17,8 @@ class QuotationLine extends Model
         'income_account_id',
         'project_id',
         'department_id',
+        // Issue #332: [{analytic_account_id, percentage}] summing to 100.
+        'analytic_distribution',
         'model_number',
         'description',
         'product_notes',
@@ -38,6 +40,7 @@ class QuotationLine extends Model
     ];
 
     protected $casts = [
+        'analytic_distribution' => 'array',
         'sequence' => 'integer',
         // #295 (Q7): decimal quantities (kg/hour/metre), like sales orders.
         'quantity' => 'decimal:4',

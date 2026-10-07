@@ -512,6 +512,8 @@ class InvoiceController extends Controller
             'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
@@ -941,6 +943,7 @@ class InvoiceController extends Controller
                     'gl_account_id' => $line['gl_account_id'] ?? null,
                     'project_id' => $line['project_id'] ?? null,
                     'department_id' => $line['department_id'] ?? null,
+                    'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($line['analytic_distribution'] ?? null),
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
                     // #1004: sanitized rich-text description.
@@ -1023,6 +1026,7 @@ class InvoiceController extends Controller
                 'income_account_id' => $line['gl_account_id'] ?? null,
                 'project_id' => $line['project_id'] ?? null,
                 'department_id' => $line['department_id'] ?? null,
+                'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($line['analytic_distribution'] ?? null),
                 'model_number' => $line['model_number'] ?? null,
                 'description' => $line['description'],
                 // #1004: sanitized rich-text description.
@@ -1408,6 +1412,9 @@ class InvoiceController extends Controller
             app(\App\Services\SalesDocumentProgress::class)->forInvoices([(int) $invoice->id])[(int) $invoice->id] ?? null,
         );
 
+        // Issue #332: name each line's analytic distribution share for display.
+        \App\Support\AnalyticDistribution::describeLines($invoice->lines);
+
         return response()->json($invoice);
     }
 
@@ -1509,6 +1516,8 @@ class InvoiceController extends Controller
             'lines.*.gl_account_id' => 'nullable|exists:chart_of_accounts,id',
             'lines.*.project_id' => 'nullable|integer',
             'lines.*.department_id' => 'nullable|integer',
+            // Issue #332: per-line analytic distribution (account + %, totals 100).
+            ...\App\Support\AnalyticDistribution::lineRules(),
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             // #1004: sanitized rich-text copy of the description (bold/italic/underline/colour).
@@ -1716,6 +1725,7 @@ class InvoiceController extends Controller
                             'gl_account_id' => $line['gl_account_id'] ?? null,
                             'project_id' => $line['project_id'] ?? null,
                             'department_id' => $line['department_id'] ?? null,
+                            'analytic_distribution' => \App\Support\AnalyticDistribution::normalize($line['analytic_distribution'] ?? null),
                             'model_number' => $line['model_number'] ?? null,
                             'description' => $line['description'],
                             // #1004: sanitized rich-text description.
