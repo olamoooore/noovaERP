@@ -119,9 +119,12 @@ class CustomerContactSyncService
             // #1023: the caller's row may be stale — a W6 repair or linking
             // run can re-point the contact after the request loaded it. Re-read
             // the link under a row lock so the person is resolved from the
-            // current value and a concurrent run waits for this save.
+            // current value. A run that takes the same lock (contact rows
+            // first, as this save does) is serialised with the save.
+            // withTrashed(): a contact soft-deleted meanwhile keeps its link
+            // instead of reading as unlinked and being matched again.
             if ($contact->exists) {
-                $contact->setAttribute('core_contact_uuid', CustomerContact::whereKey($contact->getKey())->lockForUpdate()->value('core_contact_uuid'));
+                $contact->setAttribute('core_contact_uuid', CustomerContact::withTrashed()->whereKey($contact->getKey())->lockForUpdate()->value('core_contact_uuid'));
                 $contact->syncOriginalAttribute('core_contact_uuid');
             }
 

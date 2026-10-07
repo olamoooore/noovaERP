@@ -134,6 +134,59 @@ class Issue1023StaleContactSaveTest extends TenantTestCase
         $this->assertSame($peopleBefore + 1, DB::table('core_contacts')->where('contact_type', 'individual')->count(), 'Only the run created a person; the stale save created none.');
     }
 
+    /**
+     * Hostile review of the fix: the re-read must take a ROW LOCK (so a run
+     * that locks the contact row is serialised with the save), not just read.
+     *
+     * Each test runs inside one uncommitted transaction (RefreshDatabase), so
+     * a second connection cannot see the rows to contend for them. Instead
+     * the lock is read from the row itself: `SELECT … FOR UPDATE` stamps the
+     * locking transaction's id into the row's `xmax` without writing it. The
+     * save sends unchanged values, so no UPDATE runs (`updated_at` and the
+     * row's own values stay the same) — a non-zero `xmax` can then only come
+     * from a row lock: nothing in this flow writes a row that references the
+     * contact (which would take a key-share lock). Without `lockForUpdate()`
+     * `xmax` stays 0 (checked: the test fails with the lock removed).
+     */
+    public function test_the_save_locks_the_contact_row_without_writing_it(): void
+    {
+        [$clinic] = $this->createCustomer('Bayu Clinic');
+        $contactId = (int) $this->postJson("/api/v1/customers/{$clinic}/contacts", ['name' => 'Tan', 'email' => 'tan@bayu.test'])->assertCreated()->json('id');
+        // A first save settles every derived column, so the next identical
+        // save writes nothing.
+        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$contactId}", ['name' => 'Tan', 'email' => 'tan@bayu.test'])->assertSuccessful();
+        $before = DB::selectOne('select updated_at from customer_contacts where id = ?', [$contactId]);
+
+        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$contactId}", ['name' => 'Tan', 'email' => 'tan@bayu.test'])->assertSuccessful();
+
+        $after = DB::selectOne('select updated_at, xmax::text as xmax from customer_contacts where id = ?', [$contactId]);
+        $this->assertSame((string) $before->updated_at, (string) $after->updated_at, 'Precondition: the second save writes nothing to the contact row.');
+        $this->assertNotSame('0', $after->xmax, 'The save locked the contact row (FOR UPDATE stamps xmax).');
+    }
+
+    /**
+     * Hostile review of the fix: a contact soft-deleted between the load and
+     * the re-read must keep its link. The default scope would hide the row,
+     * read the link as null, and match or create another person for it.
+     */
+    public function test_a_contact_deleted_during_the_save_keeps_its_link(): void
+    {
+        [$clinic] = $this->createCustomer('Bayu Clinic');
+        $created = $this->postJson("/api/v1/customers/{$clinic}/contacts", ['name' => 'Lim'])->assertCreated();
+        $limId = (int) $created->json('id');
+        $limPerson = (string) $created->json('core_contact_uuid');
+        $peopleBefore = DB::table('core_contacts')->where('contact_type', 'individual')->count();
+
+        $this->whenLoaded($limId, function () use ($limId) {
+            DB::table('customer_contacts')->where('id', $limId)->update(['deleted_at' => now()]);
+        });
+
+        $this->putJson("/api/v1/customers/{$clinic}/contacts/{$limId}", ['name' => 'Lim', 'job_title' => 'Admin'])->assertSuccessful();
+
+        $this->assertSame($limPerson, DB::table('customer_contacts')->where('id', $limId)->value('core_contact_uuid'), 'A contact deleted mid-save keeps its person link.');
+        $this->assertSame($peopleBefore, DB::table('core_contacts')->where('contact_type', 'individual')->count(), 'No person is created for a deleted contact.');
+    }
+
     /** Runs $change once, the first time the request loads this contact. */
     private function whenLoaded(int $contactId, \Closure $change): void
     {
