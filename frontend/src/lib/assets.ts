@@ -1,1 +1,1 @@
-export const NOOVAERP_LOGO_URL = '/noovaerplogo.png'
+export const NOOVAERP_LOGO_URL = '/noovaerp-logo.png'

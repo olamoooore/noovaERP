@@ -15,7 +15,7 @@ class FixWebsiteBuilderUrls extends Command
         $versions = DB::table('wb_page_versions')
             ->where(function ($q) {
                 $q->where('content', 'LIKE', '%/sites/%')
-                  ->orWhere('content', 'LIKE', '%noovaerplogo.png%');
+                  ->orWhere('content', 'LIKE', '%noovaerp-logo.png%');
             })
             ->get();
 
@@ -43,8 +43,8 @@ class FixWebsiteBuilderUrls extends Command
                 // Rewrite absolute domain URLs: https://domain.com/sites/slug → /w/slug
                 $content['html'] = preg_replace('#https?://[^/\'"\s]+/sites/([a-zA-Z0-9_-]+)#', '/w/$1', $content['html']);
 
-                // Fix relative noovaerplogo.png path
-                $content['html'] = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $content['html']);
+                // Fix relative noovaerp-logo.png path
+                $content['html'] = str_replace('noovaerp-logo.png', '/storage/noovaerp-logo.png', $content['html']);
 
                 if ($content['html'] !== $original) {
                     $changed = true;
@@ -54,7 +54,7 @@ class FixWebsiteBuilderUrls extends Command
             // Fix header_js field
             if (!empty($content['header_js'])) {
                 $original = $content['header_js'];
-                $content['header_js'] = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $content['header_js']);
+                $content['header_js'] = str_replace('noovaerp-logo.png', '/storage/noovaerp-logo.png', $content['header_js']);
                 if ($content['header_js'] !== $original) {
                     $changed = true;
                 }
@@ -63,7 +63,7 @@ class FixWebsiteBuilderUrls extends Command
             // Fix body_js field
             if (!empty($content['body_js'])) {
                 $original = $content['body_js'];
-                $content['body_js'] = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $content['body_js']);
+                $content['body_js'] = str_replace('noovaerp-logo.png', '/storage/noovaerp-logo.png', $content['body_js']);
                 if ($content['body_js'] !== $original) {
                     $changed = true;
                 }
