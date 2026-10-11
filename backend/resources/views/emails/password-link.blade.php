@@ -25,7 +25,7 @@
 
                 <p style="margin:24px 0;">
                     <a href="{{ $url }}"
-                       style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:999px;">
+                       style="display:inline-block;background:#2E8B74;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 20px;border-radius:999px;">
                         {{ $variant === 'invite' ? 'Set my password' : 'Choose a new password' }}
                     </a>
                 </p>
@@ -33,7 +33,7 @@
                 <p style="margin:0 0 8px;font-size:12px;color:#64748b;">
                     If the button doesn't work, copy this link into your browser:
                 </p>
-                <p style="margin:0;font-size:12px;word-break:break-all;color:#2563eb;">{{ $url }}</p>
+                <p style="margin:0;font-size:12px;word-break:break-all;color:#2E8B74;">{{ $url }}</p>
 
                 @if ($variant !== 'invite')
                     <p style="margin:24px 0 0;font-size:12px;color:#64748b;">

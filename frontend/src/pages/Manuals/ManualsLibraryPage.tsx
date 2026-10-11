@@ -78,7 +78,7 @@ function cardAccent(accent: ManualCard['accent']) {
   if (accent === 'inventory') {
     return {
       iconWrap: 'border-blue-200/70 bg-blue-50 text-blue-700',
-      button: 'bg-blue-700 text-white hover:bg-blue-800',
+      button: 'bg-primary text-primary-foreground hover:bg-primary/90',
       secondary: 'bg-blue-50 text-blue-700',
       status: 'bg-blue-50 text-blue-700',
     }
@@ -150,9 +150,9 @@ function ManualGridCard({ manual }: { manual: ManualCard }) {
 
 export function ManualsLibraryPage() {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(29,78,216,0.10),transparent_26%),radial-gradient(circle_at_top_right,rgba(190,24,93,0.08),transparent_24%),linear-gradient(180deg,#f9fbfd_0%,#eff3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(46,139,116,0.10),transparent_26%),radial-gradient(circle_at_top_right,rgba(190,24,93,0.08),transparent_24%),linear-gradient(180deg,#f9fbfd_0%,#eff3f8_100%)] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#0f172a_0%,#1e3a8a_55%,#be123c_100%)] px-8 py-10 text-white shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:px-10">
+        <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#0f172a_0%,#1E5C4C_55%,#be123c_100%)] px-8 py-10 text-white shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:px-10">
           <span className="mb-3 inline-block text-xs font-semibold uppercase tracking-[0.18em] text-white/80">
             NoovaERP Documentation
           </span>

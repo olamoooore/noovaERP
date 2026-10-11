@@ -495,7 +495,7 @@ export function POSLayout() {
   <DialogContent className="w-[96vw] max-w-none sm:max-w-[860px] max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
           {/* Header */}
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 pt-6 pb-5 text-white">
-            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#1e40af]/10 blur-2xl" />
+            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#2E8B74]/10 blur-2xl" />
             <div className="relative flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] bg-rose-500/15 ring-1 ring-rose-400/20">
                 <Icon icon="solar:logout-2-bold-duotone" className="h-6 w-6 text-rose-400" />

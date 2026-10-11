@@ -200,17 +200,17 @@ export interface DesignTokens {
 export const designTokens: DesignTokens = {
   colors: {
     primary: {
-      50: '#f0f9ff',
-      100: '#e0f2fe',
-      200: '#bae6fd',
-      300: '#7dd3fc',
-      400: '#38bdf8',
-      500: '#0ea5e9', // Base primary color
-      600: '#0284c7',
-      700: '#0369a1',
-      800: '#075985',
-      900: '#0c4a6e',
-      950: '#082f49',
+      50: '#effaf6',
+      100: '#d6f1e7',
+      200: '#afe3d2',
+      300: '#7fceb8',
+      400: '#52b39b',
+      500: '#2e8b74', // Base primary color
+      600: '#25735f',
+      700: '#1e5c4c',
+      800: '#194a3e',
+      900: '#153d33',
+      950: '#0a231d',
     },
     secondary: {
       50: '#f8fafc',

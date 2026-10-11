@@ -1754,7 +1754,7 @@ export function POSTerminal() {
   return (
     <>
       <OfflineBanner isOnline={isOnline} />
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(30,64,175,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(46,139,116,0.12),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(61,163,130,0.10),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_100%)]">
       <div className="flex min-h-0 flex-1 flex-row-reverse gap-3 overflow-hidden p-3 xl:gap-4 xl:p-4">
         <section className="flex min-h-0 min-w-0 basis-0 flex-1 flex-col overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white/95 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
           <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] px-4 py-4 xl:px-5">
@@ -1834,7 +1834,7 @@ export function POSTerminal() {
                 className={cn(
                   'h-8 shrink-0 rounded-full px-4 text-xs font-medium shadow-sm',
                   selectedCategory === null
-                    ? 'bg-[#1e40af] text-white hover:bg-[#1e3a8a]'
+                    ? 'bg-[#2E8B74] text-white hover:bg-[#1E5C4C]'
                     : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                 )}
                 onClick={() => setSelectedCategory(null)}
@@ -2013,7 +2013,7 @@ export function POSTerminal() {
             className={cn(
               'h-14 w-full justify-start gap-3 rounded-[1.2rem] border px-4 text-left shadow-sm transition',
               selectedCustomer
-                ? 'border-[#1e40af] bg-[linear-gradient(135deg,#1e40af_0%,#2563eb_100%)] text-white hover:bg-[linear-gradient(135deg,#1e3a8a_0%,#1d4ed8_100%)]'
+                ? 'border-[#2E8B74] bg-[linear-gradient(135deg,#2E8B74_0%,#3DA382_100%)] text-white hover:bg-[linear-gradient(135deg,#1E5C4C_0%,#25735F_100%)]'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             )}
             onClick={() => setShowCustomerDialog(true)}
@@ -2422,7 +2422,7 @@ export function POSTerminal() {
           {/* PAY — primary full-width action */}
           <Button
             size="lg"
-            className="h-14 w-full rounded-[1.2rem] bg-[linear-gradient(135deg,#1e40af_0%,#2563eb_100%)] text-base font-semibold text-white shadow-[0_18px_35px_rgba(30,64,175,0.28)] hover:bg-[linear-gradient(135deg,#1e3a8a_0%,#1d4ed8_100%)]"
+            className="h-14 w-full rounded-[1.2rem] bg-[linear-gradient(135deg,#2E8B74_0%,#3DA382_100%)] text-base font-semibold text-white shadow-[0_18px_35px_rgba(46,139,116,0.28)] hover:bg-[linear-gradient(135deg,#1E5C4C_0%,#25735F_100%)]"
             onClick={() => setShowCheckoutDialog(true)}
             disabled={cart.length === 0}
           >
@@ -2714,7 +2714,7 @@ export function POSTerminal() {
         <DialogContent className="w-[96vw] max-w-none sm:max-w-[860px] max-h-[90vh] overflow-hidden rounded-[1.5rem] border-0 p-0 shadow-[0_24px_64px_rgba(15,23,42,0.18)]">
           {/* Header */}
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 pt-6 pb-5 text-white">
-            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#1e40af]/10 blur-2xl" />
+            <div className="absolute right-4 top-4 h-24 w-24 rounded-full bg-[#2E8B74]/10 blur-2xl" />
             <div className="relative flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] bg-rose-500/15 ring-1 ring-rose-400/20">
                 <Icon icon="solar:logout-2-bold-duotone" className="h-6 w-6 text-rose-400" />

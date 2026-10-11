@@ -92,7 +92,7 @@ const buildReportDocument = async (
   // ── Header ────────────────────────────────────────────────────────────────
   const header = make(
     'div',
-    'display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid #2563eb;padding-bottom:14px;margin-bottom:16px;',
+    'display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid #2E8B74;padding-bottom:14px;margin-bottom:16px;',
   );
 
   // Tenant branding: logo when it actually loads, otherwise the tenant company
@@ -106,7 +106,7 @@ const buildReportDocument = async (
     logo.style.cssText = 'height:64px;max-width:280px;object-fit:contain;margin-bottom:8px;';
     left.appendChild(logo);
   } else if (companyName) {
-    left.appendChild(make('div', 'font-size:20px;font-weight:bold;color:#1e40af;margin-top:6px;', companyName));
+    left.appendChild(make('div', 'font-size:20px;font-weight:bold;color:#2E8B74;margin-top:6px;', companyName));
   }
   header.appendChild(left);
 

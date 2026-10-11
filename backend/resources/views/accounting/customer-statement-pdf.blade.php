@@ -59,7 +59,7 @@
         }
         .summary-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.8px; color: #6b7280; }
         .summary-value { font-size: 13px; font-weight: bold; color: #111827; margin-top: 2px; }
-        .summary-value.accent { color: #1d4ed8; }
+        .summary-value.accent { color: #2E8B74; }
         .summary-value.danger { color: #b91c1c; }
 
         /* Transactions */
