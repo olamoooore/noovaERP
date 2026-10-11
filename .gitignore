@@ -136,7 +136,7 @@ Template-PDFs/
 # Local-only working files (open-source repo: kept on disk, never pushed)
 # ---------------------------------------------------------------------------
 *.md
-!README.md
+!/README.md
 docs/
 deployment/
 .claude/
