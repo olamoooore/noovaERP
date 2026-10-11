@@ -80,15 +80,15 @@ const MODULES = [
     icon: 'solar:box-bold-duotone',
     name: 'Inventory & Warehousing',
     desc: 'Real-time stock, multi-warehouse operations, purchase orders, transfers and movement-level traceability.',
-    accent: 'text-sky-400',
-    glow: 'from-sky-500/20',
+    accent: 'text-emerald-400',
+    glow: 'from-emerald-500/20',
   },
   {
     icon: 'solar:shop-bold-duotone',
     name: 'Retail & POS',
     desc: 'Offline-first point of sale with terminals, customer displays, barcode workflows and approval queues.',
-    accent: 'text-violet-400',
-    glow: 'from-violet-500/20',
+    accent: 'text-emerald-400',
+    glow: 'from-emerald-500/20',
   },
   {
     icon: 'solar:users-group-two-rounded-bold-duotone',
@@ -108,8 +108,8 @@ const MODULES = [
     icon: 'solar:document-text-bold-duotone',
     name: 'OCR & Documents',
     desc: 'Capture invoices and receipts with AI-assisted extraction and review queues that feed your ledger.',
-    accent: 'text-cyan-400',
-    glow: 'from-cyan-500/20',
+    accent: 'text-teal-400',
+    glow: 'from-teal-500/20',
   },
   {
     icon: 'solar:sledgehammer-bold-duotone',
@@ -122,8 +122,8 @@ const MODULES = [
     icon: 'solar:cpu-bolt-bold-duotone',
     name: 'IoT & Devices',
     desc: 'Connect devices and sensors into your operations hub with live telemetry and device management.',
-    accent: 'text-indigo-400',
-    glow: 'from-indigo-500/20',
+    accent: 'text-teal-400',
+    glow: 'from-teal-500/20',
   },
   {
     icon: 'solar:chart-2-bold-duotone',
@@ -211,7 +211,7 @@ export function LandingPage() {
   }, [])
 
   return (
-    <div className="min-h-screen scroll-smooth bg-[#070b14] font-sans text-slate-100 antialiased [text-rendering:optimizeLegibility]">
+    <div className="min-h-screen scroll-smooth bg-[#04120d] font-sans text-slate-100 antialiased [text-rendering:optimizeLegibility]">
       <style>{`
         @keyframes landing-float {
           0%, 100% { transform: translateY(0px); }
@@ -237,13 +237,13 @@ export function LandingPage() {
       <header
         className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
           scrolled
-            ? 'border-b border-white/[0.06] bg-[#070b14]/85 backdrop-blur-xl'
+            ? 'border-b border-white/[0.06] bg-[#04120d]/85 backdrop-blur-xl'
             : 'border-b border-transparent bg-transparent'
         }`}
       >
         <nav className="mx-auto flex h-[68px] w-full max-w-7xl items-center justify-between px-5 sm:px-8">
           <a href="#top" className="flex items-center">
-            <span className="flex h-9 items-center rounded-lg bg-white px-2 shadow-[0_0_24px_rgba(56,189,248,0.25)]">
+            <span className="flex h-9 items-center rounded-lg bg-white px-2 shadow-[0_0_24px_rgba(82,179,155,0.30)]">
               <img src={NOOVAERP_LOGO_URL} alt="NoovaERP" className="h-6 w-auto object-contain" />
             </span>
           </a>
@@ -290,7 +290,7 @@ export function LandingPage() {
         </nav>
 
         {mobileOpen && (
-          <div className="border-t border-white/[0.06] bg-[#070b14]/95 px-5 py-4 backdrop-blur-xl md:hidden">
+          <div className="border-t border-white/[0.06] bg-[#04120d]/95 px-5 py-4 backdrop-blur-xl md:hidden">
             <div className="flex flex-col gap-1">
               {NAV_LINKS.map((link) => (
                 <a
@@ -328,8 +328,8 @@ export function LandingPage() {
           className="pointer-events-none absolute inset-0"
           style={{
             backgroundImage:
-              'radial-gradient(1200px 600px at 70% -20%, rgba(56,189,248,0.16), transparent 60%),' +
-              'radial-gradient(900px 500px at 10% 10%, rgba(99,102,241,0.14), transparent 60%),' +
+              'radial-gradient(1200px 600px at 70% -20%, rgba(82,179,155,0.18), transparent 60%),' +
+              'radial-gradient(900px 500px at 10% 10%, rgba(61,163,130,0.16), transparent 60%),' +
               'radial-gradient(800px 500px at 50% 110%, rgba(16,185,129,0.10), transparent 60%)',
           }}
         />
@@ -362,7 +362,7 @@ export function LandingPage() {
             <Reveal delay={80}>
               <h1 className="text-balance text-[44px] font-semibold leading-[1.04] tracking-tight text-white sm:text-[64px]">
                 Run your entire business
-                <span className="block bg-gradient-to-r from-sky-300 via-indigo-300 to-emerald-300 bg-clip-text text-transparent">
+                <span className="block bg-gradient-to-r from-emerald-300 via-teal-300 to-emerald-300 bg-clip-text text-transparent">
                   on one platform.
                 </span>
               </h1>
@@ -380,7 +380,7 @@ export function LandingPage() {
               <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Link
                   to="/signup"
-                  className="group inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-7 text-[15px] font-semibold text-slate-950 shadow-[0_0_40px_rgba(125,211,252,0.25)] transition hover:bg-slate-200 sm:w-auto"
+                  className="group inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-7 text-[15px] font-semibold text-slate-950 shadow-[0_0_40px_rgba(82,179,155,0.35)] transition hover:bg-slate-200 sm:w-auto"
                 >
                   Start free trial
                   <Icon
@@ -392,7 +392,7 @@ export function LandingPage() {
                   to="/login"
                   className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-7 text-[15px] font-medium text-white backdrop-blur transition hover:border-white/30 hover:bg-white/[0.08] sm:w-auto"
                 >
-                  <Icon icon="solar:login-3-bold-duotone" className="h-[18px] w-[18px] text-sky-300" />
+                  <Icon icon="solar:login-3-bold-duotone" className="h-[18px] w-[18px] text-emerald-300" />
                   Sign in to workspace
                 </Link>
               </div>
@@ -405,11 +405,11 @@ export function LandingPage() {
           {/* -------- Product preview mockup -------- */}
           <Reveal delay={320} className="relative mx-auto mt-16 max-w-5xl sm:mt-20">
             <div
-              className="pointer-events-none absolute -inset-x-8 -top-10 h-40 rounded-full bg-sky-500/20 blur-[90px]"
+              className="pointer-events-none absolute -inset-x-8 -top-10 h-40 rounded-full bg-emerald-500/20 blur-[90px]"
               style={{ animation: 'landing-pulse-glow 5s ease-in-out infinite' }}
             />
-            <div className="relative rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] p-2 shadow-[0_40px_120px_-20px_rgba(2,6,23,0.9)] backdrop-blur">
-              <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-[#0b1120]">
+            <div className="relative rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] p-2 shadow-[0_40px_120px_-20px_rgba(2,16,11,0.9)] backdrop-blur">
+              <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-[#081c16]">
                 {/* window chrome */}
                 <div className="flex items-center justify-between border-b border-white/[0.06] bg-white/[0.02] px-4 py-2.5">
                   <div className="flex items-center gap-1.5">
@@ -429,7 +429,7 @@ export function LandingPage() {
                   {/* sidebar */}
                   <div className="hidden border-r border-white/[0.06] p-3 sm:block">
                     <div className="mb-3 flex items-center gap-2 rounded-lg bg-white/[0.04] px-2.5 py-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-sky-400 to-indigo-500 text-[10px] font-bold text-white">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-emerald-400 to-teal-500 text-[10px] font-bold text-white">
                         A
                       </span>
                       <div>
@@ -450,7 +450,7 @@ export function LandingPage() {
                         key={item.label}
                         className={`mb-0.5 flex items-center gap-2 rounded-md px-2.5 py-[7px] text-[10.5px] ${
                           item.active
-                            ? 'bg-sky-500/15 font-medium text-sky-300'
+                            ? 'bg-emerald-500/15 font-medium text-emerald-300'
                             : 'text-slate-500'
                         }`}
                       >
@@ -476,8 +476,8 @@ export function LandingPage() {
                     <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                       {[
                         { label: 'Revenue MTD', value: '$248,920', trend: '+12.4%', up: true, icon: 'solar:graph-up-bold-duotone', color: 'text-emerald-400' },
-                        { label: 'Open invoices', value: '$86,140', trend: '-8.2%', up: true, icon: 'solar:bill-list-bold-duotone', color: 'text-sky-400' },
-                        { label: 'Stock value', value: '$1.2M', trend: '+3.1%', up: true, icon: 'solar:box-bold-duotone', color: 'text-violet-400' },
+                        { label: 'Open invoices', value: '$86,140', trend: '-8.2%', up: true, icon: 'solar:bill-list-bold-duotone', color: 'text-emerald-400' },
+                        { label: 'Stock value', value: '$1.2M', trend: '+3.1%', up: true, icon: 'solar:box-bold-duotone', color: 'text-emerald-400' },
                         { label: 'POS sales today', value: '$14,380', trend: '+21.7%', up: true, icon: 'solar:shop-bold-duotone', color: 'text-amber-400' },
                       ].map((kpi) => (
                         <div key={kpi.label} className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-3">
@@ -500,7 +500,7 @@ export function LandingPage() {
                         </div>
                         <div className="flex h-[88px] items-end gap-1.5">
                           {[38, 52, 44, 60, 55, 72, 64, 78, 70, 86, 80, 94].map((h, i) => (
-                            <div key={i} className="flex-1 rounded-t-sm bg-gradient-to-t from-sky-500/30 to-sky-400/80" style={{ height: `${h}%` }} />
+                            <div key={i} className="flex-1 rounded-t-sm bg-gradient-to-t from-emerald-500/30 to-emerald-400/80" style={{ height: `${h}%` }} />
                           ))}
                         </div>
                       </div>
@@ -509,9 +509,9 @@ export function LandingPage() {
                         <div className="mb-2.5 text-[10.5px] font-medium text-slate-300">Live activity</div>
                         {[
                           { icon: 'solar:check-circle-bold', text: 'Invoice INV-2041 paid', time: '2m', color: 'text-emerald-400' },
-                          { icon: 'solar:box-bold', text: 'PO-118 received at WH-2', time: '9m', color: 'text-sky-400' },
+                          { icon: 'solar:box-bold', text: 'PO-118 received at WH-2', time: '9m', color: 'text-emerald-400' },
                           { icon: 'solar:shop-bold', text: 'Register 3 opened shift', time: '14m', color: 'text-amber-400' },
-                          { icon: 'solar:document-text-bold', text: 'OCR matched 6 receipts', time: '31m', color: 'text-violet-400' },
+                          { icon: 'solar:document-text-bold', text: 'OCR matched 6 receipts', time: '31m', color: 'text-emerald-400' },
                         ].map((row) => (
                           <div key={row.text} className="flex items-center gap-2 border-b border-white/[0.04] py-[7px] last:border-0">
                             <Icon icon={row.icon} className={`h-3 w-3 shrink-0 ${row.color}`} />
@@ -528,7 +528,7 @@ export function LandingPage() {
 
             {/* floating chips */}
             <div
-              className="absolute -left-4 top-1/4 hidden rounded-xl border border-white/10 bg-[#0d1426]/90 px-4 py-3 shadow-2xl backdrop-blur lg:block"
+              className="absolute -left-4 top-1/4 hidden rounded-xl border border-white/10 bg-[#0b241c]/90 px-4 py-3 shadow-2xl backdrop-blur lg:block"
               style={{ animation: 'landing-float 7s ease-in-out infinite' }}
             >
               <div className="flex items-center gap-2.5">
@@ -542,12 +542,12 @@ export function LandingPage() {
               </div>
             </div>
             <div
-              className="absolute -right-4 top-2/3 hidden rounded-xl border border-white/10 bg-[#0d1426]/90 px-4 py-3 shadow-2xl backdrop-blur lg:block"
+              className="absolute -right-4 top-2/3 hidden rounded-xl border border-white/10 bg-[#0b241c]/90 px-4 py-3 shadow-2xl backdrop-blur lg:block"
               style={{ animation: 'landing-float 8s ease-in-out 1.2s infinite' }}
             >
               <div className="flex items-center gap-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-400/15">
-                  <Icon icon="solar:magic-stick-3-bold-duotone" className="h-5 w-5 text-sky-400" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-400/15">
+                  <Icon icon="solar:magic-stick-3-bold-duotone" className="h-5 w-5 text-emerald-400" />
                 </span>
                 <div>
                   <div className="text-[11px] font-semibold text-white">AI assistant</div>
@@ -561,7 +561,7 @@ export function LandingPage() {
           <Reveal delay={120}>
             <div className="mx-auto mt-16 grid max-w-4xl grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.06] sm:grid-cols-4">
               {HERO_STATS.map((stat) => (
-                <div key={stat.label} className="bg-[#0a0f1d] px-6 py-6 text-center">
+                <div key={stat.label} className="bg-[#071812] px-6 py-6 text-center">
                   <div className="text-[26px] font-semibold tracking-tight text-white">{stat.value}</div>
                   <div className="mt-1 text-[12px] text-slate-500">{stat.label}</div>
                 </div>
@@ -574,8 +574,8 @@ export function LandingPage() {
       {/* ============================ MARQUEE ============================ */}
       <section className="border-y border-white/[0.05] bg-white/[0.015] py-5">
         <div className="landing-marquee relative overflow-hidden">
-          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-[#070b14] to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-[#070b14] to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-[#04120d] to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-[#04120d] to-transparent" />
           <div className="landing-marquee-track flex w-max items-center gap-10 px-5">
             {[0, 1].map((dup) => (
               <div key={dup} className="flex items-center gap-10">
@@ -601,12 +601,12 @@ export function LandingPage() {
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            backgroundImage: 'radial-gradient(900px 500px at 85% 20%, rgba(99,102,241,0.10), transparent 60%)',
+            backgroundImage: 'radial-gradient(900px 500px at 85% 20%, rgba(61,163,130,0.12), transparent 60%)',
           }}
         />
         <div className="relative mx-auto w-full max-w-7xl px-5 sm:px-8">
           <Reveal className="mx-auto max-w-2xl text-center">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.2em] text-sky-400">The platform</span>
+            <span className="text-[12px] font-semibold uppercase tracking-[0.2em] text-emerald-400">The platform</span>
             <h2 className="mt-4 text-balance text-[34px] font-semibold leading-[1.1] tracking-tight text-white sm:text-[44px]">
               Everything connected. Nothing duplicated.
             </h2>
@@ -620,9 +620,9 @@ export function LandingPage() {
             {/* Large card */}
             <Reveal className="lg:col-span-2">
               <div className="group relative h-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-white/[0.015] p-8 transition duration-300 hover:border-white/[0.16]">
-                <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl transition duration-500 group-hover:bg-sky-500/20" />
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-400/10">
-                  <Icon icon="solar:layers-minimalistic-bold-duotone" className="h-6 w-6 text-sky-400" />
+                <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl transition duration-500 group-hover:bg-emerald-500/20" />
+                <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-400/10">
+                  <Icon icon="solar:layers-minimalistic-bold-duotone" className="h-6 w-6 text-emerald-400" />
                 </span>
                 <h3 className="mt-5 text-[22px] font-semibold tracking-tight text-white">
                   A single source of truth for your whole company
@@ -673,9 +673,9 @@ export function LandingPage() {
             {[
               {
                 icon: 'solar:magic-stick-3-bold-duotone',
-                accent: 'text-violet-400',
-                border: 'border-violet-400/20',
-                bg: 'bg-violet-400/10',
+                accent: 'text-emerald-400',
+                border: 'border-emerald-400/20',
+                bg: 'bg-emerald-400/10',
                 title: 'AI built into the workflow',
                 desc: 'OCR document capture, close-cycle findings, demand forecasting and a business-aware assistant.',
               },
@@ -689,9 +689,9 @@ export function LandingPage() {
               },
               {
                 icon: 'solar:code-square-bold-duotone',
-                accent: 'text-cyan-400',
-                border: 'border-cyan-400/20',
-                bg: 'bg-cyan-400/10',
+                accent: 'text-teal-400',
+                border: 'border-teal-400/20',
+                bg: 'bg-teal-400/10',
                 title: 'Open and extensible',
                 desc: 'A clean API surface, feature gates and a website builder for storefronts and customer portals.',
               },
@@ -816,7 +816,7 @@ export function LandingPage() {
       <section id="why" className="border-t border-white/[0.05] py-24 sm:py-32">
         <div className="mx-auto w-full max-w-7xl px-5 sm:px-8">
           <Reveal className="mx-auto max-w-2xl text-center">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.2em] text-violet-400">Why NoovaERP</span>
+            <span className="text-[12px] font-semibold uppercase tracking-[0.2em] text-emerald-400">Why NoovaERP</span>
             <h2 className="mt-4 text-balance text-[34px] font-semibold leading-[1.1] tracking-tight text-white sm:text-[44px]">
               Built for teams who outgrew their tools.
             </h2>
@@ -826,8 +826,8 @@ export function LandingPage() {
             {WHY_POINTS.map((point, i) => (
               <Reveal key={point.title} delay={(i % 2) * 80}>
                 <div className="flex h-full gap-5 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-7 transition duration-300 hover:border-white/[0.14]">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-violet-400/15 bg-violet-400/10">
-                    <Icon icon={point.icon} className="h-6 w-6 text-violet-400" />
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-emerald-400/15 bg-emerald-400/10">
+                    <Icon icon={point.icon} className="h-6 w-6 text-emerald-400" />
                   </span>
                   <div>
                     <h3 className="text-[17px] font-semibold tracking-tight text-white">{point.title}</h3>
@@ -847,14 +847,14 @@ export function LandingPage() {
           style={{
             backgroundImage:
               'radial-gradient(700px 400px at 50% 0%, rgba(56,189,248,0.14), transparent 65%),' +
-              'radial-gradient(600px 350px at 50% 100%, rgba(99,102,241,0.10), transparent 65%)',
+              'radial-gradient(600px 350px at 50% 100%, rgba(61,163,130,0.12), transparent 65%)',
           }}
         />
         <div className="relative mx-auto max-w-3xl px-5 text-center sm:px-8">
           <Reveal>
             <h2 className="text-balance text-[36px] font-semibold leading-[1.08] tracking-tight text-white sm:text-[52px]">
               Your operations deserve
-              <span className="block bg-gradient-to-r from-sky-300 via-indigo-300 to-emerald-300 bg-clip-text text-transparent">
+              <span className="block bg-gradient-to-r from-emerald-300 via-teal-300 to-emerald-300 bg-clip-text text-transparent">
                 a real operating system.
               </span>
             </h2>
@@ -882,7 +882,7 @@ export function LandingPage() {
       </section>
 
       {/* ============================ FOOTER ============================ */}
-      <footer className="border-t border-white/[0.06] bg-[#05080f]">
+      <footer className="border-t border-white/[0.06] bg-[#030d0a]">
         <div className="mx-auto w-full max-w-7xl px-5 py-14 sm:px-8">
           <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
             <div>
@@ -902,7 +902,7 @@ export function LandingPage() {
                 </span>
                 <span className="h-3 w-px bg-white/10" />
                 <span className="inline-flex items-center gap-1.5">
-                  <Icon icon="solar:server-square-cloud-bold-duotone" className="h-3.5 w-3.5 text-sky-500" />
+                  <Icon icon="solar:server-square-cloud-bold-duotone" className="h-3.5 w-3.5 text-emerald-500" />
                   Tenant-isolated
                 </span>
               </div>

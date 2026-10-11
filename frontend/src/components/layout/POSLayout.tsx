@@ -343,13 +343,13 @@ export function POSLayout() {
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       {!isCustomerDisplayScreen && <OfflineBanner isOnline={isOnline} />}
       {!isCustomerDisplayScreen && (
-        <header className="flex h-16 items-center justify-between border-b border-black/5 bg-[linear-gradient(90deg,hsl(var(--primary))_0%,hsl(223_58%_34%)_100%)] px-4 text-primary-foreground shadow-[0_10px_30px_rgba(15,23,42,0.10)]">
+        <header className="flex h-16 items-center justify-between border-b border-black/5 bg-[linear-gradient(90deg,hsl(var(--primary))_0%,hsl(165_50%_28%)_100%)] px-4 text-primary-foreground shadow-[0_10px_30px_rgba(4,18,13,0.10)]">
           <div className="flex min-w-0 items-center gap-4">
             <Link to="/" className="flex items-center">
               <img
                 src={NOOVAERP_LOGO_URL}
                 alt="NoovaERP"
-                className="h-8 w-auto shrink-0 object-contain brightness-0 invert"
+                className="h-7 w-auto shrink-0 object-contain brightness-0 invert"
               />
             </Link>
 

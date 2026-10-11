@@ -208,7 +208,7 @@ export function Sidebar() {
           <img
             src={NOOVAERP_LOGO_URL}
             alt="NoovaERP"
-            className="h-9 w-auto max-w-full object-contain"
+            className="h-6 w-auto max-w-full object-contain"
           />
         )}
         <button

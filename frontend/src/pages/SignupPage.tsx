@@ -106,7 +106,7 @@ export function SignupPage() {
         <section className="relative flex min-h-screen flex-col overflow-y-auto bg-white px-6 py-5 sm:px-10 lg:px-14">
           <header className="flex items-center justify-between">
             <Link to="/" className="flex items-center">
-              <img src={NOOVAERP_LOGO_URL} alt="NoovaERP" className="h-9 w-auto object-contain" />
+              <img src={NOOVAERP_LOGO_URL} alt="NoovaERP" className="h-8 w-auto object-contain" />
             </Link>
             <Link
               to="/"

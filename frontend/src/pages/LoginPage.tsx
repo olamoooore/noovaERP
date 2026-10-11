@@ -79,7 +79,7 @@ export function LoginPage() {
               <img
                 src={NOOVAERP_LOGO_URL}
                 alt="Noovaerp"
-                className="h-9 w-auto object-contain"
+                className="h-8 w-auto object-contain"
               />
             </Link>
             <Link
