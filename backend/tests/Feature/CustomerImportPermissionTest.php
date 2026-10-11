@@ -168,7 +168,7 @@ class CustomerImportPermissionTest extends TenantTestCase
 
     public function test_commit_succeeds_with_write_permission(): void
     {
-        // Decision (2026-10-07, Alvin, in a Claude Code session): this test checks permissions, not
+        // Decision (2026-10-07, repo owner, in an AI session): this test checks permissions, not
         // taxonomy. Its CSV uses the healthcare category "Clinical", which since
         // #123 is valid only for tenants with the healthcare vocabulary on, and
         // since #1037 is rejected per row on other tenants. Enable it here so the

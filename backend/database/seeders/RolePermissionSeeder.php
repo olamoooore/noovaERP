@@ -109,7 +109,7 @@ class RolePermissionSeeder extends Seeder
         // declared fulfillment.* permissions but nothing seeded them, so the
         // RequirePermission wiring had nothing valid to check. Using the coarse
         // platform convention (fulfillment.view/write/settings) per the module's
-        // own CLAUDE.md guidance. Carrier-credential CRUD is fulfillment.settings
+        // own engineering guardrails guidance. Carrier-credential CRUD is fulfillment.settings
         // (Owner/Admin only) given its sensitivity (encrypted API keys/secrets).
         'fulfillment.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
         'fulfillment.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],

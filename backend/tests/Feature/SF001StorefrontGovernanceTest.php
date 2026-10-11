@@ -103,7 +103,7 @@ class SF001StorefrontGovernanceTest extends TenantTestCase
         $this->assertInstanceOf(ModuleContract::class, $contract);
         $this->assertSame('storefront', $contract->getKey());
 
-        // PSR-4 quirk guard (CLAUDE.md): every owned entity class must resolve.
+        // PSR-4 quirk guard (engineering guardrails): every owned entity class must resolve.
         foreach ($contract->getOwnedEntities() as $entity) {
             $this->assertTrue(
                 class_exists($entity),

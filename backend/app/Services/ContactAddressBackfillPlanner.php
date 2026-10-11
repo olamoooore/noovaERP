@@ -15,7 +15,7 @@ use Modules\Contact\src\Models\ContactRelationship;
  * ADR-003B W6 §4 — REPORT ONLY. Plans moving every customer address into the
  * Contact Master (`contact_addresses`) and turning contact-person addresses
  * into company Sites, without writing anything. The report is reviewed
- * before any execution step exists (CLAUDE.md: no data change without a
+ * before any execution step exists (engineering guardrails: no data change without a
  * reviewed backfill plan).
  *
  * Sources (see ADR-003B §1):

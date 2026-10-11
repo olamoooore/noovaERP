@@ -17,7 +17,7 @@ use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 /**
  * ADR-003B W6 pre-step — REPORT ONLY. Predicts what linking every unlinked
  * customer and customer contact to the Contact Master would do, before any
- * bulk run exists (CLAUDE.md: no data change without a reviewed plan).
+ * bulk run exists (engineering guardrails: no data change without a reviewed plan).
  *
  * It mirrors the live linking code without writing:
  *  - CustomerContactSyncService::ensureOrganisationContact() always CREATES

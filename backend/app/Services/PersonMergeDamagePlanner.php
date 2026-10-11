@@ -27,7 +27,7 @@ use Modules\Contact\src\Services\ContactTaxonomyService;
  *                    certainly a wrong merge;
  *  - `unverifiable`  no shared identifier but the same name — may or may
  *                    not be the same human; needs a person to decide.
- * It writes nothing. Any repair needs its own reviewed plan (CLAUDE.md).
+ * It writes nothing. Any repair needs its own reviewed plan (engineering guardrails).
  *
  * W6 step 4 (merge repair plan) adds what a repair needs: people linked
  * from ONE wrong contact; `shared_identifier_different_name` (normal

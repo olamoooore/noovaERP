@@ -26,7 +26,7 @@ use App\Models\VendorAddress;
  * record input tax under that text (TaxBillVendorJurisdictionTest). Each
  * vendor whose country is not a 2-letter code, or comes from a non-default
  * address, is listed. It changes
- * nothing; the rule to adopt is a statutory decision (CLAUDE.md: tax agent,
+ * nothing; the rule to adopt is a statutory decision (engineering guardrails: tax agent,
  * two approvals).
  */
 class CustomerTaxJurisdictionPlanner
