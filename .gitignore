@@ -118,6 +118,10 @@ backend/storage/framework/cache/data/*
 # OCR service uploads (runtime tenant documents - never commit)
 backend/storage/app/ocr-documents/
 
+# Tenant runtime data (bank statement previews, recovery dumps - never commit)
+backend/storage/app/bank-statements/
+backend/storage/tenant-recovery/
+
 # Playwright artifacts
 test-results/
 playwright-report/
