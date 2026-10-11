@@ -80,7 +80,7 @@ STEERING-PACK-ADDENDUM-REVIEW.md
 /*validation*.php
 
 # OpenClaw implementation pack (local reference only)
-ace-openclaw-implementation-pack/
+noovaerp-openclaw-implementation-pack/
 
 # Database backups / dumps — never commit (large binaries + may contain PII)
 *.sql
@@ -127,3 +127,17 @@ backend/storage/app/payment-advices/
 
 # Client-provided review material (do not commit)
 Template-PDFs/
+
+# ---------------------------------------------------------------------------
+# Local-only working files (open-source repo: kept on disk, never pushed)
+# ---------------------------------------------------------------------------
+*.md
+docs/
+deployment/
+.claude/
+.superpowers/
+.cursor/
+tmp_scripts/
+.github/agents/
+backend/evidence-*/
+backend/test_results.xml
