@@ -7,7 +7,7 @@
 const BASE = import.meta.env.BASE_URL;
 
 /** Storefront logo (header & footer) */
-export const STOREFRONT_LOGO_URL = `${BASE}storefront-logo.webp`;
+export const STOREFRONT_LOGO_URL = `${BASE}storefront-logo.png`;
 
 /** Placeholder image for products with missing/broken images */
 export const PLACEHOLDER_PRODUCT_URL = `${BASE}placeholder-product.svg`;

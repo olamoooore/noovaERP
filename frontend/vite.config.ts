@@ -15,12 +15,12 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
-      includeAssets: ['pwa-192x192.svg', 'pwa-512x512.svg', 'apple-touch-icon.svg'],
+      includeAssets: ['favicon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'NoovaERP - Point of Sale',
         short_name: 'NoovaERP POS',
         description: 'NoovaERP Point of Sale Terminal — installable, fast, offline-ready',
-        theme_color: '#1e293b',
+        theme_color: '#2E8B74',
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'any',
@@ -28,15 +28,15 @@ export default defineConfig({
         scope: './',
         icons: [
           {
-            src: 'pwa-192x192.svg',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any',
           },
           {
-            src: 'pwa-512x512.svg',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any maskable',
           },
         ],
