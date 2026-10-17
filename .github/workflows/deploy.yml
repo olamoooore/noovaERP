@@ -37,7 +37,7 @@ jobs:
           VITE_API_URL: https://${{ env.SERVER_HOST }}/noovaerp/api
 
       - name: Upload frontend build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist
@@ -68,7 +68,7 @@ jobs:
           VITE_API_URL: https://${{ env.SERVER_HOST }}/noovaerp/api
 
       - name: Upload superadmin build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: superadmin-dist
           path: superadmin/dist

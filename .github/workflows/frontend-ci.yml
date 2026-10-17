@@ -66,7 +66,7 @@ jobs:
 
       - name: Upload coverage summary
         if: always() && matrix.app == 'frontend'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage-summary
           path: frontend/coverage/coverage-summary.json
