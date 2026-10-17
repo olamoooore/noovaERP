@@ -17,7 +17,11 @@ $targetEmail = 'admin@demo5.com';
 $targetDomain = 'demo5.localhost';
 $targetCompany = 'Demo 5 Corp';
 $targetName = 'Demo 5 Admin';
-$password = 'password';
+$password = env('TENANT_SEED_PASSWORD');
+if (! is_string($password) || $password === '') {
+    fwrite(STDERR, "TENANT_SEED_PASSWORD must be set to a non-empty value.".PHP_EOL);
+    exit(2);
+}
 $sourceEmail = 'admin@demo.com'; // Clone permissions from this tenant
 
 try {
@@ -162,7 +166,6 @@ try {
         'tenant_id' => $tenantId,
         'domain' => $targetDomain,
         'login_email' => $targetEmail,
-        'password' => $password,
         'source_module_count' => count($sourceModules),
         'target_module_count' => count($targetModules),
         'missing_modules' => array_values(array_diff($sourceModules, $targetModules)),

@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: noovaerp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d noovaerp"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+    environment:
+      APP_NAME: NoovaERP
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: noovaerp
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      CACHE_STORE: redis
+      REDIS_HOST: redis
+      REDIS_CLIENT: predis
+      QUEUE_CONNECTION: database
+      SESSION_DRIVER: file
+      MAIL_MAILER: log
+      CENTRAL_DOMAINS: localhost,127.0.0.1
+      TENANCY_DATABASE: landlord
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173
+      OCR_SERVICE_URL: http://ocr:5050
+      OCR_SERVICE_KEY: local-compose-ocr-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ocr:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c 'if [ ! -f .env ]; then cp .env.example .env; fi;
+      if [ ! -f vendor/autoload.php ]; then composer install --no-interaction; fi;
+      if grep -q "^APP_KEY=$" .env; then php artisan key:generate; fi;
+      php artisan serve --host=0.0.0.0 --port=8000'
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    environment:
+      VITE_BACKEND_URL: http://backend:8000
+    command: sh -c 'npm ci && npm run dev -- --host 0.0.0.0'
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+  ocr:
+    build:
+      context: ./ocr-service
+    environment:
+      OCR_SERVICE_KEY: local-compose-ocr-key
+      OCR_HOST: 0.0.0.0
+      OCR_PORT: 5050
+    ports:
+      - "5050:5050"
+
+volumes:
+  postgres-data:
+  frontend-node-modules:

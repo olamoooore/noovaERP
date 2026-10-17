@@ -1,17 +1,20 @@
 name: Backend CI
 
-# Issue: the heavy Laravel Feature suite was auto-running on every push/PR,
-# costing Actions minutes and surfacing failures during the billing block.
-# Disable the push/PR triggers; keep workflow_dispatch so the suite still
-# runs locally (`vendor/bin/phpunit --parallel --processes=4 --testsuite=Feature`)
-# or via the GitHub UI (Actions → Backend CI → Run workflow).
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-tests:
     name: Laravel Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -69,6 +72,10 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Check PHP formatting (Pint)
+        working-directory: backend
+        run: vendor/bin/pint --test
 
       - name: Preflight checks
         working-directory: backend

@@ -15,7 +15,9 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 411",
     "lint:ci": "node ../scripts/ci/ts-lint-ratchet.mjs eslint",
-    "lint:baseline": "node ../scripts/ci/ts-lint-ratchet.mjs eslint --update"
+    "lint:baseline": "node ../scripts/ci/ts-lint-ratchet.mjs eslint --update",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

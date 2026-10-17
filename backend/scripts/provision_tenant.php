@@ -14,13 +14,17 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Database\Models\Domain;
 
-// Usage: php scripts/provision_tenant.php "<Company>" "<admin email>" "<Admin Name>" "<domain>" "<password>" ["<role: owner|admin|manager|sales|accountant|cashier|viewer>"]
+// Usage: TENANT_SEED_PASSWORD='...' php scripts/provision_tenant.php "<Company>" "<admin email>" "<Admin Name>" "<domain>" ["<role: owner|admin|manager|sales|accountant|cashier|viewer>"]
 $company  = $argv[1] ?? 'Acme Production';
 $email    = $argv[2] ?? 'admin@acme-production';
 $name     = $argv[3] ?? $company.' Admin';
 $domain   = $argv[4] ?? 'acme-production.localhost';
-$password = $argv[5] ?? 'password';
-$roleArg  = $argv[6] ?? 'owner';
+$password = env('TENANT_SEED_PASSWORD');
+if (! is_string($password) || $password === '') {
+    fwrite(STDERR, "TENANT_SEED_PASSWORD must be set to a non-empty value.".PHP_EOL);
+    exit(2);
+}
+$roleArg  = $argv[5] ?? 'owner';
 $userRole = UserRole::tryFrom(strtolower($roleArg));
 if (! $userRole) {
     fwrite(STDERR, "Invalid role '{$roleArg}'. Valid: ".implode(', ', UserRole::values()).PHP_EOL);

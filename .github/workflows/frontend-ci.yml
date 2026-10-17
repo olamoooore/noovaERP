@@ -59,3 +59,15 @@ jobs:
       - name: Lint (eslint ratchet)
         if: always() && steps.install.outcome != 'failure'
         run: npm run lint:ci
+
+      - name: Frontend test coverage
+        if: matrix.app == 'frontend'
+        run: npm run test:coverage
+
+      - name: Upload coverage summary
+        if: always() && matrix.app == 'frontend'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-summary
+          path: frontend/coverage/coverage-summary.json
+          if-no-files-found: ignore

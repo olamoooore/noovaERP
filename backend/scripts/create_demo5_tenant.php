@@ -17,7 +17,11 @@ $targetEmail = 'admin@demo5.com';
 $targetDomain = 'demo5.localhost';
 $targetCompany = 'Demo 5 Corp';
 $targetName = 'Demo 5 Admin';
-$password = 'password';
+$password = env('TENANT_SEED_PASSWORD');
+if (! is_string($password) || $password === '') {
+    fwrite(STDERR, "TENANT_SEED_PASSWORD must be set to a non-empty value.".PHP_EOL);
+    exit(2);
+}
 $sourceEmail = 'admin@demo.com';
 
 try {
@@ -174,7 +178,6 @@ try {
     echo "Tenant ID: {$tenantId}\n";
     echo "Domain: {$targetDomain}\n";
     echo "Email: {$targetEmail}\n";
-    echo "Password: {$password}\n";
     echo 'Source modules: '.count($sourceModules)."\n";
     echo 'Target modules: '.count($targetModules)."\n";
 

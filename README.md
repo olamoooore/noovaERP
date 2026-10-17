@@ -57,6 +57,20 @@ Record Payment → Auto-Generate Journal Entry
 
 ## 🚀 Installation
 
+### One-command Docker development setup
+
+Docker Desktop (or Docker Engine with the Compose plugin) is required. From the repository root:
+
+```bash
+docker compose up --build
+```
+
+The stack starts PostgreSQL, Redis, the Laravel API, the Vite frontend, and the OCR service. Open
+http://localhost:5173 for the app and http://localhost:8000 for the API. The first
+start installs Composer/npm dependencies and generates a local Laravel key. To
+apply central migrations, run `docker compose exec backend php artisan migrate`.
+Use `docker compose down -v` to stop the stack and delete its local database volume.
+
 ### Prerequisites
 - PHP 8.2+
 - Composer
