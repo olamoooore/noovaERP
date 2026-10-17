@@ -3419,110 +3419,11 @@ class InvoiceController extends Controller
     public function import(Request $request)
     {
         $request->validate(['file' => 'required|file|mimes:csv,txt']);
-
-        $file = $request->file('file');
-        $handle = fopen($file->getRealPath(), 'r');
-        if ($handle === false) {
-            return response()->json(['message' => 'Unable to read file'], 400);
+        $parsedCsv = app(\App\Services\InvoiceImportCsvParser::class)->parse($request->file('file')->getRealPath());
+        if (isset($parsedCsv['error'])) {
+            return response()->json(['message' => $parsedCsv['error']], $parsedCsv['status']);
         }
-
-        $rawHeader = fgetcsv($handle);
-        if (! is_array($rawHeader) || count($rawHeader) === 0) {
-            fclose($handle);
-
-            return response()->json(['message' => 'CSV header missing'], 422);
-        }
-
-        $header = array_map(function ($h) {
-            $h = strtolower(trim((string) $h));
-            $h = preg_replace('/[^a-z0-9]+/', '_', $h);
-
-            return trim($h, '_');
-        }, $rawHeader);
-
-        $columnAliases = [
-            'invoice_no' => 'invoice_number',
-            'quote_number' => 'invoice_number',
-            'quote_no' => 'invoice_number',
-            'number' => 'invoice_number',
-            'customer' => 'customer_name',
-            'customer_code' => 'customer_code',
-            'customer_name' => 'customer_name',
-            'date' => 'invoice_date',
-            'issue_date' => 'invoice_date',
-            'valid_until' => 'due_date',
-            'invoice_expiry_date' => 'due_date',
-            'reference' => 'customer_reference',
-            'po_number' => 'po_number',
-            'sku' => 'product_sku',
-            'product_sku' => 'product_sku',
-            'item' => 'description',
-            'item_description' => 'description',
-            'lot' => 'lot_number',
-            'batch' => 'lot_number',
-            'batch_number' => 'lot_number',
-            'qty' => 'quantity',
-            'price' => 'unit_price',
-            'unit_price' => 'unit_price',
-            'rate' => 'unit_price',
-            'tax' => 'tax_rate',
-            'line_discount' => 'line_discount_amount',
-            'line_discount_amount' => 'line_discount_amount',
-            'discount' => 'discount_amount',
-            'billing_address' => 'billing_address_snapshot',
-            'shipping_address' => 'shipping_address_snapshot',
-            'company_reg_no' => 'company_registration_number',
-            'tax_reg_no' => 'tax_registration_number',
-            'email' => 'contact_email',
-            'phone' => 'contact_phone',
-            'case_date' => 'date_of_case',
-            'case_no' => 'case_number',
-            'case_number' => 'case_number',
-            'location' => 'case_location',
-            'patient' => 'patient_name',
-            'cost_center' => 'cost_center_id',
-            'delivery_date' => 'delivery_date',
-            'doctor' => 'doctor_name',
-            'requestor' => 'requestor_name',
-            'buyer' => 'buyer_name',
-            'billing_contact' => 'billing_contact_name',
-            'shipping_contact' => 'shipping_contact_name',
-            'delivery_contact' => 'shipping_contact_name',
-            'case_no' => 'medical_case_no',
-            'case_tag' => 'case_tag',
-            'patient_name' => 'patient_name',
-            'delivered_to' => 'delivered_to',
-            'other_note' => 'other_note',
-        ];
-        $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
-
-        $rows = [];
-        while (($data = fgetcsv($handle)) !== false) {
-            if (! is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
-                continue;
-            }
-            $row = [];
-            foreach ($header as $idx => $key) {
-                if ($key !== '' && isset($data[$idx])) {
-                    // Sanitize to valid UTF-8 — Excel CSVs often contain Windows-1252
-                    // bytes (e.g. 0x92 right-apostrophe) that silently break PostgreSQL INSERTs
-                    $val = $data[$idx];
-                    if (! mb_check_encoding($val, 'UTF-8')) {
-                        $val = mb_convert_encoding($val, 'UTF-8', 'UTF-8');
-                    }
-                    $row[$key] = $val;
-                }
-            }
-            if (empty($row)) {
-                continue;
-            }
-            $rows[] = $row;
-        }
-        fclose($handle);
-
-        if (count($rows) === 0) {
-            return response()->json(['message' => 'No rows found'], 422);
-        }
+        $rows = $parsedCsv['rows'];
 
         // Group rows into invoices by invoice_number (blank number = 1 invoice per row)
         $groups = [];

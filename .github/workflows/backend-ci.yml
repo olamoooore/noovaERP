@@ -137,6 +137,10 @@ jobs:
           set -euo pipefail
           php artisan test tests/Feature/TenancyProvisioningConfigurationTest.php
 
+      - name: Run invoice CSV import parser tests
+        working-directory: backend
+        run: php artisan test tests/Unit/InvoiceImportCsvParserTest.php tests/Unit/InvoiceListAnnotationServiceTest.php
+
       - name: Run PostgreSQL tenant provisioning smoke test
         working-directory: backend
         continue-on-error: true
