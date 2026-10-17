@@ -11,6 +11,17 @@ A commercial-grade, multi-tenant ERP SaaS: Laravel 11 API (`backend/`), a React 
 - **Module System**: Business capabilities live under `backend/modules/<Name>/` (own routes, controllers, services, models, and a `ModuleContract`); shared platform concerns (auth, tenancy middleware, RBAC, the module registry) live under `backend/app/`. Module registration/activation is disk-driven (`ModuleManager` scans `modules/*/module.json`)
 - **API-First**: RESTful API with consistent responses
 
+### Statutory Accounting & E-Invoicing (Malaysia and Singapore)
+
+Country-specific compliance is implemented as separate accounting-country modules under `backend/modules/AccountingCountry/`, behind shared submission and mapping contracts. The modules cover the following concrete workflows:
+
+| Jurisdiction | Implemented workflows | Implementation and regression evidence |
+| --- | --- | --- |
+| Malaysia | MyInvois payload mapping, LHDN submission/status synchronization, digital-certificate signing, refund-note references, MFRS/SST reporting | [`Malaysia/Services`](backend/modules/AccountingCountry/Malaysia/Services); [`MyInvoiceMapperTest`](backend/tests/Unit/Accounting/Compliance/MyInvoiceMapperTest.php), [`MyInvoiceSubmissionProviderTest`](backend/tests/Unit/Accounting/Compliance/MyInvoiceSubmissionProviderTest.php), [`MyInvoiceSigningIdentityTest`](backend/tests/Unit/Accounting/Compliance/MyInvoiceSigningIdentityTest.php), [`EinvoiceStatusSyncSweepTest`](backend/tests/Feature/EinvoiceStatusSyncSweepTest.php) |
+| Singapore | Peppol submission/status synchronization, SFRS invoice mapping and validation, GST F5/F7 returns, XBRL and audit-file exports | [`Singapore/Services`](backend/modules/AccountingCountry/Singapore/Services); [`SfrsPartyIdentifierTest`](backend/tests/Unit/Accounting/Compliance/SfrsPartyIdentifierTest.php), [`SfrsInvoiceDiscountReconciliationTest`](backend/tests/Unit/Accounting/Compliance/SfrsInvoiceDiscountReconciliationTest.php), [`SingaporeXbrlExporterTest`](backend/tests/Unit/Accounting/Compliance/SingaporeXbrlExporterTest.php) |
+
+Provider tests exercise request/response behavior through mocked HTTP boundaries; live submissions require jurisdiction-specific credentials and configuration. The backend compliance suites can be run with `cd backend && php artisan test tests/Unit/Accounting/Compliance` plus the linked feature tests.
+
 ### Frontend (React + Vite)
 - **UI Framework**: shadcn/ui (Tailwind CSS components)
 - **Icons**: Iconify Solar Icons (bold-duotone variants)
@@ -354,7 +365,7 @@ GET /api/v1/accounting/trial-balance
 ### Enterprise
 - [ ] Advanced Reporting (BI)
 - [ ] Multi-currency
-- [ ] Tax Compliance (VAT, GST)
+- [x] Tax Compliance (Malaysia MyInvois/SST and Singapore GST/Peppol/SFRS)
 - [ ] API Webhooks
 - [ ] SSO (SAML, OAuth)
 
