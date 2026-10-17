@@ -83,6 +83,15 @@ import { extractSaveConflict, type SaveConflict } from '@/lib/recordConflict'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useDensity } from '@/hooks/useDensity'
 import { resolvedCustomerAddress, type CustomerWithResolvedAddresses } from '@/lib/customerAddresses'
+import {
+  emptyInvoiceAddressForm,
+  formatInvoiceAddress,
+  getInvoiceCustomerAddress,
+  invoiceAddressFormToSnapshot,
+  invoiceAddressToForm,
+  type InvoiceAddressForm as AddressFormState,
+  type InvoiceCustomerAddress as CustomerAddress,
+} from '@/lib/invoiceAddresses'
 import { TagPicker } from '@/components/tags/TagPicker'
 import { useDocumentDraftGuard } from '@/hooks/useDocumentDraftGuard'
 import { useFieldErrors } from '@/hooks/useFieldErrors'
@@ -144,19 +153,6 @@ interface InvoiceLine {
   is_foc?: boolean;
   line_key?: string;
   source_line_key?: string | null;
-}
-
-interface CustomerAddress {
-  id?: number | string;
-  type?: 'billing' | 'shipping' | 'other';
-  street?: string | null;
-  street2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-  country?: string | null;
-  label?: string | null;
-  is_default?: boolean;
 }
 
 interface CustomerContact {
@@ -261,90 +257,8 @@ const emptyDocumentSnapshot: InvoiceDocumentSnapshot = {
   tax_registration_number: '',
 };
 
-type AddressFormState = Record<'label' | 'street' | 'street2' | 'city' | 'state' | 'zip' | 'country', string>;
-
-const emptyAddressForm: AddressFormState = {
-  label: '', street: '', street2: '', city: '', state: '', zip: '', country: '',
-};
-
-const toAddressForm = (address?: CustomerAddress | null): AddressFormState => ({
-  label: address?.label ?? '',
-  street: address?.street ?? '',
-  street2: address?.street2 ?? '',
-  city: address?.city ?? '',
-  state: address?.state ?? '',
-  zip: address?.zip ?? '',
-  country: address?.country ?? '',
-});
-
-const addressFormToSnapshot = (address: AddressFormState): string =>
-  [address.label, address.street, address.street2, address.city, address.state, address.zip, address.country]
-    .filter(Boolean)
-    .join('\n');
-
-const formatAddress = (address?: CustomerAddress | null): string => {
-  if (!address) {
-    return '';
-  }
-
-  return [address.label, address.street, address.street2, address.city, address.state, address.zip, address.country]
-    .filter(Boolean)
-    .join('\n');
-};
-
 // The Bill-To contact rule (billing → primary → first) is shared with the
 // quotation form — see '@/lib/customerDocumentDefaults' (issue #320).
-
-const formatLegacyAddress = (address: string | null | undefined): string => {
-  if (!address) return '';
-  try {
-    const parsed = JSON.parse(address);
-    const parts = [
-      parsed.first_name || parsed.name || '',
-      parsed.last_name || '',
-      parsed.address || parsed.street || '',
-      parsed.street2 || '',
-      parsed.city || '',
-      parsed.state || '',
-      parsed.postal_code || parsed.zip || '',
-      parsed.country || '',
-    ].filter(Boolean);
-    return parts.join(', ');
-  } catch {
-    return address;
-  }
-};
-
-const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' | 'shipping'): string => {
-  if (!customer) {
-    return '';
-  }
-
-  // ADR-003B R4: the backend resolver decides bill-to/ship-to.
-  const resolved = resolvedCustomerAddress(customer, type ?? 'billing');
-  if (type && resolved !== undefined) {
-    return formatAddress(resolved);
-  }
-
-  const typedAddresses = customer.addresses ?? [];
-  const matchedAddress = typedAddresses.find((address) => address.type === type && address.is_default)
-    ?? typedAddresses.find((address) => address.type === type)
-    ?? null;
-
-  if (matchedAddress) {
-    return formatAddress(matchedAddress);
-  }
-
-  if (type === 'billing') {
-    return formatLegacyAddress(customer.billing_address);
-  }
-
-  if (type === 'shipping') {
-    return formatLegacyAddress(customer.shipping_address);
-  }
-
-  return '';
-};
 
 const PRESET_OVERRIDE_REASONS = [
   'Tender / contract price',
@@ -550,8 +464,8 @@ export const CreateInvoicePage: React.FC = () => {
   const [primaryMedicalCaseId, setPrimaryMedicalCaseId] = useState<number | null>(null);
   const [billingContactId, setBillingContactId] = useState('');
   const [shippingContactId, setShippingContactId] = useState('');
-  const [billingAddress, setBillingAddress] = useState<AddressFormState>(emptyAddressForm);
-  const [shippingAddress, setShippingAddress] = useState<AddressFormState>(emptyAddressForm);
+  const [billingAddress, setBillingAddress] = useState<AddressFormState>(emptyInvoiceAddressForm);
+  const [shippingAddress, setShippingAddress] = useState<AddressFormState>(emptyInvoiceAddressForm);
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
@@ -686,8 +600,8 @@ export const CreateInvoicePage: React.FC = () => {
     const pickedSlot: 'billing' | 'shipping' | null = pickedAddress
       ? ((pickedAddress.type ?? matchedAddressRef.current?.addressType) === 'billing' ? 'billing' : 'shipping')
       : null;
-    setBillingAddress(toAddressForm(pickedSlot === 'billing' ? pickedAddress : resolvedBilling !== undefined ? resolvedBilling : billingAddressRecord));
-    setShippingAddress(toAddressForm(pickedSlot === 'shipping' ? pickedAddress : resolvedShipping !== undefined ? resolvedShipping : shippingAddressRecord));
+    setBillingAddress(invoiceAddressToForm(pickedSlot === 'billing' ? pickedAddress : resolvedBilling !== undefined ? resolvedBilling : billingAddressRecord));
+    setShippingAddress(invoiceAddressToForm(pickedSlot === 'shipping' ? pickedAddress : resolvedShipping !== undefined ? resolvedShipping : shippingAddressRecord));
 
     // Preserve the invoice's saved snapshots while initially loading edit mode.
     if (isEditMode && String(selectedCustomer.id) === originalCustomerId) {
@@ -700,8 +614,8 @@ export const CreateInvoicePage: React.FC = () => {
       : undefined;
     const primaryContact = matchedContact ?? getPrimaryCustomerContact(selectedCustomer);
     const shippingContact = getCustomerContactForRole(selectedCustomer, 'shipping');
-    const billingAddress = pickedSlot === 'billing' ? formatAddress(pickedAddress) : getCustomerAddress(selectedCustomer, 'billing');
-    const shippingAddress = pickedSlot === 'shipping' ? formatAddress(pickedAddress) : getCustomerAddress(selectedCustomer, 'shipping');
+    const billingAddress = pickedSlot === 'billing' ? formatInvoiceAddress(pickedAddress) : getInvoiceCustomerAddress(selectedCustomer, 'billing');
+    const shippingAddress = pickedSlot === 'shipping' ? formatInvoiceAddress(pickedAddress) : getInvoiceCustomerAddress(selectedCustomer, 'shipping');
     setDocumentSnapshot({
       customer_reference: selectedCustomer.code ?? '',
       internal_reference: '',
@@ -1297,7 +1211,7 @@ export const CreateInvoicePage: React.FC = () => {
       const next = { ...current, [field]: value };
       updateDocumentSnapshot(
         type === 'billing' ? 'billing_address_snapshot' : 'shipping_address_snapshot',
-        addressFormToSnapshot(next),
+        invoiceAddressFormToSnapshot(next),
       );
       return next;
     });
@@ -1332,7 +1246,7 @@ export const CreateInvoicePage: React.FC = () => {
     }
     updateDocumentSnapshot(
       role === 'billing' ? 'billing_address_snapshot' : 'shipping_address_snapshot',
-      addressFormToSnapshot(nextAddress),
+      invoiceAddressFormToSnapshot(nextAddress),
     );
   };
 

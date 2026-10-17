@@ -17,7 +17,7 @@ use App\Platform\Locking\RecordVersionConflictException;
 use App\Platform\Locking\RecordVersionGuard;
 use App\Platform\Pagination\PaginationService;
 use App\Services\CaseImportService;
-use App\Services\CustomerWideSearchService;
+use App\Services\InvoiceListQueryService;
 use App\Services\InvoiceActivityService;
 use App\Services\InvoiceApprovalService;
 use App\Services\InvoiceBulkDocumentService;
@@ -62,7 +62,7 @@ class InvoiceController extends Controller
 
     public function index(Request $request)
     {
-        $query = $this->filteredInvoiceQuery($request);
+        $query = app(InvoiceListQueryService::class)->build($request);
 
         if ($request->boolean('ids_only')) {
             $ids = $query->pluck('id');
@@ -122,7 +122,7 @@ class InvoiceController extends Controller
             'format' => ['nullable', 'in:csv,xlsx'],
         ]);
 
-        $query = $this->filteredInvoiceQuery($request);
+        $query = app(InvoiceListQueryService::class)->build($request);
         $format = $validated['format'] ?? 'xlsx';
 
         return Excel::download(
@@ -130,171 +130,6 @@ class InvoiceController extends Controller
             'invoices_'.now()->format('Y-m-d').'.'.$format,
             $format === 'csv' ? \Maatwebsite\Excel\Excel::CSV : \Maatwebsite\Excel\Excel::XLSX
         );
-    }
-
-    private function filteredInvoiceQuery(Request $request)
-    {
-        $query = Invoice::query()->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
-
-        if ($request->filled('status')) {
-            $statuses = explode(',', $request->status);
-            $query->whereIn('status', $statuses);
-        }
-
-        if ($request->filled('lifecycle_status')) {
-            $lifecycleStatuses = explode(',', $request->lifecycle_status);
-            $query->whereIn('lifecycle_status', $lifecycleStatuses);
-        }
-
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
-
-        // #403: the Sales Order page's Invoices smart button opens the list
-        // filtered by order. Match the invoices the order page counts (linked
-        // through sales_invoice_links) plus any carrying the order directly.
-        if ($request->filled('sales_order_id')) {
-            $salesOrderId = (int) $request->sales_order_id;
-            $query->where(function ($q) use ($salesOrderId) {
-                $q->where('invoices.sales_order_id', $salesOrderId)
-                    ->orWhereIn('invoices.id', function ($links) use ($salesOrderId) {
-                        $links->select('invoice_id')
-                            ->from('sales_invoice_links')
-                            ->where('sales_order_id', $salesOrderId);
-                    });
-            });
-        }
-
-        // MRD pricelist-multicurrency FR-8: filter/sort by document currency.
-        if ($request->filled('currency_code')) {
-            $query->where('currency_code', strtoupper((string) $request->currency_code));
-        }
-
-        if ($request->input('sort_by') === 'currency') {
-            $query->reorder()->orderBy('currency_code')->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
-        }
-
-        if ($request->filled('document_ids')) {
-            $query->whereIn('id', $request->input('document_ids', []));
-        }
-
-        // Issue #688 (INV-UX2): invoices whose goods are not (fully) delivered.
-        if ($request->input('progress_filter') === 'invoiced_not_delivered') {
-            app(\App\Services\SalesDocumentProgress::class)->scopeInvoicedNotDelivered($query);
-        }
-
-        // Issue #365: a Sales cockpit action-queue tile opens this list
-        // filtered to exactly the rows it counted.
-        app(\Modules\Sales\Services\SalesActionQueueService::class)->applyListFilter($request, $query, 'invoice');
-
-        if ($request->filled('start_date')) {
-            $query->whereDate('invoice_date', '>=', $request->start_date);
-        }
-
-        if ($request->filled('end_date')) {
-            $query->whereDate('invoice_date', '<=', $request->end_date);
-        }
-
-        if ($request->filled('search')) {
-            $this->applyWideSearch($query, trim((string) $request->search));
-        }
-
-        // Filter by document tag.
-        if ($request->filled('tag')) {
-            $taggedIds = app(\App\Services\TagService::class)
-                ->subjectIdsForTagSlugs([$request->tag], 'invoice');
-
-            $query->whereIn('id', $taggedIds !== [] ? $taggedIds : [-1]);
-        }
-
-        // #670 (EINV-UX1): filter the list by the document's e-invoice status.
-        if ($request->filled('einvoice_status')) {
-            $this->applyEInvoiceStatusFilter($query, (string) $request->einvoice_status);
-        }
-
-        return $query;
-    }
-
-    /**
-     * #670 (EINV-UX1): filter the invoice query by the UI's e-invoice status
-     * keys. The key → compliance status mapping is shared with the credit
-     * note list (#525) in EInvoiceListStatus.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder<Invoice>  $query
-     */
-    private function applyEInvoiceStatusFilter($query, string $statuses): void
-    {
-        \App\Support\EInvoiceListStatus::applyFilter($query, $statuses, 'invoice', 'invoices.id');
-    }
-
-    /**
-     * Wide invoice list search — the list-page counterpart of the customer
-     * picker's Odoo-style search. Matches:
-     *  - the document's own identity and header references (invoice number,
-     *    PO/customer/internal references, case/PR/contract/plant/company, etc.)
-     *  - the invoice's header contact people (doctor / requestor / buyer /
-     *    billing / shipping)
-     *  - the full customer surface via CustomerWideSearchService (identity,
-     *    contact people, addresses, parent and tags)
-     *  - the line contents (description, model, lot, serial)
-     *  - upstream document references (sales order / quotation number)
-     *  - the invoice's own tags
-     */
-    private function applyWideSearch($query, string $search): void
-    {
-        $like = "%{$search}%";
-
-        $contactMatches = function ($contact) use ($like) {
-            $contact->where('display_name', 'ilike', $like)
-                ->orWhere('first_name', 'ilike', $like)
-                ->orWhere('last_name', 'ilike', $like)
-                ->orWhere('company_name', 'ilike', $like)
-                ->orWhere('email', 'ilike', $like)
-                ->orWhere('phone', 'ilike', $like)
-                ->orWhere('mobile', 'ilike', $like);
-        };
-
-        $query->where(function ($q) use ($search, $like, $contactMatches) {
-            $q->where('invoice_number', 'ilike', $like)
-                ->orWhere('customer_reference', 'ilike', $like)
-                ->orWhere('internal_reference', 'ilike', $like)
-                ->orWhere('po_number', 'ilike', $like)
-                ->orWhere('case_number', 'ilike', $like)
-                ->orWhere('pr_no', 'ilike', $like)
-                ->orWhere('contract_no', 'ilike', $like)
-                ->orWhere('plant_code', 'ilike', $like)
-                ->orWhere('company_code', 'ilike', $like)
-                ->orWhere('attention_to', 'ilike', $like)
-                ->orWhere('contact_email', 'ilike', $like)
-                ->orWhere('contact_phone', 'ilike', $like)
-                ->orWhere('billing_address_snapshot', 'ilike', $like)
-                ->orWhere('shipping_address_snapshot', 'ilike', $like)
-                ->orWhere('delivery_address_snapshot', 'ilike', $like)
-                ->orWhereHas('doctor', $contactMatches)
-                ->orWhereHas('requestor', $contactMatches)
-                ->orWhereHas('buyer', $contactMatches)
-                ->orWhereHas('billingContact', $contactMatches)
-                ->orWhereHas('shippingContact', $contactMatches)
-                ->orWhereHas(
-                    'customer',
-                    fn ($customer) => app(CustomerWideSearchService::class)->apply($customer, $search)
-                )
-                ->orWhereHas('lines', function ($line) use ($like) {
-                    $line->where('description', 'ilike', $like)
-                        ->orWhere('model_number', 'ilike', $like)
-                        ->orWhere('product_notes', 'ilike', $like)
-                        ->orWhere('lot_number', 'ilike', $like)
-                        ->orWhere('serial_number', 'ilike', $like);
-                })
-                ->orWhereHas('salesOrder', fn ($order) => $order->where('sales_order_number', 'ilike', $like))
-                ->orWhereHas('quotation', fn ($quotation) => $quotation->where('quotation_number', 'ilike', $like));
-
-            // Tag names ("vip" finds every invoice tagged VIP).
-            $taggedIds = app(\App\Services\TagService::class)->subjectIdsForTagNameSearch($search, 'invoice');
-            if ($taggedIds !== []) {
-                $q->orWhereIn('id', $taggedIds);
-            }
-        });
     }
 
     public function store(Request $request)

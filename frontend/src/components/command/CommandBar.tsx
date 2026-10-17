@@ -51,7 +51,6 @@ interface DocumentHit {
 }
 
 // List rows are loosely typed API payloads (invoice / quotation / order / customer).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>
 
 /** List endpoints answer a paginator (`{ data: [...] }`) or a wrapped one (`{ data: { data } }`). */
