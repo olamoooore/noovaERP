@@ -66,6 +66,14 @@ Record Payment → Auto-Generate Journal Entry
 
 **Rule**: Every transaction posts to the double-entry ledger. Debits always equal credits.
 
+### Accounting control architecture
+
+Posting is a domain command, not direct journal-row CRUD. [`PostingEngine`](backend/app/Accounting/PostingEngine.php) executes the posting request; [`ActionEligibilityEvaluator`](backend/app/Accounting/Services/ActionEligibilityEvaluator.php) applies mandatory authority gates, and [`ConcurrencyGate`](backend/app/Accounting/Services/Gates/ConcurrencyGate.php) revalidates the source version at commit time. Material lifecycle changes are recorded by [`StateTransitionService`](backend/app/Accounting/Services/StateTransitionService.php) as append-only transitions.
+
+The accounting state model keeps 12 dimensions separate rather than overloading one document status: `PERIOD`, `JOURNAL_BUSINESS`, `JOURNAL_WORKFLOW`, `JOURNAL_APPROVAL`, `JOURNAL_POSTING`, `DOCUMENT_ISSUE`, `REVISION_LINEAGE`, `PAYMENT_EXECUTION`, `SETTLEMENT`, `CORRECTION_CASE`, `FINDING`, and `REVERSAL`. The canonical enum is [`StateDimension`](backend/app/Accounting/Enums/StateDimension.php).
+
+These invariants have executable regression coverage: [`Adr005ComplianceTest`](backend/tests/Feature/Adr005ComplianceTest.php) checks all 12 dimensions and append-only transition behavior; [`Adr005PostingEngineWiringTest`](backend/tests/Feature/Adr005PostingEngineWiringTest.php) checks engine wiring; and [`AuthorityGateSystemTest`](backend/tests/Feature/AuthorityGateSystemTest.php) exercises the mandatory authority gates.
+
 ## 🚀 Installation
 
 ### One-command Docker development setup
