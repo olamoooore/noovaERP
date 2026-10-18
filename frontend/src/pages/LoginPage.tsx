@@ -174,7 +174,7 @@ export function LoginPage() {
 
                 <Button
                   type="submit"
-                  className="h-11 w-full rounded-lg bg-slate-950 text-[14px] font-semibold tracking-wide text-white shadow-sm transition hover:bg-slate-800"
+                  className="h-11 w-full rounded-lg bg-[#2E8B74] text-[14px] font-semibold tracking-wide text-white shadow-sm transition hover:bg-[#25735F]"
                   disabled={loading}
                 >
                   {loading ? (
@@ -211,7 +211,7 @@ export function LoginPage() {
                 </span>
                 <span className="h-3 w-px bg-slate-200" />
                 <span className="inline-flex items-center gap-1.5">
-                  <Icon icon="solar:server-square-cloud-bold-duotone" className="h-3.5 w-3.5 text-sky-600" />
+                  <Icon icon="solar:server-square-cloud-bold-duotone" className="h-3.5 w-3.5 text-teal-600" />
                   Tenant-isolated
                 </span>
                 <span className="h-3 w-px bg-slate-200" />
@@ -234,9 +234,10 @@ export function LoginPage() {
             className="absolute inset-0"
             style={{
               backgroundImage:
-                'radial-gradient(1100px 500px at 85% -10%, rgba(56,189,248,0.22), transparent 60%),' +
-                'radial-gradient(900px 500px at -10% 110%, rgba(16,185,129,0.18), transparent 60%),' +
-                'linear-gradient(135deg,#0b1220 0%,#0f172a 50%,#0b1220 100%)',
+                'radial-gradient(1200px 600px at 70% -20%, rgba(82,179,155,0.20), transparent 60%),' +
+                'radial-gradient(900px 500px at 10% 10%, rgba(61,163,130,0.18), transparent 60%),' +
+                'radial-gradient(800px 500px at 50% 110%, rgba(16,185,129,0.12), transparent 60%),' +
+                'linear-gradient(135deg,#04120d 0%,#061a13 55%,#04120d 100%)',
             }}
           />
           <div
@@ -261,7 +262,9 @@ export function LoginPage() {
             <div className="my-auto max-w-[520px]">
               <h2 className="text-[44px] font-semibold leading-[1.05] tracking-tight">
                 One platform.
-                <span className="block text-slate-300">Every operation.</span>
+                <span className="block bg-gradient-to-r from-emerald-300 via-teal-300 to-emerald-300 bg-clip-text text-transparent">
+                  Every operation.
+                </span>
               </h2>
               <p className="mt-4 max-w-[440px] text-[15px] leading-7 text-slate-300/90">
                 Finance, inventory, retail, HR and service — unified in a single, governed workspace
@@ -272,7 +275,7 @@ export function LoginPage() {
                 {['Finance', 'Inventory', 'Retail / POS', 'HRM', 'OCR', 'Field service', 'IoT'].map((m) => (
                   <span
                     key={m}
-                    className="rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[12px] font-medium text-slate-100 backdrop-blur"
+                    className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.06] px-3 py-1.5 text-[12px] font-medium text-emerald-50 backdrop-blur"
                   >
                     {m}
                   </span>
@@ -286,7 +289,7 @@ export function LoginPage() {
                 SOC-grade controls
               </div>
               <div className="hidden items-center gap-2 sm:flex">
-                <Icon icon="solar:global-bold-duotone" className="h-4 w-4 text-sky-300" />
+                <Icon icon="solar:global-bold-duotone" className="h-4 w-4 text-emerald-300" />
                 Multi-tenant cloud
               </div>
               <div className="flex items-center gap-2">

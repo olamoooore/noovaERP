@@ -260,7 +260,7 @@ export function SignupPage() {
 
                 <Button
                   type="submit"
-                  className="h-11 w-full rounded-lg bg-slate-950 text-[14px] font-semibold tracking-wide text-white shadow-sm transition hover:bg-slate-800"
+                  className="h-11 w-full rounded-lg bg-[#2E8B74] text-[14px] font-semibold tracking-wide text-white shadow-sm transition hover:bg-[#25735F]"
                   disabled={loading}
                 >
                   {loading ? (
@@ -301,9 +301,10 @@ export function SignupPage() {
             className="absolute inset-0"
             style={{
               backgroundImage:
-                'radial-gradient(1100px 500px at 85% -10%, rgba(56,189,248,0.22), transparent 60%),' +
-                'radial-gradient(900px 500px at -10% 110%, rgba(16,185,129,0.18), transparent 60%),' +
-                'linear-gradient(135deg,#0b1220 0%,#0f172a 50%,#0b1220 100%)',
+                'radial-gradient(1200px 600px at 70% -20%, rgba(82,179,155,0.20), transparent 60%),' +
+                'radial-gradient(900px 500px at 10% 10%, rgba(61,163,130,0.18), transparent 60%),' +
+                'radial-gradient(800px 500px at 50% 110%, rgba(16,185,129,0.12), transparent 60%),' +
+                'linear-gradient(135deg,#04120d 0%,#061a13 55%,#04120d 100%)',
             }}
           />
           <div
@@ -328,7 +329,9 @@ export function SignupPage() {
             <div className="my-auto max-w-[520px]">
               <h2 className="text-[40px] font-semibold leading-[1.08] tracking-tight">
                 Two minutes to
-                <span className="block text-slate-300">your own workspace.</span>
+                <span className="block bg-gradient-to-r from-emerald-300 via-teal-300 to-emerald-300 bg-clip-text text-transparent">
+                  your own workspace.
+                </span>
               </h2>
               <p className="mt-4 max-w-[440px] text-[15px] leading-7 text-slate-300/90">
                 Every NoovaERP workspace is a fully isolated tenant with its own data,
@@ -342,7 +345,7 @@ export function SignupPage() {
                     className="flex items-start gap-4 rounded-xl border border-white/10 bg-white/[0.05] p-4 backdrop-blur"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06]">
-                      <Icon icon={step.icon} className="h-5 w-5 text-sky-300" />
+                      <Icon icon={step.icon} className="h-5 w-5 text-emerald-300" />
                     </span>
                     <div>
                       <div className="flex items-center gap-2">
@@ -362,7 +365,7 @@ export function SignupPage() {
                 SOC-grade controls
               </div>
               <div className="hidden items-center gap-2 sm:flex">
-                <Icon icon="solar:global-bold-duotone" className="h-4 w-4 text-sky-300" />
+                <Icon icon="solar:global-bold-duotone" className="h-4 w-4 text-emerald-300" />
                 Multi-tenant cloud
               </div>
               <div className="flex items-center gap-2">
