@@ -230,10 +230,27 @@ For a local equivalent against PostgreSQL:
 
 ```bash
 cd backend
+composer install
 php artisan migrate
-php artisan test tests/Feature/TenancyProvisioningConfigurationTest.php
+php artisan test
 php scripts/assert_tenant_provisioning.php
 ```
+
+### Frontend Checks
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run test:coverage
+npm run typecheck:ci
+npm run lint:ci
+```
+
+The frontend CI workflow (`.github/workflows/frontend-ci.yml`) runs the typecheck/lint
+ratchet and the Vitest coverage suite for `frontend/` and `superadmin/` on every pull
+request and on pushes to `main`.
+
 
 ### 1. Create Product
 ```

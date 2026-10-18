@@ -1,0 +1,35 @@
+#HUOB
+Successful
+Kank Keтprоnся
+FT26050558241522
+Transfer to UOB Account
+Application Date:
+29/05/2026
+From
+Company Name
+Account Name
+HEALTH & FERTILITY CENTRE FOR
+HEALTH N FERTILITY CTR FOR WOMEN PL
+WOMEN PTE. LTD.
+Account Number
+Currency
+3573036989
+SGD
+To
+Payee Name
+Account Number
+Currency
+Acme Pte Ltd
+3883082662
+SGD
+Amount & When
+Value Date
+Transaction Currency
+Transaction Amount
+02/06/2026
+SGD
+545.00
+Payee Reference
+Customer Reference
+Remarks for Approval
+For Customer's Remarks

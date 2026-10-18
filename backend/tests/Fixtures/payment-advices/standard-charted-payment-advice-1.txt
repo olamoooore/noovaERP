@@ -1,0 +1,92 @@
+Shandered
+PAYEE ADVICE
+To.
+ank Referenci
+: SG2ON25100600251
+ACME PTE LTD
+ustomer Reference : 119
+50 FABER WALK, #01-36 128994
+UETR
+: 6d547014-b9ed-4f43-9470-14b9ed7f432
+ISINGAPORE
+Advice Date
+: 07-0ct-2025
+Dear Sir / Madam,
+At the instruction of our client, we have intiated the following payment transaction to your account through ACH:
+SETTLEMENT REFERENCE
+REMITTER NAME
+THOMSON MEDICAL PTE. LTD
+VALUE DATE
+: 07-0ct-2025
+CURRENCY
+SGD
+REMITTANCE AMOUNT
+8,371.20
+BANK NAME
+United Overseas Bank Limited
+BANK CODE
+UOVBSGSGXXX
+ACCOUNT NAME
+ACME PTE LTD
+ACCOUNT NUMBER
+3883082662
+PAYMENT DETAILS
+2025/03/
+009,2025/07/019,2025/07/021,2025/07/022,2025/07/023,2025/07/030,202
+5/07/038,2025/07/043,2025/07/050,2025/07/051,2025/07/052,2025/0
+Our Client has provided additional details for your reference:
+Reference
+Date
+Description
+Amount(SGD)
+2025 /03/00
+05-Mar-2025
+HTX40 DISP HYSTEROSCOPE
+566.8
+ACUVU &PHOTO P 62-03-02976-
+2025
+2025/07/019
+07-Jul-2025
+HTX40S DISP HYSTEROSCOPE 588.6
+ACUVU & PP 62-03-08425-2025
+hr a onad y ur eae eitamasn poday nas and a ae ar ardses e aymar ratuctan arany ar ecumtaco.
+arises which is beyond our control, this may result in the payment being delayed or not received by you. The actual date of credit of funds into your
+account is subject to the clearing system(s) used, any intermediary bank(s) and the beneficiary bank.
+(This is a system generated advice and requires no signature.)
+1 / 5
+Reference
+Date
+Description
+Amount(SGD)
+2025/07/021
+08-Jul-2025
+PHOTO PRINING 620308511- 218
+2025/07/022
+08-Jul-2025
+PHOTO PRINTING 62-03-08440. 21.8
+2025
+2025/07/023
+08-Jul-2025
+PHOTO PRINTING 62-03-08494- 43,6
+2025/07/030
+10-Jul-2025
+PHOTO PRINTING 62-03-08613- 21.8
+2025
+2025/07/038
+14-Jul-2025
+PHOTO PRINING 620308771- 21:8
+2025/07/043
+15-Jul-2025
+HTX60S DISP HYSTEROSCOPE 588.6
+ACUVU & PP 62-03-08822-2025
+2025/07/050
+18-Jul-2025
+PHOTO PRINTING 62-03-08879-21.8
+2025
+2025/07/051
+18-Jul-2025
+PHOTO PRINTING 62-03-08884. 21.8
+2025
+2025/07/052
+18-Jul-2025
+PHOTO PRINTING 62-03-08931- 21.8

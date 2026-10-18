@@ -1,0 +1,31 @@
+Your summary will be ready
+X
+soon...
+INTERBANK GIRO PAYMENT PARTICULARS
+TVENCARKPTEULIDI
+Date
+25/09/2026
+Payer's Name : ASCENSUS WOMEN (TMC) PTE. LTD]
+Beneficiary ID: AHC-BEH
+Reference No. :1813886
+AmOUTIC
+:SCD 8,938.00
+Payment for the account of
+*******662
+PAYMENT ADVICE
+BILL_DATE
+BILL_REF
+AMOUNT
+CURRENCY
+31/08/2026
+2026/08/223
+7194
+SGD
+14/07/2026
+2026/07/089
+1744
+SGD
+
+IMPORTANT
+By receiving this payment advice, you have agreed to the following:-
+1. This document is intended for the beneficiary named in the payment advice.

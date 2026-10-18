@@ -1,0 +1,411 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\User;
+use Closure;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
+use Modules\PaymentGateway\Controllers\PaymentWebhookController;
+use Modules\PaymentGateway\Events\PaymentSuccessful;
+use Modules\PaymentGateway\Models\PaymentGateway;
+use Modules\PaymentGateway\Models\PaymentTransaction;
+use Modules\PaymentGateway\Services\PaymentService;
+use Tests\TenantTestCase;
+
+class TestPaymentWebhookController extends PaymentWebhookController
+{
+    public function __construct(private readonly ?Closure $processPaymentOverride = null) {}
+
+    public function handleSuccess(array $webhookData, PaymentGateway $gateway): void
+    {
+        $this->handlePaymentSuccess($webhookData, $gateway);
+    }
+
+    public function runProcessPayment(PaymentTransaction $transaction): void
+    {
+        $this->processPayment($transaction);
+    }
+
+    protected function processPayment(PaymentTransaction $transaction)
+    {
+        if ($this->processPaymentOverride) {
+            ($this->processPaymentOverride)($transaction);
+
+            return;
+        }
+
+        parent::processPayment($transaction);
+    }
+
+    protected function updateWebOrderStatus($invoice, $transaction = null) {}
+}
+
+class TestPaymentService extends PaymentService
+{
+    public function __construct(private readonly array $status) {}
+
+    protected function getGatewayStatus(PaymentGateway $gateway, string $transactionId): array
+    {
+        return $this->status;
+    }
+}
+
+class PaymentLifecycleHardeningTest extends TenantTestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Bind a tenant context and seed Spatie roles + permissions so the
+        // PostingEngine::post() call inside this test's payment flow passes
+        // the fail-closed MISSING_TENANT_CONTEXT and INSUFFICIENT_PERMISSION
+        // gates introduced at SHA 91d50469.
+
+        // NOTE: This class previously used the DatabaseMigrations trait plus
+        // a hand-picked migration list. That conflicts with TenantTestCase's
+        // RefreshDatabase machinery when multiple classes run in one PHPUnit
+        // process (migrate:fresh/rollback races DROP DATABASE mid-run).
+        // TenantTestCase already runs the FULL tenant migration set, which
+        // covers every table these tests need (payments, invoices,
+        // payment_transactions, settings, company_settings, …), so no
+        // additional migration work is required here.
+
+        $tenantId = (string) \Illuminate\Support\Str::uuid();
+        \Illuminate\Support\Facades\DB::table('public.tenants')->insertOrIgnore([
+            'id' => $tenantId,
+            'name' => 'Payment Lifecycle Test Tenant',
+            'email' => $tenantId.'@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->bindTenantContextWithPermissions($tenantId);
+
+        $this->adminUser = \App\Models\User::factory()->create();
+        $this->adminUser->assignRole('Admin');
+    }
+
+    public function test_webhook_retry_with_same_webhook_id_succeeds_after_prior_failure(): void
+    {
+        Notification::fake();
+        Event::fake([PaymentSuccessful::class]);
+
+        [$gateway, $transaction, $invoice] = $this->createInvoiceTransactionFixture();
+
+        $controller = $this->makeWebhookController(
+            fn () => throw new \RuntimeException('Simulated downstream failure')
+        );
+
+        $webhookData = [
+            'transaction_id' => $transaction->transaction_id,
+            'webhook_id' => 'hitpay_retry_1',
+            'payment_method' => 'card',
+            'raw_data' => ['status' => 'completed'],
+            'metadata' => ['source' => 'test'],
+        ];
+
+        try {
+            $controller->handleSuccess($webhookData, $gateway);
+            $this->fail('Expected simulated webhook failure.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Simulated downstream failure', $e->getMessage());
+        }
+
+        $transaction->refresh();
+
+        $this->assertSame('pending', $transaction->status);
+        $this->assertNull($transaction->processed_at);
+        $this->assertNull($transaction->webhook_id);
+        $this->assertSame(1, $transaction->webhook_attempts);
+        $this->assertSame('Simulated downstream failure', $transaction->error_message);
+        $this->assertDatabaseMissing('payments', [
+            'reference' => $transaction->transaction_id,
+        ]);
+
+        $retryController = $this->makeWebhookController();
+        $retryController->handleSuccess($webhookData, $gateway);
+
+        $transaction->refresh();
+        $invoice->refresh();
+
+        $this->assertSame('completed', $transaction->status);
+        $this->assertNotNull($transaction->processed_at);
+        $this->assertSame('hitpay_retry_1', $transaction->webhook_id);
+        $this->assertSame(2, $transaction->webhook_attempts);
+        $this->assertNull($transaction->error_message);
+        $this->assertSame('paid', $invoice->status);
+        $this->assertSame(50.0, (float) $invoice->paid_amount);
+        $this->assertSame(0.0, (float) $invoice->balance);
+        $this->assertSame(1, Payment::where('reference', $transaction->transaction_id)->count());
+    }
+
+    public function test_duplicate_invoice_webhook_does_not_double_apply_invoice_balance(): void
+    {
+        Notification::fake();
+        Event::fake([PaymentSuccessful::class]);
+
+        [$gateway, $transaction, $invoice] = $this->createInvoiceTransactionFixture();
+
+        $webhookData = [
+            'transaction_id' => $transaction->transaction_id,
+            'webhook_id' => 'hitpay_dup_guard',
+            'payment_method' => 'card',
+            'raw_data' => ['status' => 'completed'],
+            'metadata' => ['source' => 'test'],
+        ];
+
+        $controller = $this->makeWebhookController();
+        $controller->handleSuccess($webhookData, $gateway);
+        $controller->handleSuccess([
+            ...$webhookData,
+            'webhook_id' => 'hitpay_dup_guard_retry',
+        ], $gateway);
+
+        $transaction->refresh();
+        $invoice->refresh();
+
+        $this->assertSame('completed', $transaction->status);
+        $this->assertNotNull($transaction->processed_at);
+        $this->assertSame(1, $transaction->webhook_attempts);
+        $this->assertSame(1, Payment::where('reference', $transaction->transaction_id)->count());
+        $this->assertSame(50.0, (float) $invoice->paid_amount);
+        $this->assertSame(0.0, (float) $invoice->balance);
+    }
+
+    public function test_webhook_failure_resets_transaction_back_to_pending_until_local_processing_finishes(): void
+    {
+        Notification::fake();
+        Event::fake([PaymentSuccessful::class]);
+
+        [$gateway, $transaction] = $this->createInvoiceTransactionFixture();
+
+        $controller = $this->makeWebhookController(
+            fn () => throw new \RuntimeException('Simulated downstream failure')
+        );
+
+        $webhookData = [
+            'transaction_id' => $transaction->transaction_id,
+            'webhook_id' => 'hitpay_processing_guard',
+            'payment_method' => 'card',
+            'raw_data' => ['status' => 'completed'],
+            'metadata' => ['source' => 'test'],
+        ];
+
+        try {
+            $controller->handleSuccess($webhookData, $gateway);
+            $this->fail('Expected simulated webhook failure.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Simulated downstream failure', $e->getMessage());
+        }
+
+        $transaction->refresh();
+
+        $this->assertSame('pending', $transaction->status);
+        $this->assertNull($transaction->processed_at);
+        $this->assertSame('Simulated downstream failure', $transaction->error_message);
+    }
+
+    public function test_process_payment_sets_processed_at_when_local_completion_succeeds(): void
+    {
+        Notification::fake();
+
+        [, $transaction, $invoice] = $this->createInvoiceTransactionFixture();
+
+        $controller = $this->makeWebhookController();
+        $controller->runProcessPayment($transaction);
+
+        $transaction->refresh();
+        $invoice->refresh();
+
+        $this->assertSame('pending', $transaction->status);
+        $this->assertNotNull($transaction->processed_at);
+        $this->assertSame('paid', $invoice->status);
+        $this->assertSame(50.0, (float) $invoice->paid_amount);
+        $this->assertSame(0.0, (float) $invoice->balance);
+        $this->assertSame(1, Payment::where('reference', $transaction->transaction_id)->count());
+    }
+
+    public function test_confirm_payment_keeps_gateway_complete_non_terminal_until_local_processing_finishes(): void
+    {
+        [, $transaction] = $this->createStandaloneTransactionFixture();
+
+        $service = $this->makePaymentService([
+            'success' => true,
+            'status' => 'completed',
+            'payment_method' => 'card',
+            'amount' => 50,
+            'currency' => 'USD',
+        ]);
+
+        $result = $service->confirmPayment($transaction->transaction_id);
+
+        $transaction->refresh();
+
+        $this->assertSame('completed', $result['status']);
+        $this->assertSame('pending', $transaction->status);
+        $this->assertNull($transaction->processed_at);
+        $this->assertSame('card', $transaction->payment_method);
+        $this->assertSame('completed', $transaction->gateway_response['status'] ?? null);
+    }
+
+    public function test_confirm_payment_preserves_already_completed_local_state(): void
+    {
+        [, $transaction] = $this->createStandaloneTransactionFixture();
+
+        $processedAt = now()->subMinute()->startOfSecond();
+        $transaction->update([
+            'status' => 'completed',
+            'processed_at' => $processedAt,
+        ]);
+
+        $service = $this->makePaymentService([
+            'success' => true,
+            'status' => 'completed',
+            'payment_method' => 'card',
+            'amount' => 50,
+            'currency' => 'USD',
+        ]);
+
+        $service->confirmPayment($transaction->transaction_id);
+
+        $transaction->refresh();
+
+        $this->assertSame('completed', $transaction->status);
+        $this->assertNotNull($transaction->processed_at);
+        $this->assertSame($processedAt->toDateTimeString(), $transaction->processed_at->toDateTimeString());
+        $this->assertSame('completed', $transaction->gateway_response['status'] ?? null);
+    }
+
+    private function makeWebhookController(?Closure $processPaymentOverride = null): TestPaymentWebhookController
+    {
+        return new TestPaymentWebhookController($processPaymentOverride);
+    }
+
+    private function makePaymentService(array $status): TestPaymentService
+    {
+        return new TestPaymentService($status);
+    }
+
+    private function createInvoiceTransactionFixture(): array
+    {
+        $user = User::factory()->create();
+        // The fail-closed PermissionGate (SHA 91d50469) requires the actor
+        // who posts the journal entry to have the Spatie 'Admin' role.
+        $user->assignRole('Admin');
+
+        $this->seedAccountingPostingFixtures($user->id);
+
+        $customerId = DB::table('customers')->insertGetId([
+            'name' => 'Webhook Test Customer',
+            'email' => 'webhook@example.com',
+            'payment_terms' => 30,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-TEST-001',
+            'customer_id' => $customerId,
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(30)->toDateString(),
+            'status' => 'sent',
+            'subtotal' => 50,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 50,
+            'paid_amount' => 0,
+            'balance' => 50,
+            'created_by' => $user->id,
+        ]);
+
+        $gateway = $this->createGateway();
+
+        $transaction = PaymentTransaction::create([
+            'payment_gateway_id' => $gateway->id,
+            'invoice_id' => $invoice->id,
+            'customer_id' => $customerId,
+            'transaction_id' => 'txn_'.bin2hex(random_bytes(6)),
+            'amount' => 50,
+            'currency' => 'USD',
+            'status' => 'pending',
+            'metadata' => ['type' => 'invoice'],
+        ]);
+
+        return [$gateway, $transaction, $invoice];
+    }
+
+    private function seedAccountingPostingFixtures(int $userId): void
+    {
+        $periodStart = now()->startOfMonth()->toDateString();
+        $periodEnd = now()->endOfMonth()->toDateString();
+        $periodCode = now()->format('Y-m');
+
+        if (! DB::table('fiscal_periods')->where('code', $periodCode)->exists()) {
+            DB::table('fiscal_periods')->insert([
+                'name' => now()->format('F Y'),
+                'code' => $periodCode,
+                'period_start' => $periodStart,
+                'period_end' => $periodEnd,
+                'period_type' => 'monthly',
+                'fiscal_year' => (int) now()->format('Y'),
+                'is_locked' => false,
+                'status' => 'open',
+                'created_by' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        foreach ([
+            'cash' => '1010',
+            'bank' => '1020',
+            'accounts_receivable' => '1100',
+        ] as $mappingKey => $accountCode) {
+            if (DB::table('account_mappings')->where('mapping_key', $mappingKey)->whereNull('document_type')->exists()) {
+                continue;
+            }
+
+            $accountId = DB::table('chart_of_accounts')->where('code', $accountCode)->value('id');
+
+            DB::table('account_mappings')->insert([
+                'mapping_key' => $mappingKey,
+                'account_id' => $accountId,
+                'document_type' => null,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    private function createStandaloneTransactionFixture(): array
+    {
+        $gateway = $this->createGateway();
+
+        $transaction = PaymentTransaction::create([
+            'payment_gateway_id' => $gateway->id,
+            'transaction_id' => 'txn_'.bin2hex(random_bytes(6)),
+            'amount' => 50,
+            'currency' => 'USD',
+            'status' => 'pending',
+            'metadata' => [],
+        ]);
+
+        return [$gateway, $transaction];
+    }
+
+    private function createGateway(): PaymentGateway
+    {
+        return PaymentGateway::create([
+            'gateway_name' => 'hitpay',
+            'api_key' => 'test-api-key',
+            'api_secret' => 'test-api-secret',
+            'is_active' => true,
+            'is_test_mode' => true,
+        ]);
+    }
+}

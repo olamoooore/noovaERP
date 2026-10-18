@@ -160,7 +160,7 @@ export default defineConfig({
       reportsDirectory: './coverage',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.spec.{ts,tsx}', 'src/**/index.{ts,tsx}'],
-      thresholds: { statements: 10 },
+      thresholds: { statements: 20 },
     },
   },
 })
