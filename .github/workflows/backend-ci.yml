@@ -73,6 +73,11 @@ jobs:
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Audit Composer dependencies
+        working-directory: backend
+        continue-on-error: true
+        run: composer audit --no-interaction
+
       - name: Check PHP formatting (Pint)
         working-directory: backend
         run: vendor/bin/pint --test
