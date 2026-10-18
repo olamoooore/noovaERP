@@ -81,3 +81,11 @@
 # Listing screenshots are repository docs, not part of the source bundle
 /screenshots export-ignore
 /screenshots/** export-ignore
+
+# Keep the marketplace upload comfortably below its 5,000-file limit.
+# These are generated/local artifacts or nonessential project history.
+/dist export-ignore
+/dist/** export-ignore
+/backend/storage export-ignore
+/backend/storage/** export-ignore
+/CHANGELOG.md export-ignore
