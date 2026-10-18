@@ -77,3 +77,7 @@
 /backend/typecheck_output_product_create_cleanup.txt export-ignore
 /backend/toArray()) export-ignore
 /backend/php export-ignore
+
+# Listing screenshots are repository docs, not part of the source bundle
+/screenshots export-ignore
+/screenshots/** export-ignore
