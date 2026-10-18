@@ -167,3 +167,7 @@ backend/test_results.xml
 **/*.spec.js
 **/*.spec.jsx
 **/*Test.php
+
+# Vitest coverage output
+/frontend/coverage/
+/superadmin/coverage/
