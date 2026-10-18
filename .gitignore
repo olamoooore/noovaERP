@@ -146,3 +146,24 @@ tmp_scripts/
 .github/agents/
 backend/evidence-*/
 backend/test_results.xml
+
+# ---------------------------------------------------------------------------
+# Test suites stay out of the published source tree. They are kept locally in
+# dist/noova-tests-backup.tar.gz because the marketplace bundle has a
+# 5,000-file cap. Remove these rules to re-track the suites for development.
+# ---------------------------------------------------------------------------
+/tests/
+/backend/tests/
+**/Tests/
+**/tests/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.test.js
+**/*.test.jsx
+**/*.test.php
+**/*.spec.ts
+**/*.spec.tsx
+**/*.spec.js
+**/*.spec.jsx
+**/*Test.php
