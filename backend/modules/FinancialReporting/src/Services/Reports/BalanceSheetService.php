@@ -28,8 +28,12 @@ class BalanceSheetService extends BaseReportService
             throw new \InvalidArgumentException('As of date is required for Balance Sheet report');
         }
 
-        // Determine if we should use summary table
-        $useSummary = $this->shouldUseSummary($filter->asOfDate);
+        // Determine if we should use summary table. The summary table has no
+        // legal-entity/entity-book columns, so entity-scoped reports must use
+        // the journal entries directly instead of filtering missing columns.
+        $useSummary = ! $filter->legalEntityId
+            && ! $filter->entityBookId
+            && $this->shouldUseSummary($filter->asOfDate);
 
         // Get assets
         $currentAssets = $this->getAssetsByCategory($filter, 'current_asset', $useSummary);

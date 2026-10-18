@@ -114,7 +114,7 @@ abstract class BaseReportService
         // This catches cases where summary job failed partway through
         $summaryLineCount = DB::table('daily_ledger_summaries')
             ->where('summary_date', $date->format('Y-m-d'))
-            ->sum('entry_count');
+            ->sum('transaction_count');
 
         $journalLineCount = DB::table('journal_entry_lines')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')

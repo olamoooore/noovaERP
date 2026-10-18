@@ -28,8 +28,12 @@ class ProfitLossService extends BaseReportService
             throw new \InvalidArgumentException('Start date and end date are required for P&L report');
         }
 
-        // Determine if we should use summary table
-        $useSummary = $this->shouldUseSummary($filter->startDate);
+        // Determine if we should use summary table. The summary table has no
+        // legal-entity/entity-book columns, so entity-scoped reports must use
+        // the journal entries directly instead of filtering missing columns.
+        $useSummary = ! $filter->legalEntityId
+            && ! $filter->entityBookId
+            && $this->shouldUseSummary($filter->startDate);
 
         // Get revenue and expense data
         $revenue = $this->getRevenue($filter, $useSummary);
@@ -341,10 +345,14 @@ class ProfitLossService extends BaseReportService
             accountType: $filter->accountType,
             departmentId: $filter->departmentId,
             projectId: $filter->projectId,
-            locationId: $filter->locationId
+            locationId: $filter->locationId,
+            legalEntityId: $filter->legalEntityId,
+            entityBookId: $filter->entityBookId
         );
 
-        $useSummary = $this->shouldUseSummary($compareFilter->startDate);
+        $useSummary = ! $compareFilter->legalEntityId
+            && ! $compareFilter->entityBookId
+            && $this->shouldUseSummary($compareFilter->startDate);
 
         $compareRevenue = $this->getRevenue($compareFilter, $useSummary);
         $compareCogs = $this->getCostOfGoodsSold($compareFilter, $useSummary);
@@ -357,10 +365,13 @@ class ProfitLossService extends BaseReportService
         $compareNetProfit = $compareOperatingProfit + $compareOtherIncome - $compareOtherExpenses;
 
         // Get current period values
-        $currentRevenue = $this->getRevenue($filter, $this->shouldUseSummary($filter->startDate));
-        $currentGrossProfit = $currentRevenue - $this->getCostOfGoodsSold($filter, $this->shouldUseSummary($filter->startDate));
-        $currentOperatingProfit = $currentGrossProfit - $this->getOperatingExpenses($filter, $this->shouldUseSummary($filter->startDate));
-        $currentNetProfit = $currentOperatingProfit + $this->getOtherIncome($filter, $this->shouldUseSummary($filter->startDate)) - $this->getOtherExpenses($filter, $this->shouldUseSummary($filter->startDate));
+        $currentUseSummary = ! $filter->legalEntityId
+            && ! $filter->entityBookId
+            && $this->shouldUseSummary($filter->startDate);
+        $currentRevenue = $this->getRevenue($filter, $currentUseSummary);
+        $currentGrossProfit = $currentRevenue - $this->getCostOfGoodsSold($filter, $currentUseSummary);
+        $currentOperatingProfit = $currentGrossProfit - $this->getOperatingExpenses($filter, $currentUseSummary);
+        $currentNetProfit = $currentOperatingProfit + $this->getOtherIncome($filter, $currentUseSummary) - $this->getOtherExpenses($filter, $currentUseSummary);
 
         return [
             'period' => [
