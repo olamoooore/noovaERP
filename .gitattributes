@@ -1,0 +1,79 @@
+# Zero to Hundred source bundles are generated with git archive and have a
+# 5,000-file cap. Test suites stay in the repository but are left out of the
+# published archive.
+
+# Root and Laravel test suites
+/tests export-ignore
+/backend/tests export-ignore
+/backend/tests/** export-ignore
+
+# Module/app test directories
+**/Tests export-ignore
+**/Tests/** export-ignore
+**/tests export-ignore
+**/tests/** export-ignore
+**/__tests__ export-ignore
+**/__tests__/** export-ignore
+
+# Test files
+**/*.test.ts export-ignore
+**/*.test.tsx export-ignore
+**/*.test.js export-ignore
+**/*.test.jsx export-ignore
+**/*.test.php export-ignore
+**/*.spec.ts export-ignore
+**/*.spec.tsx export-ignore
+**/*.spec.js export-ignore
+**/*.spec.jsx export-ignore
+**/*Test.php export-ignore
+
+# Non-runtime source documentation, CI configuration and local tooling
+/.github export-ignore
+/.github/** export-ignore
+/manual export-ignore
+/manual/** export-ignore
+/backend/docs export-ignore
+/backend/docs/** export-ignore
+/backend/scripts export-ignore
+/backend/scripts/** export-ignore
+/scripts export-ignore
+/scripts/** export-ignore
+/frontend/dev-dist export-ignore
+/frontend/dev-dist/** export-ignore
+/frontend/ci-baseline export-ignore
+/frontend/ci-baseline/** export-ignore
+/frontend/scripts export-ignore
+/frontend/scripts/** export-ignore
+/check_tenant.php export-ignore
+/provision_tenant.php export-ignore
+/verify_fc005.py export-ignore
+
+# Demo media, factories and local dev utilities are not needed to run the app
+/frontend/public/manuals export-ignore
+/frontend/public/manuals/** export-ignore
+/frontend/public/theme-screenshots export-ignore
+/frontend/public/theme-screenshots/** export-ignore
+/frontend/public/Web-Templates export-ignore
+/frontend/public/Web-Templates/** export-ignore
+/backend/database/factories export-ignore
+/backend/database/factories/** export-ignore
+/superadmin/ci-baseline export-ignore
+/superadmin/ci-baseline/** export-ignore
+/.githooks export-ignore
+/.githooks/** export-ignore
+/backend/pint.json export-ignore
+/frontend/tenant_id export-ignore
+
+/backend/check_hrm_features.php export-ignore
+/backend/check_settings.php export-ignore
+/backend/check_tenant.php export-ignore
+/backend/fix_sequences.php export-ignore
+/backend/set_settings.php export-ignore
+/backend/test_gprinter.php export-ignore
+/backend/test_kpos.php export-ignore
+/backend/test_receipt.php export-ignore
+/backend/update_ump_ids.php export-ignore
+/backend/typecheck_output_bundle_dedicated_fetch.txt export-ignore
+/backend/typecheck_output_product_create_cleanup.txt export-ignore
+/backend/toArray()) export-ignore
+/backend/php export-ignore
