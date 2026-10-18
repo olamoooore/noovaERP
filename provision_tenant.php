@@ -18,7 +18,10 @@ $targetEmail = 'admin@demo4.com';
 $targetDomain = 'demo4.localhost';
 $targetCompany = 'Demo 4 Corp';
 $targetName = 'Demo 4 Admin';
-$password = 'password';
+$password = env('TENANT_SEED_PASSWORD');
+if (! is_string($password) || $password === '') {
+    throw new Exception('TENANT_SEED_PASSWORD must be set to provision the demo tenant.');
+}
 
 try {
     // 1. Check existing
