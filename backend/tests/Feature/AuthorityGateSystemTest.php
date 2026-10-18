@@ -54,7 +54,7 @@ class AuthorityGateSystemTest extends TestCase
         $property->setAccessible(true);
         $gates = $property->getValue($this->evaluator);
 
-        $this->assertCount(13, $gates, 'Should have 13 mandatory gates registered');
+        $this->assertCount(14, $gates, 'Should have 13 mandatory gates registered');
     }
 
     /** @test */
