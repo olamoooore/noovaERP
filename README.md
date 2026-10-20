@@ -454,8 +454,9 @@ GET    /api/v1/accounting/ledger/{account}    - Account ledger
 
 ## 🤝 Contributing
 
-Contributions are welcome via pull requests. For feature requests or bug reports, open an issue on GitHub.
+The source repository is private. Source access and support are provided to the buyer through the marketplace after purchase.
 
 ## 📞 Support
 
-- Issues: https://github.com/olamoooore/noovaERP/issues
+- Source repository: private, delivered to the buyer after purchase
+- Support: use the marketplace listing contact channel
