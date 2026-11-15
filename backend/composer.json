@@ -14,7 +14,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
         "maatwebsite/excel": "^3.1",
-        "predis/predis": "^2.3",
+        "predis/predis": "^3.7",
         "resend/resend-php": "^1.15",
         "setasign/fpdi": "^2.6",
         "setasign/fpdi-tcpdf": "^2.3",
